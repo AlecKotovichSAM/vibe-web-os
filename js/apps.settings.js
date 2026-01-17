@@ -135,7 +135,7 @@ Apps.register({
             desktop.style.backgroundImage = '';
           }
 
-          localStorage.removeItem('webos.wallpaper');
+          localStorage.removeItem('webos.wallpaper', );
         }
       }
 
