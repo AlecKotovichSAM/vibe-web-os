@@ -164,3 +164,25 @@ hr { border:0; border-top:1px solid #2a2d3f; margin:12px 0; }
 .context-menu-item:hover .context-submenu {
   display: block;
 }
+
+.settings-wallpaper-preview {
+  width: 100%;
+  background-size: cover;
+  background-position: center;
+  border: 1px solid var(--panel-2);
+  border-radius: 4px;
+  margin-bottom: 10px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  min-height: 0;
+}
+
+.settings-wallpaper-input {
+  width: 100%;
+  padding: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: 4px;
+  margin-bottom: 10px;
+}

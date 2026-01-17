@@ -368,6 +368,15 @@ window.Shell = (() => {
       const btn = mapTaskBtn.get(id); if (btn) { btn.remove(); mapTaskBtn.delete(id); }
     });
 
+    // Restore saved wallpaper
+    const savedWallpaper = localStorage.getItem('webos.wallpaper');
+    if (savedWallpaper) {
+      desktop.style.backgroundImage = `url('${savedWallpaper}')`;
+      desktop.style.backgroundSize = 'cover';
+      desktop.style.backgroundPosition = 'center';
+      desktop.style.backgroundAttachment = 'fixed';
+    }    
+
     desktop.hidden = false;
   }
 
