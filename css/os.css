@@ -164,3 +164,68 @@ hr { border:0; border-top:1px solid #2a2d3f; margin:12px 0; }
 .context-menu-item:hover .context-submenu {
   display: block;
 }
+
+/* BSOD - Blue Screen of Death */
+#bsod {
+  position: fixed;
+  inset: 0;
+  background: #0078d4;
+  color: #fff;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  text-align: center;
+}
+
+#bsod.show {
+  display: flex;
+}
+
+#bsod .sad-face {
+  font-size: 6rem;
+  margin-bottom: 2rem;
+}
+
+#bsod .title {
+  font-size: 2rem;
+  font-weight: 300;
+  margin-bottom: 1rem;
+}
+
+#bsod .message {
+  font-size: 1.2rem;
+  max-width: 600px;
+  line-height: 1.6;
+  margin-bottom: 2rem;
+}
+
+#bsod .error-code {
+  font-family: monospace;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 3rem;
+}
+
+#bsod .progress {
+  width: 300px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+#bsod .progress-bar {
+  height: 100%;
+  background: #fff;
+  width: 0%;
+  transition: width 0.3s ease;
+}
+
+#bsod .hint {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+}
