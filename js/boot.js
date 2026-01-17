@@ -21,6 +21,7 @@
     } else {
       boot.remove();
       Shell.initDesktop();
+      BSOD.startRandomSchedule(30, 600);
     }
   }
 
