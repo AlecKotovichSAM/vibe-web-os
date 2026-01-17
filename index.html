@@ -1,0 +1,67 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Web OS Skeleton</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="css/os.css" />
+</head>
+<body>
+  <!-- Boot Screen -->
+  <div id="boot-screen">
+    <div class="logo">web<span>OS</span></div>
+    <div class="progress"><div class="bar"></div></div>
+    <div class="hint">Starting services…</div>
+  </div>
+
+  <!-- Desktop -->
+  <div id="desktop" aria-label="Desktop" role="application" hidden>
+    <div id="desktop-icons" role="menubar" aria-label="Desktop Icons">
+      <button class="icon" data-app="files" aria-label="Open Files">
+        <span class="icon-glyph">📁</span>
+        <span class="icon-label">Files</span>
+      </button>
+      <button class="icon" data-app="notes" aria-label="Open Notes">
+        <span class="icon-glyph">📝</span>
+        <span class="icon-label">Notes</span>
+      </button>
+      <button class="icon" data-app="settings" aria-label="Open Settings">
+        <span class="icon-glyph">⚙️</span>
+        <span class="icon-label">Settings</span>
+      </button>
+      <button class="icon" data-app="editor" aria-label="Open Text Editor">
+        <span class="icon-glyph">📄</span>
+        <span class="icon-label">Text Editor</span>
+      </button>
+    </div>      
+
+    <!-- Window Layer -->
+    <div id="window-layer" aria-live="polite"></div>
+
+    <!-- Taskbar -->
+    <div id="taskbar" role="toolbar" aria-label="Taskbar">
+      <button id="btn-start" aria-haspopup="true" aria-controls="start-menu">◻︎</button>
+      <div id="task-list" aria-label="Open Windows"></div>
+      <div id="task-clock" aria-live="polite"></div>
+    </div>
+
+    <!-- Start Menu -->
+    <div id="start-menu" role="menu" aria-hidden="true">
+      <div class="start-title">Start</div>
+      <div class="start-apps" id="start-apps"></div>
+    </div>
+  </div>
+
+  <script src="js/core.bus.js"></script>
+  <script src="js/core.fs.js"></script>
+  <script src="js/core.window.js"></script>
+  <script src="js/core.apps.js"></script>
+  <script src="js/core.shell.js"></script>
+  <script src="js/apps.notes.js"></script>
+  <script src="js/apps.editor.js"></script>
+  <script src="js/apps.files.js"></script>
+  <script src="js/apps.settings.js"></script>
+  <script src="js/boot.js"></script>
+</body>
+</html>

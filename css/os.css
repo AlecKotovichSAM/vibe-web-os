@@ -1,0 +1,166 @@
+
+:root{
+  --bg:#0f111a;
+  --panel:#1b1e28;
+  --panel-2:#232636;
+  --accent:#4f7cff;
+  --text:#e6e6e6;
+  --muted:#a7a7a7;
+  --ok:#2ec27e;
+  --danger:#ff6b6b;
+  --shadow:0 10px 30px rgba(0,0,0,.35);
+}
+
+* { box-sizing: border-box; }
+html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif; color:var(--text); background:var(--bg); }
+
+#boot-screen {
+  position:fixed; inset:0; display:grid; place-items:center; gap:24px;
+  background: radial-gradient(1200px 600px at 30% 40%, #151826, #0f111a);
+}
+#boot-screen .logo { font-size:3rem; letter-spacing:.06em; font-weight:700; }
+#boot-screen .logo span { color:var(--accent); }
+#boot-screen .progress { width:300px; height:8px; background:#222537; border-radius:999px; overflow:hidden; box-shadow:var(--shadow); }
+#boot-screen .bar { height:100%; width:0%; background:linear-gradient(90deg,var(--accent),#7aa2ff); transition:width .3s ease; }
+#boot-screen .hint { color:var(--muted); font-size:.95rem; }
+
+#desktop { position:fixed; inset:0; background:linear-gradient(180deg,#101322 0%, #0f111a 100%); }
+#desktop-icons { 
+  position:absolute; top:16px; left:16px; display:flex; gap:12px; flex-wrap:wrap; width:min(420px, 45vw);
+  z-index: 1; /* Ensure icons are above window-layer */
+  pointer-events: auto; /* Ensure clicks work */
+}
+.icon {
+  width:90px; border:none; background:transparent; color:var(--text);
+  display:grid; justify-items:center; gap:6px; padding:10px; border-radius:8px; cursor:pointer;
+}
+.icon:hover { background:rgba(255,255,255,0.06); }
+.icon-glyph { font-size:1.75rem; }
+.icon-label { font-size:.85rem; color:var(--muted); }
+
+#taskbar {
+  position:absolute; left:0; right:0; bottom:0; height:44px; background:var(--panel);
+  display:flex; align-items:center; gap:8px; padding:0 8px; box-shadow: 0 -4px 20px rgba(0,0,0,.35);
+}
+#btn-start { height:32px; width:36px; border:none; border-radius:6px; background:var(--panel-2); color:#fff; cursor:pointer; }
+#btn-start:focus { outline:2px solid var(--accent); }
+#task-list { display:flex; gap:6px; flex:1; padding:0 8px; overflow-x:auto; }
+.task-button {
+  height:32px; min-width:110px; max-width:220px; padding:0 10px; background:var(--panel-2); color:#ddd;
+  border:none; border-radius:6px; display:flex; align-items:center; gap:8px; cursor:pointer;
+}
+.task-button.active { outline:2px solid var(--accent); }
+#task-clock { min-width:120px; text-align:right; color:var(--muted); }
+
+#start-menu {
+  position:absolute; left:8px; bottom:52px; width:320px; background:var(--panel);
+  border-radius:10px; box-shadow:var(--shadow); padding:10px; display:none;
+}
+#start-menu[aria-hidden="false"] { display:block; }
+.start-title { font-weight:600; margin-bottom:8px; }
+.start-apps { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.start-apps button {
+  background:var(--panel-2); border:none; border-radius:8px; padding:10px; color:#ddd; cursor:pointer; text-align:left;
+}
+.start-apps button:hover{ outline:2px solid var(--accent); }
+
+#window-layer { 
+  position:absolute; inset:0 0 44px 0;
+  pointer-events: none; /* Allow clicks to pass through when no windows */
+}
+
+.window {
+  position:absolute; top:120px; left:120px; width:520px; height:360px; background:var(--panel); border:1px solid #2a2d3f; border-radius:10px;
+  box-shadow: var(--shadow); display:flex; flex-direction:column; overflow:hidden;
+  pointer-events: auto; /* But windows themselves should be clickable */
+}
+
+.window.focus { outline:2px solid var(--accent); }
+.win-titlebar {
+  height:36px; background:linear-gradient(180deg,#202437,#1b1e2d); display:flex; align-items:center; gap:8px; padding:0 8px; cursor:grab; user-select:none;
+}
+.win-title { flex:1; font-weight:600; font-size:.95rem; }
+.win-btns { display:flex; gap:6px; }
+.win-btns button {
+  height:26px; width:26px; border:none; border-radius:6px; background:var(--panel-2); color:#ddd; cursor:pointer;
+}
+.win-btns .close { background:#3a2230; color:#ffb1b1; }
+.win-content { flex:1; padding:10px; overflow:auto; background:#111424; }
+.win-resize { position:absolute; right:0; bottom:0; width:12px; height:12px; cursor:nwse-resize; }
+
+.app-empty { color:var(--muted); padding:12px; }
+
+input, textarea, select, button { font:inherit; }
+input[type="text"], textarea {
+  width:100%; background:#0f1324; color:#e8e8e8; border:1px solid #2a2d3f; border-radius:6px; padding:8px;
+}
+label { color:#cfcfcf; font-size:.9rem; }
+hr { border:0; border-top:1px solid #2a2d3f; margin:12px 0; }
+
+.icon-glyph,
+.icon-label {
+  pointer-events: none;
+}
+
+/* Context Menu */
+.context-menu {
+  position: fixed;
+  background: var(--panel);
+  border: 1px solid #2a2d3f;
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+  padding: 4px 0;
+  min-width: 200px;
+  z-index: 1000;
+  display: none;
+}
+
+.context-menu.show {
+  display: block;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 24px 8px 12px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.9rem;
+  position: relative;
+}
+
+.context-menu-item:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.context-menu-item.has-submenu::after {
+  content: '▶';
+  position: absolute;
+  right: 8px;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.context-menu-item:hover.has-submenu::after {
+  color: #fff;
+}
+
+.context-submenu {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  background: var(--panel);
+  border: 1px solid #2a2d3f;
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+  padding: 4px 0;
+  min-width: 180px;
+  display: none;
+  margin-left: 4px;
+}
+
+.context-menu-item:hover .context-submenu {
+  display: block;
+}
