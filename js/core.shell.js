@@ -18,8 +18,13 @@ window.Shell = (() => {
       
       // Group apps by category
       const categories = Apps.getCategories();
-      // Filter out folder apps (they're accessed via category folders) and apps without category
-      const uncategorizedApps = Apps.list().filter(app => !app.category && !app.id.endsWith('-folder'));
+      // Filter out folder apps (they're accessed via category folders or custom folders) and apps without category
+      const customFolderIds = new Set(Folders.list().map(f => f.id));
+      const uncategorizedApps = Apps.list().filter(app => 
+        !app.category && 
+        !app.id.endsWith('-folder') && 
+        !customFolderIds.has(app.id)
+      );
       
       // Show uncategorized apps first
       uncategorizedApps.forEach(app => {
@@ -32,7 +37,7 @@ window.Shell = (() => {
         startApps.appendChild(btn);
       });
       
-      // Show category folders
+      // Show category folders (system folders like Games)
       categories.forEach(category => {
         const categoryApps = Apps.listByCategory(category);
         if (categoryApps.length > 0) {
@@ -48,6 +53,18 @@ window.Shell = (() => {
           });
           startApps.appendChild(btn);
         }
+      });
+      
+      // Show custom user folders
+      const customFolders = Folders.list();
+      customFolders.forEach(folder => {
+        const btn = document.createElement('button');
+        btn.innerHTML = `<div style="font-size:1.2rem">${folder.icon || '📁'}</div><div>${folder.name}</div>`;
+        btn.addEventListener('click', ()=>{
+          Folders.open(folder.id);
+          toggleStart(false);
+        });
+        startApps.appendChild(btn);
       });
     }
     renderStart();

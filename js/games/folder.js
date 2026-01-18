@@ -6,7 +6,21 @@ Apps.register({
   description: 'Games folder',
   category: '',
   launch() {
-    const id = 'games-folder-' + Date.now();
+    // Use fixed ID to prevent multiple instances
+    const id = 'games-folder';
+    
+    // Check if Games folder window already exists
+    const existingWin = WindowManager.findWindow(id);
+    if (existingWin) {
+      // If minimized, restore it; otherwise just focus it
+      if (existingWin.style.display === 'none') {
+        WindowManager.restoreWindow(id);
+      } else {
+        WindowManager.focusWindow(id);
+      }
+      return;
+    }
+    
     const games = Apps.listByCategory('games');
     
     const content = `
@@ -54,8 +68,7 @@ Apps.register({
         if (appId) {
           // Open the game app
           Apps.open(appId, { parentId: id });
-          // Minimize the folder instead of closing it
-          WindowManager.minimizeWindow(id);
+          // Keep folder open - don't minimize
         }
       });
       btn.addEventListener('mouseenter', () => {
