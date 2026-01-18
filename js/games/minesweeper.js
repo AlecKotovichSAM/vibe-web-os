@@ -74,6 +74,11 @@ Apps.register({
         timer = null;
       }
 
+      const statusEl = win.querySelector('#minesweeper-status');
+      if (statusEl) {
+        statusEl.textContent = '😊';
+      }
+
       renderGrid();
       updateUI();
     }
