@@ -64,11 +64,11 @@ Apps.register({
           rows = items.map(i => {
             const icon = i.type === 'dir' ? '📁' : getFileIcon(i.name);
             return `
-            <div class="row" data-path="${i.path}" data-type="${i.type}" style="display:flex; gap:10px; align-items:center; padding:6px; border-bottom:1px solid #2a2d3f; cursor:pointer;">
+            <div class="row" data-path="${i.path}" data-type="${i.type}" style="display:flex; gap:10px; align-items:center; padding:6px; border-bottom:1px solid var(--panel-2); cursor:pointer;">
               <div>${icon}</div>
               <div style="flex:1">${i.name}</div>
-              <div style="color:#a7a7a7; font-size:.85rem">${i.mtime.slice(0,19).replace('T',' ')}</div>
-              <button class="del" title="Delete" style="background:#2a2230; color:#ffb1b1; border:none; border-radius:6px; padding:4px 8px">Delete</button>
+              <div style="color:var(--muted); font-size:.85rem">${i.mtime.slice(0,19).replace('T',' ')}</div>
+              <button class="del" title="Delete" style="background:var(--panel-2); color:var(--danger); border:none; border-radius:6px; padding:4px 8px">Delete</button>
             </div>
           `;
           }).join('');
@@ -102,13 +102,13 @@ Apps.register({
           viewerWidth = 800;
           viewerHeight = 600;
           viewerContent = `
-            <div style="display:flex; justify-content:center; align-items:center; height:100%; background:#0f111a; overflow:auto;">
+            <div style="display:flex; justify-content:center; align-items:center; height:100%; background:var(--bg); overflow:auto;">
               <img src="${content}" style="max-width:100%; max-height:100%; object-fit:contain;" alt="${fileName}" />
             </div>
           `;
         } else {
           // Display as text
-          viewerContent = `<pre style="white-space:pre-wrap; margin:0; padding:10px;">${content.replace(/[&<>]/g, (m)=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m]))}</pre>`;
+          viewerContent = `<pre style="white-space:pre-wrap; margin:0; padding:10px; color:var(--text);">${content.replace(/[&<>]/g, (m)=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m]))}</pre>`;
         }
         
         const win2 = WindowManager.makeWindow({

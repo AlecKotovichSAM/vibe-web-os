@@ -70,7 +70,7 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
 .start-title { font-weight:600; margin-bottom:8px; }
 .start-apps { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
 .start-apps button {
-  background:var(--panel-2); border:none; border-radius:8px; padding:10px; color:#ddd; cursor:pointer; text-align:left;
+  background:var(--panel-2); border:none; border-radius:8px; padding:10px; color:var(--text); cursor:pointer; text-align:left;
 }
 .start-apps button:hover{ outline:2px solid var(--accent); }
 
@@ -80,7 +80,7 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
 }
 
 .window {
-  position:absolute; top:120px; left:120px; width:520px; height:360px; background:var(--panel); border:1px solid #2a2d3f; border-radius:10px;
+  position:absolute; top:120px; left:120px; width:520px; height:360px; background:var(--panel); border:1px solid var(--panel-2); border-radius:10px;
   box-shadow: var(--shadow); display:flex; flex-direction:column; overflow:hidden;
   pointer-events: auto; /* But windows themselves should be clickable */
 }
@@ -92,20 +92,21 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
 .win-title { flex:1; font-weight:600; font-size:.95rem; }
 .win-btns { display:flex; gap:6px; }
 .win-btns button {
-  height:26px; width:26px; border:none; border-radius:6px; background:var(--panel-2); color:#ddd; cursor:pointer;
+  height:26px; width:26px; border:none; border-radius:6px; background:var(--panel-2); color:var(--text); cursor:pointer;
 }
-.win-btns .close { background:#3a2230; color:#ffb1b1; }
-.win-content { flex:1; padding:10px; overflow:auto; background:#111424; }
+.win-btns .close { background:var(--danger); color:#fff; opacity:0.8; }
+.win-btns .close:hover { opacity:1; }
+.win-content { flex:1; padding:10px; overflow:auto; background:var(--bg); }
 .win-resize { position:absolute; right:0; bottom:0; width:12px; height:12px; cursor:nwse-resize; }
 
 .app-empty { color:var(--muted); padding:12px; }
 
 input, textarea, select, button { font:inherit; }
 input[type="text"], textarea {
-  width:100%; background:#0f1324; color:#e8e8e8; border:1px solid #2a2d3f; border-radius:6px; padding:8px;
+  width:100%; background:var(--panel-2); color:var(--text); border:1px solid var(--panel-2); border-radius:6px; padding:8px;
 }
-label { color:#cfcfcf; font-size:.9rem; }
-hr { border:0; border-top:1px solid #2a2d3f; margin:12px 0; }
+label { color:var(--text); font-size:.9rem; }
+hr { border:0; border-top:1px solid var(--panel-2); margin:12px 0; }
 
 .icon-glyph,
 .icon-label {
@@ -116,7 +117,7 @@ hr { border:0; border-top:1px solid #2a2d3f; margin:12px 0; }
 .context-menu {
   position: fixed;
   background: var(--panel);
-  border: 1px solid #2a2d3f;
+  border: 1px solid var(--panel-2);
   border-radius: 6px;
   box-shadow: var(--shadow);
   padding: 4px 0;
@@ -162,7 +163,7 @@ hr { border:0; border-top:1px solid #2a2d3f; margin:12px 0; }
   left: 100%;
   top: 0;
   background: var(--panel);
-  border: 1px solid #2a2d3f;
+  border: 1px solid var(--panel-2);
   border-radius: 6px;
   box-shadow: var(--shadow);
   padding: 4px 0;

@@ -11,14 +11,14 @@ Apps.register({
       const content = `
         <div style="display:flex; flex-direction:column; height:100%; gap:8px;">
           <div style="display:flex; gap:8px; align-items:center;">
-            <input type="text" id="editor-filename" value="${fileName}" style="flex:1; background:#0f1324; color:#e8e8e8; border:1px solid #2a2d3f; border-radius:6px; padding:6px;" />
+            <input type="text" id="editor-filename" value="${fileName}" style="flex:1; border-radius:6px; padding:6px;" />
             <button id="editor-save" style="background:var(--accent); color:#fff; border:none; border-radius:6px; padding:8px 16px; cursor:pointer;">💾 Save</button>
-            <button id="editor-saveas" style="background:var(--panel-2); color:#ddd; border:none; border-radius:6px; padding:8px 16px; cursor:pointer;">Save As...</button>
+            <button id="editor-saveas" style="background:var(--panel-2); color:var(--text); border:none; border-radius:6px; padding:8px 16px; cursor:pointer;">Save As...</button>
           </div>
           <div style="flex:1; display:flex; flex-direction:column;">
-            <textarea id="editor-text" placeholder="Start typing..." style="flex:1; width:100%; background:#0f1324; color:#e8e8e8; border:1px solid #2a2d3f; border-radius:6px; padding:8px; font-family:monospace; resize:none;"></textarea>
+            <textarea id="editor-text" placeholder="Start typing..." style="flex:1; width:100%; border-radius:6px; padding:8px; font-family:monospace; resize:none;"></textarea>
           </div>
-          <div id="editor-status" style="color:#a7a7a7; font-size:.85rem; padding:4px;">New file - not saved</div>
+          <div id="editor-status" style="color:var(--muted); font-size:.85rem; padding:4px;">New file - not saved</div>
         </div>
       `;
       
@@ -56,13 +56,13 @@ Apps.register({
           FS.write(parentPath, name, content);
           
           status.textContent = `Saved at ${new Date().toLocaleTimeString()}`;
-          status.style.color = '#9be0b5';
-          setTimeout(()=>{ status.style.color='#a7a7a7'; }, 2000);
+          status.style.color = 'var(--ok)';
+          setTimeout(()=>{ status.style.color='var(--muted)'; }, 2000);
           isSaved = true;
           return true;
         } catch (e) {
           status.textContent = `Error: ${e.message}`;
-          status.style.color = '#ff6b6b';
+          status.style.color = 'var(--danger)';
           return false;
         }
       }
@@ -72,7 +72,7 @@ Apps.register({
         const name = filenameInput.value.trim();
         if (!name) {
           status.textContent = 'Error: Filename cannot be empty';
-          status.style.color = '#ff6b6b';
+          status.style.color = 'var(--danger)';
           return;
         }
         
@@ -103,7 +103,7 @@ Apps.register({
       textarea.addEventListener('input', ()=>{
         if (isSaved) {
           status.textContent = 'Modified - not saved';
-          status.style.color = '#ffa500';
+          status.style.color = '#ffa500'; // Keep orange for warning
           isSaved = false;
         }
       });
