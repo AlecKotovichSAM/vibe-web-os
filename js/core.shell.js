@@ -15,7 +15,14 @@ window.Shell = (() => {
     // Populate launcher
     function renderStart() {
       startApps.innerHTML = '';
-      Apps.list().forEach(app => {
+      
+      // Group apps by category
+      const categories = Apps.getCategories();
+      // Filter out folder apps (they're accessed via category folders) and apps without category
+      const uncategorizedApps = Apps.list().filter(app => !app.category && !app.id.endsWith('-folder'));
+      
+      // Show uncategorized apps first
+      uncategorizedApps.forEach(app => {
         const btn = document.createElement('button');
         btn.innerHTML = `<div style="font-size:1.2rem">${app.icon || '🟦'}</div><div>${app.name}</div>`;
         btn.addEventListener('click', ()=>{
@@ -23,6 +30,24 @@ window.Shell = (() => {
           toggleStart(false);
         });
         startApps.appendChild(btn);
+      });
+      
+      // Show category folders
+      categories.forEach(category => {
+        const categoryApps = Apps.listByCategory(category);
+        if (categoryApps.length > 0) {
+          const btn = document.createElement('button');
+          const folderIcon = category === 'games' ? '🎮' : '📁';
+          btn.innerHTML = `<div style="font-size:1.2rem">${folderIcon}</div><div>${category.charAt(0).toUpperCase() + category.slice(1)}</div>`;
+          btn.addEventListener('click', ()=>{
+            // Open the folder app for this category
+            if (category === 'games') {
+              Apps.open('games-folder');
+            }
+            toggleStart(false);
+          });
+          startApps.appendChild(btn);
+        }
       });
     }
     renderStart();
