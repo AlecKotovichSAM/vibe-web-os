@@ -153,6 +153,86 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
 
 .app-empty { color:var(--muted); padding:12px; }
 
+/* File Manager Grid View */
+.file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 12px;
+  padding: 12px;
+}
+
+.file-list {
+  padding: 0;
+}
+
+.grid-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  backdrop-filter: blur(4px);
+  min-height: 110px;
+}
+
+.grid-item:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.grid-icon {
+  font-size: 1.75rem;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8), 0 0 4px rgba(0, 0, 0, 0.6);
+}
+
+.grid-name {
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 3px rgba(0, 0, 0, 0.7);
+  font-weight: 500;
+  text-align: center;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+  width: 100%;
+}
+
+.grid-del {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: var(--panel-2);
+  color: var(--danger);
+  border: none;
+  border-radius: 4px;
+  width: 20px;
+  height: 20px;
+  font-size: 12px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.grid-item:hover .grid-del {
+  display: flex;
+}
+
+.grid-del:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+
 input, textarea, select, button { font:inherit; }
 input[type="text"], textarea {
   width:100%; background:var(--panel-2); color:var(--text); border:1px solid var(--panel-2); border-radius:6px; padding:8px;
