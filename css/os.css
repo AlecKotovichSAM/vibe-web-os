@@ -261,3 +261,70 @@ hr { border:0; border-top:1px solid #2a2d3f; margin:12px 0; }
   border-radius: 4px;
   margin-bottom: 10px;
 }
+
+/* Light Theme Overrides */
+[data-theme="light"] #desktop {
+  background: linear-gradient(180deg, #e8e8ea 0%, #f5f5f7 100%);
+}
+
+[data-theme="light"] .icon {
+  background: rgba(255, 255, 255, 0.8);
+}
+
+[data-theme="light"] .icon:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="light"] .icon-glyph,
+[data-theme="light"] .icon-label {
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8), 0 0 4px rgba(255, 255, 255, 0.6);
+}
+
+[data-theme="light"] #btn-start {
+  color: var(--text);
+}
+
+[data-theme="light"] .task-button {
+  color: var(--text);
+}
+
+[data-theme="light"] .start-apps button {
+  color: var(--text);
+}
+
+[data-theme="light"] .window {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .win-titlebar {
+  background: linear-gradient(180deg, #f0f0f0, #e8e8e8);
+  color: var(--text);
+}
+
+[data-theme="light"] .win-btns button {
+  color: var(--text);
+}
+
+[data-theme="light"] .win-btns .close {
+  background: #ff3b30;
+  color: #fff;
+}
+
+[data-theme="light"] .win-content {
+  background: #fafafa;
+}
+
+[data-theme="light"] input[type="text"],
+[data-theme="light"] textarea {
+  background: #fff;
+  color: var(--text);
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="light"] label {
+  color: var(--text);
+}
+
+[data-theme="light"] hr {
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
