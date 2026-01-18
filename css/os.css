@@ -52,8 +52,39 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
   position:absolute; left:0; right:0; bottom:0; height:44px; background:var(--panel);
   display:flex; align-items:center; gap:8px; padding:0 8px; box-shadow: 0 -4px 20px rgba(0,0,0,.35);
 }
-#btn-start { height:32px; width:36px; border:none; border-radius:6px; background:var(--panel-2); color:#fff; cursor:pointer; }
+#btn-start { 
+  height:32px; 
+  min-width:80px; 
+  padding:0 12px; 
+  border:none; 
+  border-radius:6px; 
+  background:var(--panel-2); 
+  color:var(--text); 
+  cursor:pointer; 
+  display:flex; 
+  align-items:center; 
+  justify-content:center; 
+  gap:2px;
+  font-weight:600;
+  font-size:0.9rem;
+  letter-spacing:0.02em;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+#btn-start:hover {
+  background:var(--accent);
+  color:#fff;
+  transform: translateY(-1px);
+}
+#btn-start:active {
+  transform: translateY(0);
+}
 #btn-start:focus { outline:2px solid var(--accent); }
+.start-logo { color:var(--text); }
+.start-logo-accent { color:var(--accent); }
+#btn-start:hover .start-logo,
+#btn-start:hover .start-logo-accent {
+  color:#fff;
+}
 #task-list { display:flex; gap:6px; flex:1; padding:0 8px; overflow-x:auto; }
 .task-button {
   height:32px; min-width:110px; max-width:220px; padding:0 10px; background:var(--panel-2); color:#ddd;
@@ -87,10 +118,10 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
 
 .window.focus { outline:2px solid var(--accent); }
 .win-titlebar {
-  height:36px; background:linear-gradient(180deg,#202437,#1b1e2d); display:flex; align-items:center; gap:8px; padding:0 8px; cursor:grab; user-select:none;
+  height:36px; background:linear-gradient(180deg,#202437,#1b1e2d); display:flex; align-items:center; gap:8px; padding:0 8px; cursor:grab; user-select:none; min-width:0;
 }
-.win-title { flex:1; font-weight:600; font-size:.95rem; }
-.win-btns { display:flex; gap:6px; }
+.win-title { flex:1; font-weight:600; font-size:.95rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.win-btns { display:flex; gap:6px; flex-shrink:0; }
 .win-btns button {
   height:26px; width:26px; border:none; border-radius:6px; background:var(--panel-2); color:var(--text); cursor:pointer;
 }
@@ -304,7 +335,22 @@ hr { border:0; border-top:1px solid var(--panel-2); margin:12px 0; }
 }
 
 [data-theme="light"] #btn-start {
+  background: var(--panel-2);
   color: var(--text);
+}
+[data-theme="light"] #btn-start:hover {
+  background: var(--accent);
+  color: #fff;
+}
+[data-theme="light"] .start-logo {
+  color: var(--text);
+}
+[data-theme="light"] .start-logo-accent {
+  color: var(--accent);
+}
+[data-theme="light"] #btn-start:hover .start-logo,
+[data-theme="light"] #btn-start:hover .start-logo-accent {
+  color: #fff;
 }
 
 [data-theme="light"] .task-button {
@@ -352,6 +398,21 @@ hr { border:0; border-top:1px solid var(--panel-2); margin:12px 0; }
   border-top: 1px solid rgba(0, 0, 0, 0.1);
 }
 
+/* File list row filename truncation */
+.row > div:nth-child(2) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Editor filename input truncation */
+#editor-filename {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Minesweeper theme overrides */
 [data-theme="light"] .minesweeper-cell {
   background: var(--panel-2);
@@ -380,9 +441,6 @@ hr { border:0; border-top:1px solid var(--panel-2); margin:12px 0; }
   cursor: pointer;
   user-select: none;
   transition: background 0.1s ease;
-}
-
-.minesweeper-cell {
   color: var(--text);
 }
 
