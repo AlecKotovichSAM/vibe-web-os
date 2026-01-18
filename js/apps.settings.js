@@ -16,6 +16,7 @@ Apps.register({
           Theme:
           <select id="theme">
             <option value="dark">Dark</option>
+            <option value="light">Light</option>
             <option value="classic">Classic</option>
             <option value="high-contrast">High Contrast</option>
           </select>
@@ -53,7 +54,16 @@ Apps.register({
     }    
 
     function applyTheme(name) {
-      if (name === 'classic') {
+      if (name === 'light') {
+        document.documentElement.setAttribute('data-theme', name);
+        document.documentElement.style.setProperty('--bg','#f5f5f7');
+        document.documentElement.style.setProperty('--panel','#ffffff');
+        document.documentElement.style.setProperty('--panel-2','#f0f0f0');
+        document.documentElement.style.setProperty('--text','#1d1d1f');
+        document.documentElement.style.setProperty('--muted','#6e6e73');
+        document.documentElement.style.setProperty('--accent','#007aff');
+        document.documentElement.style.setProperty('--shadow','0 10px 30px rgba(0,0,0,.15)');
+      } else if (name === 'classic') {
         document.documentElement.setAttribute('data-theme', name);
         document.documentElement.style.setProperty('--panel','#2f3b55');
         document.documentElement.style.setProperty('--panel-2','#3b4766');
@@ -71,7 +81,9 @@ Apps.register({
         document.documentElement.style.removeProperty('--panel-2');
         document.documentElement.style.removeProperty('--bg');
         document.documentElement.style.removeProperty('--text');
+        document.documentElement.style.removeProperty('--muted');
         document.documentElement.style.removeProperty('--accent');
+        document.documentElement.style.removeProperty('--shadow');
       }
     }
 
