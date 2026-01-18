@@ -121,6 +121,11 @@ Apps.register({
 
     function startTimer() {
       timer = setInterval(() => {
+        if (gameOver) {
+          clearInterval(timer);
+          timer = null;
+          return;
+        }
         seconds++;
         updateTimer();
       }, 1000);
@@ -260,11 +265,11 @@ Apps.register({
     }
 
     function gameOverWin() {
-      gameOver = true;
       if (timer) {
         clearInterval(timer);
         timer = null;
       }
+      gameOver = true;
 
       const difficulty = DIFFICULTIES[currentDifficulty];
       for (let r = 0; r < difficulty.rows; r++) {
