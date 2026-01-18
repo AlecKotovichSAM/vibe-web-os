@@ -8,6 +8,7 @@ const ASSETS = [
   './js/core.fs.js',
   './js/core.window.js',
   './js/core.apps.js',
+  './js/core.folders.js',
   './js/core.shell.js',
   './js/apps.notes.js',
   './js/apps.editor.js',
