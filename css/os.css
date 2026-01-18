@@ -350,3 +350,48 @@ hr { border:0; border-top:1px solid #2a2d3f; margin:12px 0; }
 [data-theme="light"] hr {
   border-top: 1px solid rgba(0, 0, 0, 0.1);
 }
+
+/* Minesweeper Styles */
+.minesweeper-cell {
+  aspect-ratio: 1;
+  background: var(--panel-2);
+  border: 2px solid var(--accent);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 1.1rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s ease;
+}
+
+.minesweeper-cell:hover:not(.revealed) {
+  background: var(--accent);
+  color: #fff;
+}
+
+.minesweeper-cell.revealed {
+  background: var(--panel);
+  border: 1px solid var(--panel-2);
+  cursor: default;
+}
+
+.minesweeper-cell.mine {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.minesweeper-cell.flagged {
+  color: var(--accent);
+}
+
+.minesweeper-cell.number-1 { color: #4f7cff; }
+.minesweeper-cell.number-2 { color: #2ec27e; }
+.minesweeper-cell.number-3 { color: #ff6b6b; }
+.minesweeper-cell.number-4 { color: #9b59b6; }
+.minesweeper-cell.number-5 { color: #f39c12; }
+.minesweeper-cell.number-6 { color: #1abc9c; }
+.minesweeper-cell.number-7 { color: #34495e; }
+.minesweeper-cell.number-8 { color: #7f8c8d; }
