@@ -187,6 +187,15 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
   font-size: 1.75rem;
 }
 
+.grid-preview {
+  width: 100%;
+  height: 100%;
+  max-width: 90px;
+  max-height: 90px;
+  object-fit: contain;
+  display: block;
+}
+
 .grid-name {
   font-size: 0.85rem;
   color: var(--text);
