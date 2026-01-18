@@ -103,9 +103,22 @@ Apps.register({
             listDiv.className = 'file-grid';
             rows = items.map(i => {
               const icon = i.type === 'dir' ? '📁' : getFileIcon(i.name);
+              let iconContent = `<div class="grid-icon">${icon}</div>`;
+
+              if (i.type === 'file' && isImageFile(i.name)) {
+                try {
+                  const content = FS.read(i.path);
+                  if (isDataUrl(content)) {
+                    iconContent = `<img class="grid-preview" src="${content}" alt="${i.name}" />`;
+                  }
+                } catch (e) {
+                  console.error('Failed to load image preview:', e);
+                }
+              }
+
               return `
               <div class="grid-item" data-path="${i.path}" data-type="${i.type}">
-                <div class="grid-icon">${icon}</div>
+                ${iconContent}
                 <div class="grid-name">${i.name}</div>
                 <button class="grid-del" title="Delete" data-path="${i.path}">✕</button>
               </div>
@@ -115,9 +128,22 @@ Apps.register({
             listDiv.className = 'file-list';
             rows = items.map(i => {
               const icon = i.type === 'dir' ? '📁' : getFileIcon(i.name);
+              let iconContent = `<div style="flex-shrink:0">${icon}</div>`;
+
+              if (i.type === 'file' && isImageFile(i.name)) {
+                try {
+                  const content = FS.read(i.path);
+                  if (isDataUrl(content)) {
+                    iconContent = `<img class="list-preview" src="${content}" alt="${i.name}" style="flex-shrink:0; width:32px; height:32px; object-fit:contain; border-radius:4px;" />`;
+                  }
+                } catch (e) {
+                  console.error('Failed to load image preview:', e);
+                }
+              }
+
               return `
               <div class="row" data-path="${i.path}" data-type="${i.type}" style="display:flex; gap:10px; align-items:center; padding:6px; border-bottom:1px solid var(--panel-2); cursor:pointer;">
-                <div style="flex-shrink:0">${icon}</div>
+                ${iconContent}
                 <div style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${i.name}">${i.name}</div>
                 <div style="color:var(--muted); font-size:.85rem; flex-shrink:0; white-space:nowrap;">${i.mtime.slice(0,19).replace('T',' ')}</div>
                 <button class="del" title="Delete" style="background:var(--panel-2); color:var(--danger); border:none; border-radius:6px; padding:4px 8px; flex-shrink:0;">Delete</button>
