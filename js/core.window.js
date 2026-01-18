@@ -121,9 +121,13 @@ window.WindowManager = (() => {
     if (!w) return;
     w.style.display = w.dataset.prevDisplay || 'block';
     w.dataset.prevDisplay = '';
-    w.style.zIndex = ++z;
+    // Focus the window after restoring
+    z += 1;
+    w.style.zIndex = z;
+    document.querySelectorAll('.window').forEach(win => win.classList.remove('focus'));
     w.classList.add('focus');
     Bus.emit('wm:restored', { id });
+    Bus.emit('wm:focus', { id });
   }
 
   function findWindow(id) {

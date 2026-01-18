@@ -3,6 +3,7 @@ Apps.register({
   name: 'Settings',
   icon: '⚙️',
   description: 'Configure your Web OS appearance and manage storage. Change themes and reset the file system.',
+  singleton: true,
   launch() {
     const id = 'settings-' + Date.now();
     const THEME_KEY = 'webos.theme';

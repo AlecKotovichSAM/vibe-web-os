@@ -120,6 +120,10 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
   margin-top: 0;
   margin-bottom: 0;
   margin-right: 0;
+  cursor: pointer;
+}
+#task-clock-container:hover {
+  opacity: 0.8;
 }
 #task-locale {
   min-width: 40px;
@@ -759,3 +763,135 @@ hr { border:0; border-top:1px solid var(--panel-2); margin:12px 0; }
 .minesweeper-cell.number-6 { color: #1abc9c; }
 .minesweeper-cell.number-7 { color: #34495e; }
 .minesweeper-cell.number-8 { color: #7f8c8d; }
+
+/* Date/Time App - Windows XP Style */
+.datetime-calendar-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #a0a0a0;
+  background: #fff;
+  font-size: 12px;
+}
+
+.datetime-calendar-table thead {
+  background: #e8e8e8;
+}
+
+.datetime-calendar-table th {
+  padding: 6px;
+  text-align: center;
+  font-weight: 600;
+  color: #333;
+  border: 1px solid #a0a0a0;
+  font-size: 11px;
+}
+
+.datetime-calendar-table td {
+  padding: 6px;
+  text-align: center;
+  cursor: pointer;
+  border: 1px solid #d0d0d0;
+  background: #fff;
+  transition: background 0.1s;
+}
+
+.datetime-calendar-table td:hover {
+  background: #e8f4fd;
+}
+
+.datetime-calendar-table td.selected {
+  background: #316ac5;
+  color: #fff;
+  font-weight: 600;
+}
+
+.datetime-calendar-table td.today {
+  border: 2px solid #316ac5;
+  font-weight: 600;
+}
+
+.datetime-calendar-table td.today.selected {
+  background: #316ac5;
+  color: #fff;
+}
+
+/* Dark theme (default) - invert calendar colors */
+/* Target when html has no data-theme attribute (default dark) */
+html:not([data-theme]) .datetime-calendar-table td:not(.selected) {
+  background: #316ac5;
+  color: #fff;
+}
+
+html:not([data-theme]) .datetime-calendar-table td:not(.selected):hover {
+  background: #4f7cff;
+  color: #fff;
+}
+
+html:not([data-theme]) .datetime-calendar-table td.selected {
+  background: #fff;
+  color: #316ac5;
+}
+
+html:not([data-theme]) .datetime-calendar-table td.today:not(.selected) {
+  border: 2px solid #fff;
+  background: #316ac5;
+  color: #fff;
+}
+
+html:not([data-theme]) .datetime-calendar-table td.today.selected {
+  background: #fff;
+  color: #316ac5;
+  border: 2px solid #316ac5;
+}
+
+/* High Contrast theme - invert calendar colors */
+[data-theme="high-contrast"] .datetime-calendar-table td:not(.selected) {
+  background: #ff0;
+  color: #000;
+}
+
+[data-theme="high-contrast"] .datetime-calendar-table td:not(.selected):hover {
+  background: #ffff33;
+  color: #000;
+}
+
+[data-theme="high-contrast"] .datetime-calendar-table td.selected {
+  background: #000;
+  color: #ff0;
+}
+
+[data-theme="high-contrast"] .datetime-calendar-table td.today:not(.selected) {
+  border: 2px solid #000;
+  background: #ff0;
+  color: #000;
+}
+
+[data-theme="high-contrast"] .datetime-calendar-table td.today.selected {
+  background: #000;
+  color: #ff0;
+  border: 2px solid #ff0;
+}
+
+#datetime-analog-clock {
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
+}
+
+#datetime-hour-hand,
+#datetime-minute-hand,
+#datetime-second-hand {
+  transition: transform 0.1s linear;
+}
+
+/* Dark theme - invert digital clock colors */
+html:not([data-theme]) #datetime-digital-clock {
+  background: #316ac5 !important;
+  color: #fff !important;
+  border: 1px solid #fff !important;
+}
+
+/* High Contrast theme - invert digital clock colors */
+[data-theme="high-contrast"] #datetime-digital-clock {
+  background: #ff0 !important;
+  color: #000 !important;
+  border: 1px solid #000 !important;
+}

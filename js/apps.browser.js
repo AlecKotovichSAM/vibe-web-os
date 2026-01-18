@@ -3,6 +3,7 @@ Apps.register({
   name: 'PageNotFound Explorer',
   icon: '🌐',
   description: 'The browser that always finds 404 pages! Every URL leads to nowhere. It\'s a feature, not a bug!',
+  singleton: true,
   launch() {
     const id = 'browser-' + Date.now();
     const STORAGE_KEY = 'webos.browser.history';

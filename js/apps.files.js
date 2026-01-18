@@ -3,6 +3,7 @@ Apps.register({
   name: 'Files',
   icon: '📁',
   description: 'Browse and manage your virtual file system. Create folders, files, and organize your documents.',
+  singleton: true,
   launch() {
     const id = 'files-' + Date.now();
 

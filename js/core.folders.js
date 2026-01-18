@@ -90,6 +90,7 @@ window.Folders = (() => {
         icon: folder.icon,
         description: `Custom folder: ${folder.name}`,
         category: '',
+        singleton: true,
         launch() {
           return openFolder(folder.id);
         }
@@ -102,6 +103,7 @@ window.Folders = (() => {
         icon: folder.icon,
         description: `Custom folder: ${folder.name}`,
         category: '',
+        singleton: true,
         launch() {
           return openFolder(folder.id);
         }

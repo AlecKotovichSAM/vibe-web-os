@@ -3,6 +3,7 @@ Apps.register({
   name: 'Notes',
   icon: '📝',
   description: 'A simple text editor for taking notes. Your notes are automatically saved to local storage.',
+  singleton: true,
   launch() {
     const id = 'notes-' + Date.now();
     const storageKey = 'webos.notes.v1';

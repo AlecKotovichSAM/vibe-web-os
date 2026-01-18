@@ -3,6 +3,7 @@ Apps.register({
     name: 'Text Editor',
     icon: '📄',
     description: 'Create and edit text files. Save your documents to the file system.',
+    singleton: false,
     launch() {
       const id = 'text-editor-' + Date.now();
       const fileName = `new-file-${Date.now()}.txt`;

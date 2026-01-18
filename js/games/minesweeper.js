@@ -4,6 +4,7 @@ Apps.register({
   icon: '💣',
   description: 'Classic puzzle game. Find all mines without detonating them.',
   category: 'games',
+  singleton: true,
   launch() {
     const id = 'minesweeper-' + Date.now();
 

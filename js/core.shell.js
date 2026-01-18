@@ -117,6 +117,8 @@ window.Shell = (() => {
         updateLocaleDisplay();
         // Update clock immediately
         updateClock();
+        // Emit locale change event
+        Bus.emit('locale:changed', { locale: currentLocale });
       }
       toggleLocaleMenu(false);
     });
@@ -141,6 +143,17 @@ window.Shell = (() => {
     setInterval(updateClock, 1000);
     updateClock();
 
+    // Double-click clock to open Date/Time app
+    const clockContainer = document.getElementById('task-clock-container');
+    if (clockContainer) {
+      clockContainer.title = 'Double-click to open Date and Time';
+      clockContainer.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        Apps.open('datetime');
+      });
+    }
+
     // Populate launcher
     function renderStart() {
       startApps.innerHTML = '';
@@ -149,6 +162,8 @@ window.Shell = (() => {
       const categories = Apps.getCategories();
       // Special system apps that should always appear in start menu (like Files)
       const systemApps = ['files'];
+      // Hidden apps that should not appear in start menu or desktop (like datetime)
+      const hiddenApps = ['datetime'];
       
       // Filter out folder apps (they're accessed via category folders or custom folders) and apps without category
       const customFolderIds = new Set((window.Folders ? Folders.list() : []).map(f => f.id));
@@ -156,7 +171,8 @@ window.Shell = (() => {
         !app.category && 
         !app.id.endsWith('-folder') && 
         !customFolderIds.has(app.id) &&
-        !systemApps.includes(app.id) // Exclude system apps from filter, we'll add them separately
+        !systemApps.includes(app.id) && // Exclude system apps from filter, we'll add them separately
+        !hiddenApps.includes(app.id) // Exclude hidden apps
       );
       
       // Ensure system apps are always included (add them first)

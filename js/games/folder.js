@@ -5,6 +5,7 @@ Apps.register({
   icon: '🎮',
   description: 'Games folder',
   category: '',
+  singleton: true,
   launch() {
     // Use fixed ID to prevent multiple instances
     const id = 'games-folder';
