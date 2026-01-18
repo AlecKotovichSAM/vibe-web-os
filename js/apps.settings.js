@@ -148,6 +148,7 @@ Apps.register({
       const v = sel.value;
       localStorage.setItem(THEME_KEY, v);
       applyTheme(v);
+      Bus.emit('theme:changed', { theme: v });
     });
 
     // Add event listeners
