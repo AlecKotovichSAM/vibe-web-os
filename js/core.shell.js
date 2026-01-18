@@ -7,10 +7,139 @@ window.Shell = (() => {
     const taskList = document.getElementById('task-list');
     const desktop = document.getElementById('desktop');
 
+    // Locale management
+    const STORAGE_KEY_LOCALE = 'webos.locale';
+    const AVAILABLE_LOCALES = [
+      { code: 'en', name: 'English' },
+      { code: 'de', name: 'Deutsch' },
+      { code: 'fr', name: 'Français' },
+      { code: 'es', name: 'Español' },
+      { code: 'it', name: 'Italiano' },
+      { code: 'pt', name: 'Português' },
+      { code: 'ru', name: 'Русский' },
+      { code: 'ja', name: '日本語' },
+      { code: 'zh', name: '中文' },
+      { code: 'ko', name: '한국어' }
+    ];
+
+    // Detect browser locale
+    function detectBrowserLocale() {
+      const browserLang = navigator.language || navigator.userLanguage || 'en';
+      return browserLang.split('-')[0].toLowerCase();
+    }
+
+    // Get current locale (from storage or default to 'en')
+    function getCurrentLocale() {
+      const stored = localStorage.getItem(STORAGE_KEY_LOCALE);
+      if (stored && AVAILABLE_LOCALES.some(l => l.code === stored)) {
+        return stored;
+      }
+      return 'en';
+    }
+
+    // Save locale preference
+    function saveLocale(locale) {
+      localStorage.setItem(STORAGE_KEY_LOCALE, locale);
+    }
+
+    // Locale switcher
+    const localeSwitcher = document.getElementById('task-locale');
+    const browserLocale = detectBrowserLocale();
+    let currentLocale = getCurrentLocale();
+
+    // Create locale menu
+    const localeMenu = document.createElement('div');
+    localeMenu.id = 'task-locale-menu';
+    const isBrowserLocaleAvailable = AVAILABLE_LOCALES.some(l => l.code === browserLocale);
+    localeMenu.innerHTML = AVAILABLE_LOCALES.map(locale => {
+      const isBrowser = locale.code === browserLocale;
+      return `
+        <div class="locale-item" data-locale="${locale.code}" ${isBrowser ? 'title="Your browser locale"' : ''}>
+          ${locale.code.toUpperCase()} - ${locale.name}${isBrowser ? ' 🌐' : ''}
+        </div>
+      `;
+    }).join('');
+    document.body.appendChild(localeMenu);
+
+    // Update locale switcher display
+    function updateLocaleDisplay() {
+      localeSwitcher.textContent = currentLocale.toUpperCase();
+      
+      // Highlight active locale in menu
+      localeMenu.querySelectorAll('.locale-item').forEach(item => {
+        if (item.dataset.locale === currentLocale) {
+          item.classList.add('active');
+        } else {
+          item.classList.remove('active');
+        }
+      });
+    }
+
+    // Show/hide locale menu
+    function toggleLocaleMenu(show) {
+      if (show) {
+        const rect = localeSwitcher.getBoundingClientRect();
+        localeMenu.style.right = (window.innerWidth - rect.right) + 'px';
+        localeMenu.style.bottom = (window.innerHeight - rect.bottom + 52) + 'px';
+        localeMenu.classList.add('show');
+      } else {
+        localeMenu.classList.remove('show');
+      }
+    }
+
+    // Locale switcher click handler
+    localeSwitcher.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = localeMenu.classList.contains('show');
+      toggleLocaleMenu(!isOpen);
+    });
+
     // Clock
     const clock = document.getElementById('task-clock');
-    const fmt = (d) => d.toLocaleString([], { hour:'2-digit', minute:'2-digit' });
-    setInterval(()=> { clock.textContent = fmt(new Date()); }, 1000); clock.textContent = fmt(new Date());
+    const clockTime = document.getElementById('task-clock-time');
+    const clockDate = document.getElementById('task-clock-date');
+    
+    const updateClock = () => {
+      const now = new Date();
+      clockTime.textContent = now.toLocaleTimeString([currentLocale], { hour: '2-digit', minute: '2-digit' });
+      clockDate.textContent = now.toLocaleDateString([currentLocale], { year: 'numeric', month: 'long', day: 'numeric' });
+    };
+
+    // Locale menu item click handler
+    localeMenu.addEventListener('click', (e) => {
+      const item = e.target.closest('.locale-item');
+      if (!item) return;
+      
+      const newLocale = item.dataset.locale;
+      if (newLocale !== currentLocale) {
+        currentLocale = newLocale;
+        saveLocale(currentLocale);
+        updateLocaleDisplay();
+        // Update clock immediately
+        updateClock();
+      }
+      toggleLocaleMenu(false);
+    });
+
+    // Close locale menu when clicking outside
+    window.addEventListener('click', (e) => {
+      if (!localeSwitcher.contains(e.target) && !localeMenu.contains(e.target)) {
+        toggleLocaleMenu(false);
+      }
+    });
+
+    // Initialize locale display
+    updateLocaleDisplay();
+
+    // Show browser locale hint if different from selected
+    if (browserLocale !== currentLocale && AVAILABLE_LOCALES.some(l => l.code === browserLocale)) {
+      // Add a visual indicator that browser locale is available
+      localeSwitcher.title = `Current: ${currentLocale.toUpperCase()}, Browser: ${browserLocale.toUpperCase()}`;
+    }
+
+    // Initialize clock
+    setInterval(updateClock, 1000);
+    updateClock();
 
     // Populate launcher
     function renderStart() {

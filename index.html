@@ -53,7 +53,13 @@
         <span class="start-logo">web</span><span class="start-logo-accent">OS</span>
       </button>
       <div id="task-list" aria-label="Open Windows"></div>
-      <div id="task-clock" aria-live="polite"></div>
+      <div id="task-clock-container">
+        <div id="task-locale" role="button" aria-haspopup="true" aria-label="Language"></div>
+        <div id="task-clock" aria-live="polite">
+          <div id="task-clock-time"></div>
+          <div id="task-clock-date"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Start Menu -->

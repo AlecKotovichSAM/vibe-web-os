@@ -111,7 +111,91 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
   background:var(--accent);
   border-radius:6px 6px 0 0;
 }
-#task-clock { min-width:120px; text-align:right; color:var(--muted); }
+#task-clock-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  margin-right: 0;
+}
+#task-locale {
+  min-width: 40px;
+  text-align: center;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  user-select: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.2s;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+#task-locale:hover {
+  color: var(--text);
+  border: 1px solid var(--accent);
+  background: rgba(79, 124, 255, 0.1);
+}
+#task-locale-menu {
+  position: absolute;
+  right: 8px;
+  bottom: 52px;
+  background: var(--panel);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 4px;
+  display: none;
+  min-width: 120px;
+  z-index: 10000;
+}
+#task-locale-menu.show {
+  display: block;
+}
+#task-locale-menu .locale-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+#task-locale-menu .locale-item:hover {
+  background: var(--panel-2);
+}
+#task-locale-menu .locale-item.active {
+  background: var(--accent);
+  color: #fff;
+}
+#task-locale-menu .locale-item[title] {
+  border-left: 3px solid var(--accent);
+  padding-left: 9px;
+}
+#task-clock {
+  min-width: auto;
+  width: auto;
+  text-align: right;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  line-height: 1.2;
+  padding: 0;
+  margin: 0;
+  white-space: nowrap;
+}
+#task-clock-time {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}
+#task-clock-date {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
 
 #start-menu {
   position:absolute; left:8px; bottom:52px; width:320px; background:var(--panel);
