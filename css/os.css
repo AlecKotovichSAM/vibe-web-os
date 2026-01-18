@@ -242,22 +242,44 @@ hr { border:0; border-top:1px solid #2a2d3f; margin:12px 0; }
 
 .settings-wallpaper-preview {
   width: 100%;
+  aspect-ratio: 16/9;
   background-size: cover;
   background-position: center;
   border: 1px solid var(--panel-2);
   border-radius: 4px;
   margin-bottom: 10px;
   opacity: 0;
+  height: 0;
   transition: opacity 0.3s ease;
-  min-height: 0;
 }
 
 .settings-wallpaper-input {
-  width: 100%;
+  flex: 1;
   padding: 8px;
   background: var(--panel-2);
   border: 1px solid var(--accent);
   color: var(--text);
   border-radius: 4px;
+  margin-bottom: 0;
+}
+
+.settings-wallpaper-row {
+  display: flex;
+  gap: 8px;
   margin-bottom: 10px;
+}
+
+.settings-wallpaper-file-btn {
+  padding: 8px 16px;
+  background: var(--panel-2);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.settings-wallpaper-file-btn:hover {
+  background: var(--accent);
+  color: #fff;
 }

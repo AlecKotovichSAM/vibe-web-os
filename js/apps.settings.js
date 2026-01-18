@@ -23,7 +23,11 @@ Apps.register({
         <hr />
         <h3>Wallpaper</h3>
           <div class="settings-wallpaper-preview" id="wallpaper-preview"></div>
-          <input type="text" id="wallpaper-url" class="settings-wallpaper-input" placeholder="Enter image URL for wallpaper">
+          <div class="settings-wallpaper-row">
+            <input type="text" id="wallpaper-url" class="settings-wallpaper-input" placeholder="Enter image URL for wallpaper">
+            <button id="choose-wallpaper-btn" class="settings-wallpaper-file-btn">📁 Choose File...</button>
+          </div>
+          <input type="file" id="wallpaper-file" accept="image/*" style="display:none">
           <button id="apply-wallpaper-btn">Apply Wallpaper</button>
           <button id="remove-wallpaper-btn">Remove</button>
         <hr />
@@ -48,9 +52,35 @@ Apps.register({
       if (preview) {
         preview.style.backgroundImage = `url('${savedWallpaper}')`;
         preview.style.opacity = '1';
-        preview.style.height = '50px';
+        preview.style.height = 'auto';
       }
-    }    
+    }
+
+    // File picker functionality
+    const fileInput = win.querySelector('#wallpaper-file');
+    const chooseBtn = win.querySelector('#choose-wallpaper-btn');
+
+    chooseBtn.addEventListener('click', () => {
+      fileInput.click();
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const dataUrl = event.target.result;
+        const urlInput = win.querySelector('#wallpaper-url');
+        const preview = win.querySelector('#wallpaper-preview');
+
+        urlInput.value = dataUrl;
+        preview.style.backgroundImage = `url('${dataUrl}')`;
+        preview.style.opacity = '1';
+        preview.style.height = 'auto';
+      };
+      reader.readAsDataURL(file);
+    });
 
     function applyTheme(name) {
       if (name === 'classic') {
@@ -90,12 +120,12 @@ Apps.register({
           if (preview) {
             preview.style.opacity = '0'; // Hide while loading
             preview.style.backgroundImage = `url('${url}')`;
-            
+
             // Show when image loads
             const img = new Image();
             img.onload = () => {
               preview.style.opacity = '1'; // Show when loaded
-              preview.style.height = '50px';
+              preview.style.height = 'auto';
             };
             img.onerror = () => {
               preview.style.opacity = '0.5'; // Show error state
@@ -140,7 +170,7 @@ Apps.register({
             desktop.style.backgroundImage = '';
           }
 
-          localStorage.removeItem('webos.wallpaper', );
+          localStorage.removeItem('webos.wallpaper');
         }
       }
 
