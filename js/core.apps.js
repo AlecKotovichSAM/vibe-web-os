@@ -29,6 +29,16 @@ window.Apps = (() => {
   function open(id, args = {}) {
     const app = registry.get(id);
     if (!app) throw new Error('App not found: ' + id);
+    
+    // Store parentId temporarily for tracking
+    if (args.parentId) {
+      if (!window.WindowRelations) {
+        window.WindowRelations = new Map();
+      }
+      // Store pending parent relationship - will be set when app:opened event fires
+      window._pendingParentId = args.parentId;
+    }
+    
     return app.launch(args);
   }
 

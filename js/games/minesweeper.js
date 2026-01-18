@@ -326,5 +326,8 @@ Apps.register({
     initGame(currentDifficulty);
 
     Bus.emit('app:opened', { id, title:'Minesweeper', icon:'💣' });
+    
+    // Return window object for parent-child tracking
+    return { id, win };
   }
 });

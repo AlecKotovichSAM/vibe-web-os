@@ -42,13 +42,20 @@ Apps.register({
       height: 400 
     });
 
+    // Track parent-child relationships
+    if (!window.WindowRelations) {
+      window.WindowRelations = new Map(); // childId -> parentId
+    }
+
     // Add click handlers for game buttons
     win.querySelectorAll('.folder-app-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const appId = btn.dataset.appId;
         if (appId) {
-          Apps.open(appId);
-          WindowManager.closeWindow(id);
+          // Open the game app
+          Apps.open(appId, { parentId: id });
+          // Minimize the folder instead of closing it
+          WindowManager.minimizeWindow(id);
         }
       });
       btn.addEventListener('mouseenter', () => {
@@ -60,5 +67,31 @@ Apps.register({
     });
 
     Bus.emit('app:opened', { id, title: 'Games', icon: '🎮' });
+  }
+});
+
+// Track parent-child relationships when apps are opened
+Bus.on('app:opened', ({ id }) => {
+  if (window._pendingParentId) {
+    if (!window.WindowRelations) {
+      window.WindowRelations = new Map();
+    }
+    window.WindowRelations.set(id, window._pendingParentId);
+    window._pendingParentId = null;
+  }
+});
+
+// Listen for window close events to reopen parent folders
+Bus.on('wm:closed', ({ id }) => {
+  if (window.WindowRelations && window.WindowRelations.has(id)) {
+    const parentId = window.WindowRelations.get(id);
+    window.WindowRelations.delete(id);
+    
+    // Check if parent window exists and is minimized
+    const parentWin = WindowManager.findWindow(parentId);
+    if (parentWin && parentWin.style.display === 'none') {
+      // Restore the parent folder
+      WindowManager.restoreWindow(parentId);
+    }
   }
 });
