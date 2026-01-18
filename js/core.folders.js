@@ -194,13 +194,70 @@ window.Folders = (() => {
 
     // Add click handlers for app buttons
     win.querySelectorAll('.folder-app-btn').forEach(btn => {
+      const appId = btn.dataset.appId;
+      if (!appId) return;
+      
+      // Click to open
       btn.addEventListener('click', () => {
-        const appId = btn.dataset.appId;
-        if (appId) {
-          Apps.open(appId, { parentId: id });
-          // Keep folder open - don't minimize
-        }
+        Apps.open(appId, { parentId: id });
+        // Keep folder open - don't minimize
       });
+      
+      // Right-click for app info
+      btn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const app = Apps.get(appId);
+        if (!app) return;
+        
+        const infoId = 'app-info-' + Date.now();
+        const content = `
+          <div style="padding:8px;">
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+              <div style="font-size:2rem">${app.icon || '🟦'}</div>
+              <div>
+                <div style="font-weight:600; font-size:1.1rem">${app.name}</div>
+                <div style="color:#a7a7a7; font-size:.85rem">${appId}</div>
+              </div>
+            </div>
+            <hr />
+            <div style="margin-top:12px;">
+              <div style="color:#a7a7a7; font-size:.9rem; margin-bottom:6px">Description:</div>
+              <div style="color:#e6e6e6; line-height:1.5">${app.description || 'No description available.'}</div>
+            </div>
+            <div style="margin-top:16px; display:flex; gap:8px;">
+              <button id="app-info-open" style="background:var(--accent); color:#fff; border:none; border-radius:6px; padding:8px 16px; cursor:pointer; flex:1">Open</button>
+              <button id="app-info-close" style="background:var(--panel-2); color:#ddd; border:none; border-radius:6px; padding:8px 16px; cursor:pointer">Close</button>
+            </div>
+          </div>
+        `;
+        
+        const infoWin = WindowManager.makeWindow({ 
+          id: infoId, 
+          title: `App Info - ${app.name}`, 
+          content, 
+          width: 400, 
+          height: 280 
+        });
+        
+        // Position window near the button
+        const rect = btn.getBoundingClientRect();
+        infoWin.style.left = (rect.left + 100) + 'px';
+        infoWin.style.top = (rect.top + 50) + 'px';
+        
+        infoWin.querySelector('#app-info-open').addEventListener('click', () => {
+          WindowManager.closeWindow(infoId);
+          Apps.open(appId, { parentId: id });
+        });
+        
+        infoWin.querySelector('#app-info-close').addEventListener('click', () => {
+          WindowManager.closeWindow(infoId);
+        });
+        
+        Bus.emit('app:opened', { id: infoId, title: `App Info - ${app.name}`, icon: 'ℹ️' });
+      });
+      
       btn.addEventListener('mouseenter', () => {
         btn.style.background = 'var(--accent)';
       });

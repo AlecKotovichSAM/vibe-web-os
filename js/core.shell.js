@@ -713,9 +713,13 @@ window.Shell = (() => {
         const win = WindowManager.findWindow(id);
         if (!win) return;
         if (win.style.display === 'none') {
+          // Window is minimized, restore it
           WindowManager.restoreWindow(id);
+        } else if (btn.classList.contains('active')) {
+          // Window is already focused, minimize it
+          WindowManager.minimizeWindow(id);
         } else {
-          // If window is visible, focus it instead of minimizing
+          // Window is visible but not focused, focus it
           WindowManager.focusWindow(id);
         }
       });

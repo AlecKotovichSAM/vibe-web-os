@@ -23,13 +23,46 @@ Apps.register({
     // Load
     const saved = localStorage.getItem(storageKey) || '';
     ta.value = saved;
+    
+    // Track saved state
+    let savedContent = saved;
+    let isSaved = true;
+    
+    // Update status based on initial state
+    function updateStatus() {
+      if (ta.value === savedContent) {
+        isSaved = true;
+        if (savedContent) {
+          status.textContent = 'Saved';
+          status.style.color = '#9be0b5';
+        } else {
+          status.textContent = '';
+        }
+      } else {
+        isSaved = false;
+        status.textContent = 'Not saved';
+        status.style.color = '#a7a7a7';
+      }
+    }
+    
+    // Initial status
+    updateStatus();
+
+    // Track changes
+    ta.addEventListener('input', () => {
+      updateStatus();
+    });
 
     // Save
     win.querySelector('#notes-save').addEventListener('click', ()=>{
+      savedContent = ta.value;
       localStorage.setItem(storageKey, ta.value);
       status.textContent = 'Saved at ' + new Date().toLocaleTimeString();
       status.style.color = '#9be0b5';
-      setTimeout(()=>{ status.style.color='#a7a7a7'; }, 1500);
+      isSaved = true;
+      setTimeout(()=>{
+        updateStatus();
+      }, 1500);
     });
 
     Bus.emit('app:opened', { id, title:'Notes', icon:'📝' });
