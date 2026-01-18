@@ -60,6 +60,8 @@ Apps.register({
     // File picker functionality
     const fileInput = win.querySelector('#wallpaper-file');
     const chooseBtn = win.querySelector('#choose-wallpaper-btn');
+    let selectedFile = null; // Store selected file for later saving
+    let selectedFilePath = null; // Store the path that corresponds to selectedFile
 
     chooseBtn.addEventListener('click', () => {
       fileInput.click();
@@ -69,16 +71,29 @@ Apps.register({
       const file = e.target.files[0];
       if (!file) return;
 
+      selectedFile = file; // Store file reference
+
+      // Generate the file path where it will be saved
+      const picturesPath = '/root/Pictures';
+      const wallpapersPath = '/root/Pictures/Wallpapers';
+      const fileName = file.name || 'wallpaper.png';
+      selectedFilePath = `${wallpapersPath}/${fileName}`;
+
+      const urlInput = win.querySelector('#wallpaper-url');
+      const preview = win.querySelector('#wallpaper-preview');
+
+      // Set the file path in the input field
+      urlInput.value = selectedFilePath;
+
+      // Read file for preview
       const reader = new FileReader();
       reader.onload = (event) => {
         const dataUrl = event.target.result;
-        const urlInput = win.querySelector('#wallpaper-url');
-        const preview = win.querySelector('#wallpaper-preview');
-
-        urlInput.value = dataUrl;
-        preview.style.backgroundImage = `url('${dataUrl}')`;
-        preview.style.opacity = '1';
-        preview.style.height = 'auto';
+        if (preview) {
+          preview.style.backgroundImage = `url('${dataUrl}')`;
+          preview.style.opacity = '1';
+          preview.style.height = 'auto';
+        }
       };
       reader.readAsDataURL(file);
     });
@@ -126,23 +141,61 @@ Apps.register({
     // Add event listeners
     document.addEventListener('blur', (e) => {
       if (e.target && e.target.id === 'wallpaper-url') {
-        const url = e.target.value;
+        let url = e.target.value.trim();
         if (url) {
-          const preview = document.getElementById('wallpaper-preview');
-          if (preview) {
-            preview.style.opacity = '0'; // Hide while loading
-            preview.style.backgroundImage = `url('${url}')`;
+          // Check if it's a local file system path
+          if (url.startsWith('/root/')) {
+            // If this path matches the selected file path, use the selected file data
+            if (selectedFile && selectedFilePath && url === selectedFilePath) {
+              // Use the selected file for preview (file not saved to FS yet)
+              const reader = new FileReader();
+              reader.onload = (event) => {
+                const dataUrl = event.target.result;
+                const preview = document.getElementById('wallpaper-preview');
+                if (preview) {
+                  preview.style.opacity = '0';
+                  preview.style.backgroundImage = `url('${dataUrl}')`;
+                  const img = new Image();
+                  img.onload = () => {
+                    preview.style.opacity = '1';
+                    preview.style.height = 'auto';
+                  };
+                  img.onerror = () => {
+                    preview.style.opacity = '0.5';
+                  };
+                  img.src = dataUrl;
+                }
+              };
+              reader.readAsDataURL(selectedFile);
+              return;
+            } else {
+              // Try to read from file system (file already saved)
+              try {
+                url = FS.read(url);
+              } catch (error) {
+                console.error('Failed to load preview from file system:', error);
+                url = null;
+              }
+            }
+          }
+          
+          if (url) {
+            const preview = document.getElementById('wallpaper-preview');
+            if (preview) {
+              preview.style.opacity = '0'; // Hide while loading
+              preview.style.backgroundImage = `url('${url}')`;
 
-            // Show when image loads
-            const img = new Image();
-            img.onload = () => {
-              preview.style.opacity = '1'; // Show when loaded
-              preview.style.height = 'auto';
-            };
-            img.onerror = () => {
-              preview.style.opacity = '0.5'; // Show error state
-            };
-            img.src = url;
+              // Show when image loads
+              const img = new Image();
+              img.onload = () => {
+                preview.style.opacity = '1'; // Show when loaded
+                preview.style.height = 'auto';
+              };
+              img.onerror = () => {
+                preview.style.opacity = '0.5'; // Show error state
+              };
+              img.src = url;
+            }
           }
         }
       }
@@ -151,18 +204,82 @@ Apps.register({
     // Save AND apply to main desktop only when button is clicked
     document.addEventListener('click', (e) => {
       if (e.target && e.target.id === 'apply-wallpaper-btn') {
-        const url = document.getElementById('wallpaper-url').value;
+        let url = document.getElementById('wallpaper-url').value.trim();
         if (url) {
+          let wallpaperPath = url; // Path/URL to store in localStorage
           
-          const desktop = document.getElementById('desktop');
-          if (desktop) {
-            desktop.style.backgroundImage = `url('${url}')`;
-            desktop.style.backgroundSize = 'cover';
-            desktop.style.backgroundPosition = 'center';
-          }
+          // If a file was selected, save it to file system first
+          if (selectedFile) {
+            try {
+              // Ensure /root/Pictures/Wallpapers exists
+              const picturesPath = '/root/Pictures';
+              const wallpapersPath = '/root/Pictures/Wallpapers';
+              
+              // Check if Wallpapers folder exists, create if not
+              const wallpapersDir = FS.find(wallpapersPath);
+              if (!wallpapersDir) {
+                FS.mkdir(picturesPath, 'Wallpapers');
+              }
 
-          localStorage.setItem('webos.wallpaper', url);
+              // Use original filename (will overwrite if exists)
+              const fileName = selectedFile.name || 'wallpaper.png';
+              wallpaperPath = `${wallpapersPath}/${fileName}`;
+
+              // Read file and convert to data URL for storage
+              const reader = new FileReader();
+              reader.onload = (event) => {
+                const dataUrl = event.target.result;
+                // Save file content (data URL) to virtual file system
+                FS.write(wallpapersPath, fileName, dataUrl);
+                
+                // Update input field with the file path
+                const urlInput = document.getElementById('wallpaper-url');
+                if (urlInput) {
+                  urlInput.value = wallpaperPath;
+                }
+                
+                // Clear selected file references (file is now saved to FS)
+                selectedFile = null;
+                selectedFilePath = null;
+                
+                // Apply wallpaper using the path
+                applyWallpaper(wallpaperPath);
+              };
+              reader.readAsDataURL(selectedFile);
+              return; // Exit early, will continue in reader.onload
+            } catch (error) {
+              console.error('Failed to save wallpaper to file system:', error);
+              // Continue with original URL
+            }
+          }
+          
+          // Apply wallpaper (either local path, external URL, or data URL)
+          applyWallpaper(wallpaperPath);
         }
+      }
+      
+      function applyWallpaper(pathOrUrl) {
+        let imageUrl = pathOrUrl;
+        
+        // If it's a local path, read the file content (data URL) for applying
+        if (pathOrUrl.startsWith('/root/')) {
+          try {
+            imageUrl = FS.read(pathOrUrl);
+          } catch (error) {
+            alert(`Failed to load wallpaper from ${pathOrUrl}: ${error.message}`);
+            return;
+          }
+        }
+        
+        const desktop = document.getElementById('desktop');
+        if (desktop) {
+          desktop.style.backgroundImage = `url('${imageUrl}')`;
+          desktop.style.backgroundSize = 'cover';
+          desktop.style.backgroundPosition = 'center';
+        }
+
+        // Store the original path/URL in localStorage (not the data URL)
+        localStorage.setItem('webos.wallpaper', pathOrUrl);
       }
 
       if (e.target && e.target.id === 'remove-wallpaper-btn') {
@@ -176,6 +293,13 @@ Apps.register({
             preview.style.opacity = '0';
             preview.style.height = '0';
           }
+          
+          // Clear file input and selected file reference
+          if (fileInput) {
+            fileInput.value = '';
+          }
+          selectedFile = null;
+          selectedFilePath = null;
           
           const desktop = document.getElementById('desktop');
           if (desktop) {

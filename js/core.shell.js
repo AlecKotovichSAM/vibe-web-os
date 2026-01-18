@@ -410,7 +410,20 @@ window.Shell = (() => {
     // Restore saved wallpaper
     const savedWallpaper = localStorage.getItem('webos.wallpaper');
     if (savedWallpaper) {
-      desktop.style.backgroundImage = `url('${savedWallpaper}')`;
+      let wallpaperUrl = savedWallpaper;
+      
+      // If it's a local file system path, read the file content
+      if (savedWallpaper.startsWith('/root/')) {
+        try {
+          wallpaperUrl = FS.read(savedWallpaper);
+        } catch (error) {
+          console.error('Failed to load saved wallpaper from file system:', error);
+          // Fall back to using the path as-is (might be old data URL)
+          wallpaperUrl = savedWallpaper;
+        }
+      }
+      
+      desktop.style.backgroundImage = `url('${wallpaperUrl}')`;
       desktop.style.backgroundSize = 'cover';
       desktop.style.backgroundPosition = 'center';
       desktop.style.backgroundAttachment = 'fixed';
