@@ -90,7 +90,21 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
   height:32px; min-width:110px; max-width:220px; padding:0 10px; background:var(--panel-2); color:#ddd;
   border:none; border-radius:6px; display:flex; align-items:center; gap:8px; cursor:pointer;
 }
-.task-button.active { outline:2px solid var(--accent); }
+.task-button.active { 
+  background:var(--accent); 
+  color:#fff;
+  position:relative;
+}
+.task-button.active::before {
+  content:'';
+  position:absolute;
+  top:0;
+  left:0;
+  right:0;
+  height:3px;
+  background:var(--accent);
+  border-radius:6px 6px 0 0;
+}
 #task-clock { min-width:120px; text-align:right; color:var(--muted); }
 
 #start-menu {
@@ -355,6 +369,13 @@ hr { border:0; border-top:1px solid var(--panel-2); margin:12px 0; }
 
 [data-theme="light"] .task-button {
   color: var(--text);
+}
+[data-theme="light"] .task-button.active {
+  background: var(--accent);
+  color: #fff;
+}
+[data-theme="light"] .task-button.active::before {
+  background: var(--accent);
 }
 
 [data-theme="light"] .start-apps button {
