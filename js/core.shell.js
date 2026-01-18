@@ -154,6 +154,180 @@ window.Shell = (() => {
       });
     }
 
+    // Search functionality
+    const searchInput = document.getElementById('taskbar-search');
+    let searchResultsMenu = null;
+    let searchTimeout = null;
+
+    function createSearchResultsMenu() {
+      if (searchResultsMenu) return searchResultsMenu;
+      
+      searchResultsMenu = document.createElement('div');
+      searchResultsMenu.id = 'search-results-menu';
+      searchResultsMenu.style.cssText = `
+        position: absolute;
+        left: 8px;
+        bottom: 52px;
+        width: 400px;
+        max-height: 500px;
+        background: var(--panel);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        padding: 8px;
+        display: none;
+        overflow-y: auto;
+        z-index: 10001;
+      `;
+      document.body.appendChild(searchResultsMenu);
+      return searchResultsMenu;
+    }
+
+    function performSearch(query) {
+      if (!query || query.trim().length === 0) {
+        if (searchResultsMenu) {
+          searchResultsMenu.style.display = 'none';
+        }
+        return;
+      }
+
+      const searchTerm = query.toLowerCase().trim();
+      const results = [];
+
+      // Search apps
+      Apps.list().forEach(app => {
+        const nameMatch = app.name.toLowerCase().includes(searchTerm);
+        const descMatch = app.description.toLowerCase().includes(searchTerm);
+        if (nameMatch || descMatch) {
+          results.push({
+            type: 'app',
+            id: app.id,
+            name: app.name,
+            icon: app.icon,
+            description: app.description,
+            matchScore: nameMatch ? 2 : 1
+          });
+        }
+      });
+
+      // Sort by relevance (name matches first)
+      results.sort((a, b) => b.matchScore - a.matchScore);
+
+      displaySearchResults(results, query);
+    }
+
+    function displaySearchResults(results, query) {
+      const menu = createSearchResultsMenu();
+      
+      if (results.length === 0) {
+        menu.innerHTML = `
+          <div style="padding: 20px; text-align: center; color: var(--muted);">
+            No results found for "${query}"
+          </div>
+        `;
+      } else {
+        menu.innerHTML = `
+          <div style="padding: 8px 12px; font-size: 0.85rem; color: var(--muted); border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 4px;">
+            ${results.length} result${results.length > 1 ? 's' : ''} found
+          </div>
+          ${results.map(result => `
+            <div class="search-result-item" data-type="${result.type}" data-id="${result.id}" style="
+              padding: 12px;
+              display: flex;
+              align-items: center;
+              gap: 12px;
+              cursor: pointer;
+              border-radius: 4px;
+              transition: background 0.2s;
+            ">
+              <div style="font-size: 1.5rem;">${result.icon || '🟦'}</div>
+              <div style="flex: 1;">
+                <div style="font-weight: 600; color: var(--text); margin-bottom: 4px;">${result.name}</div>
+                <div style="font-size: 0.85rem; color: var(--muted);">${result.description || ''}</div>
+              </div>
+            </div>
+          `).join('')}
+        `;
+
+        // Add click handlers
+        menu.querySelectorAll('.search-result-item').forEach(item => {
+          item.addEventListener('click', () => {
+            const type = item.dataset.type;
+            const id = item.dataset.id;
+            
+            if (type === 'app') {
+              Apps.open(id);
+            }
+            
+            // Clear search and hide menu
+            searchInput.value = '';
+            menu.style.display = 'none';
+            searchInput.blur();
+          });
+
+          item.addEventListener('mouseenter', () => {
+            item.style.background = 'var(--panel-2)';
+          });
+
+          item.addEventListener('mouseleave', () => {
+            item.style.background = 'transparent';
+          });
+        });
+      }
+
+      // Position menu
+      const rect = searchInput.getBoundingClientRect();
+      menu.style.left = rect.left + 'px';
+      menu.style.bottom = (window.innerHeight - rect.bottom + 52) + 'px';
+      menu.style.display = 'block';
+    }
+
+    // Search input event handlers
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => {
+        const query = e.target.value;
+        
+        // Clear previous timeout
+        if (searchTimeout) {
+          clearTimeout(searchTimeout);
+        }
+
+        // Debounce search
+        searchTimeout = setTimeout(() => {
+          performSearch(query);
+        }, 200);
+      });
+
+      searchInput.addEventListener('focus', () => {
+        const query = searchInput.value.trim();
+        if (query) {
+          performSearch(query);
+        }
+      });
+
+      // Close search menu when clicking outside
+      window.addEventListener('click', (e) => {
+        if (!searchInput.contains(e.target) && searchResultsMenu && !searchResultsMenu.contains(e.target)) {
+          searchResultsMenu.style.display = 'none';
+        }
+      });
+
+      // Handle Enter key to open first result
+      searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          const firstResult = searchResultsMenu?.querySelector('.search-result-item');
+          if (firstResult) {
+            firstResult.click();
+          }
+        } else if (e.key === 'Escape') {
+          searchInput.value = '';
+          if (searchResultsMenu) {
+            searchResultsMenu.style.display = 'none';
+          }
+          searchInput.blur();
+        }
+      });
+    }
+
     // Populate launcher
     function renderStart() {
       startApps.innerHTML = '';
