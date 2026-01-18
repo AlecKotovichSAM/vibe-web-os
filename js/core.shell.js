@@ -18,13 +18,28 @@ window.Shell = (() => {
       
       // Group apps by category
       const categories = Apps.getCategories();
+      // Special system apps that should always appear in start menu (like Files)
+      const systemApps = ['files'];
+      
       // Filter out folder apps (they're accessed via category folders or custom folders) and apps without category
-      const customFolderIds = new Set(Folders.list().map(f => f.id));
-      const uncategorizedApps = Apps.list().filter(app => 
+      const customFolderIds = new Set((window.Folders ? Folders.list() : []).map(f => f.id));
+      let uncategorizedApps = Apps.list().filter(app => 
         !app.category && 
         !app.id.endsWith('-folder') && 
-        !customFolderIds.has(app.id)
+        !customFolderIds.has(app.id) &&
+        !systemApps.includes(app.id) // Exclude system apps from filter, we'll add them separately
       );
+      
+      // Ensure system apps are always included (add them first)
+      systemApps.forEach(systemAppId => {
+        const systemApp = Apps.get(systemAppId);
+        if (systemApp) {
+          // Add at the beginning (no need to check for duplicates since we filtered them out)
+          uncategorizedApps.unshift(systemApp);
+        } else {
+          console.warn('System app not found:', systemAppId);
+        }
+      });
       
       // Show uncategorized apps first
       uncategorizedApps.forEach(app => {
@@ -56,7 +71,7 @@ window.Shell = (() => {
       });
       
       // Show custom user folders
-      const customFolders = Folders.list();
+      const customFolders = window.Folders ? Folders.list() : [];
       customFolders.forEach(folder => {
         const btn = document.createElement('button');
         btn.innerHTML = `<div style="font-size:1.2rem">${folder.icon || '📁'}</div><div>${folder.name}</div>`;
@@ -92,12 +107,6 @@ window.Shell = (() => {
         // Verify button is actually in DOM and visible
         const rect = btn.getBoundingClientRect();
         console.log(`Button ${index} position:`, rect); // Debug
-        
-        // Test: Simple click to verify events work
-        btn.addEventListener('click', (e)=>{
-          console.log('SIMPLE CLICK detected on:', btn.dataset.app, e); // Debug
-          e.stopPropagation(); // Prevent any other handlers
-        }, true);
         
         // Double-click to open
         btn.addEventListener('dblclick', (e)=>{

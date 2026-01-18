@@ -11,7 +11,7 @@ Apps.register({
         <button id="btn-up">⬆️ Up</button>
         <button id="btn-mkdir">📂 New Folder</button>
         <button id="btn-newfile">📄 New File</button>
-        <button id="btn-view-toggle" title="Toggle View">🔲</button>
+        <button id="btn-view-toggle" title="Toggle View" data-view="list">☰</button>
         <input id="path" type="text" readonly style="flex:1; min-width:0;" />
       </div>
       <div id="list"></div>
@@ -131,18 +131,17 @@ Apps.register({
       }
       listDiv.innerHTML = rows;
     }
->>>>>>> 49375c2 (feat: add grid/list view toggle with per-path persistence for Files and Games apps)
-        }
-      } catch (e) {
-        rows = `<div class="app-empty">Error: ${e.message}</div>`;
-      }
-      listDiv.innerHTML = rows;
-    }
 
     function updateViewToggleButton() {
       const btn = win.querySelector('#btn-view-toggle');
       if (btn) {
-        btn.textContent = viewMode === 'grid' ? '🔲' : '☰';
+        btn.setAttribute('data-view', viewMode === 'grid' ? 'grid' : 'list');
+        if (viewMode === 'list') {
+          btn.textContent = '☰';
+        } else {
+          // Create 2x2 grid with 4 spans
+          btn.innerHTML = '<span></span><span></span><span></span><span></span>';
+        }
       }
     }
 
