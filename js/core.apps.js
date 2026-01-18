@@ -2,12 +2,24 @@
 window.Apps = (() => {
   const registry = new Map();
 
-  function register({ id, name, icon, description = '', launch }) {
-    registry.set(id, { id, name, icon, description, launch });
+  function register({ id, name, icon, description = '', category = '', launch }) {
+    registry.set(id, { id, name, icon, description, category, launch });
   }
 
   function list() {
     return Array.from(registry.values());
+  }
+
+  function listByCategory(category) {
+    return Array.from(registry.values()).filter(app => app.category === category);
+  }
+
+  function getCategories() {
+    const categories = new Set();
+    registry.forEach(app => {
+      if (app.category) categories.add(app.category);
+    });
+    return Array.from(categories);
   }
 
   function get(id) {
@@ -20,5 +32,5 @@ window.Apps = (() => {
     return app.launch(args);
   }
 
-  return { register, list, get, open };
+  return { register, list, listByCategory, getCategories, get, open };
 })();

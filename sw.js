@@ -10,8 +10,11 @@ const ASSETS = [
   './js/core.apps.js',
   './js/core.shell.js',
   './js/apps.notes.js',
+  './js/apps.editor.js',
   './js/apps.files.js',
   './js/apps.settings.js',
+  './js/games/folder.js',
+  './js/games/minesweeper.js',
   './js/boot.js'
 ];
 
