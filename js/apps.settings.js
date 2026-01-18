@@ -53,20 +53,25 @@ Apps.register({
     }    
 
     function applyTheme(name) {
-      document.documentElement.setAttribute('data-theme', name);
       if (name === 'classic') {
+        document.documentElement.setAttribute('data-theme', name);
         document.documentElement.style.setProperty('--panel','#2f3b55');
         document.documentElement.style.setProperty('--panel-2','#3b4766');
       } else if (name === 'high-contrast') {
+        document.documentElement.setAttribute('data-theme', name);
         document.documentElement.style.setProperty('--bg','#000');
         document.documentElement.style.setProperty('--panel','#000');
         document.documentElement.style.setProperty('--panel-2','#111');
         document.documentElement.style.setProperty('--text','#fff');
         document.documentElement.style.setProperty('--accent','#ff0');
       } else {
-        // reset to default (reload CSS variables by removing overrides)
+        // reset to default (dark theme) - remove overrides and data-theme attribute
         document.documentElement.removeAttribute('data-theme');
-        document.location.reload();
+        document.documentElement.style.removeProperty('--panel');
+        document.documentElement.style.removeProperty('--panel-2');
+        document.documentElement.style.removeProperty('--bg');
+        document.documentElement.style.removeProperty('--text');
+        document.documentElement.style.removeProperty('--accent');
       }
     }
 
