@@ -130,5 +130,15 @@ window.WindowManager = (() => {
     return document.querySelector(`.window[data-win-id="${id}"]`);
   }
 
-  return { makeWindow, closeWindow, minimizeWindow, restoreWindow, findWindow };
+  function focusWindow(id) {
+    const w = findWindow(id);
+    if (!w || w.style.display === 'none') return;
+    z += 1;
+    w.style.zIndex = z;
+    document.querySelectorAll('.window').forEach(win => win.classList.remove('focus'));
+    w.classList.add('focus');
+    Bus.emit('wm:focus', { id });
+  }
+
+  return { makeWindow, closeWindow, minimizeWindow, restoreWindow, findWindow, focusWindow };
 })();

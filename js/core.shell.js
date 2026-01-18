@@ -352,7 +352,9 @@ window.Shell = (() => {
     window.addEventListener('click', (e)=>{
       // Don't close start menu if clicking on desktop icons
       if (e.target.closest('#desktop-icons')) return;
-      if (!startMenu.contains(e.target) && e.target !== startBtn) toggleStart(false);
+      // Don't close if clicking on start button or its children
+      if (e.target.closest('#btn-start')) return;
+      if (!startMenu.contains(e.target)) toggleStart(false);
     });
 
     // Task buttons for windows
@@ -368,7 +370,8 @@ window.Shell = (() => {
         if (win.style.display === 'none') {
           WindowManager.restoreWindow(id);
         } else {
-          WindowManager.minimizeWindow(id);
+          // If window is visible, focus it instead of minimizing
+          WindowManager.focusWindow(id);
         }
       });
       taskList.appendChild(btn);
