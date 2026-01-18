@@ -51,9 +51,21 @@ Apps.register({
         urlInput.value = savedWallpaper;
       }
       if (preview) {
-        preview.style.backgroundImage = `url('${savedWallpaper}')`;
-        preview.style.opacity = '1';
-        preview.style.height = 'auto';
+        let previewUrl = savedWallpaper;
+        // If it's a local path, read from file system
+        if (savedWallpaper.startsWith('/root/')) {
+          try {
+            previewUrl = FS.read(savedWallpaper);
+          } catch (error) {
+            console.error('Failed to load saved wallpaper preview:', error);
+            previewUrl = null;
+          }
+        }
+        if (previewUrl) {
+          preview.style.backgroundImage = `url('${previewUrl}')`;
+          preview.style.opacity = '1';
+          preview.style.height = 'auto';
+        }
       }
     }
 
@@ -151,7 +163,7 @@ Apps.register({
               const reader = new FileReader();
               reader.onload = (event) => {
                 const dataUrl = event.target.result;
-                const preview = document.getElementById('wallpaper-preview');
+                const preview = win.querySelector('#wallpaper-preview');
                 if (preview) {
                   preview.style.opacity = '0';
                   preview.style.backgroundImage = `url('${dataUrl}')`;
@@ -180,7 +192,7 @@ Apps.register({
           }
           
           if (url) {
-            const preview = document.getElementById('wallpaper-preview');
+            const preview = win.querySelector('#wallpaper-preview');
             if (preview) {
               preview.style.opacity = '0'; // Hide while loading
               preview.style.backgroundImage = `url('${url}')`;
@@ -202,9 +214,10 @@ Apps.register({
     }, true);
 
     // Save AND apply to main desktop only when button is clicked
-    document.addEventListener('click', (e) => {
+    win.addEventListener('click', (e) => {
       if (e.target && e.target.id === 'apply-wallpaper-btn') {
-        let url = document.getElementById('wallpaper-url').value.trim();
+        const urlInput = win.querySelector('#wallpaper-url');
+        let url = urlInput ? urlInput.value.trim() : '';
         if (url) {
           let wallpaperPath = url; // Path/URL to store in localStorage
           
@@ -232,11 +245,11 @@ Apps.register({
                 // Save file content (data URL) to virtual file system
                 FS.write(wallpapersPath, fileName, dataUrl);
                 
-                // Update input field with the file path
-                const urlInput = document.getElementById('wallpaper-url');
-                if (urlInput) {
-                  urlInput.value = wallpaperPath;
-                }
+                    // Update input field with the file path
+                    const urlInputEl = win.querySelector('#wallpaper-url');
+                    if (urlInputEl) {
+                      urlInputEl.value = wallpaperPath;
+                    }
                 
                 // Clear selected file references (file is now saved to FS)
                 selectedFile = null;
@@ -283,11 +296,13 @@ Apps.register({
       }
 
       if (e.target && e.target.id === 'remove-wallpaper-btn') {
-        const url = document.getElementById('wallpaper-url').value;
+        const urlInput = win.querySelector('#wallpaper-url');
+        const url = urlInput ? urlInput.value : '';
         if (url) {
-
-          document.getElementById('wallpaper-url').value = '';
-          const preview = document.getElementById('wallpaper-preview');
+          if (urlInput) {
+            urlInput.value = '';
+          }
+          const preview = win.querySelector('#wallpaper-preview');
           if (preview) {
             preview.style.backgroundImage = '';
             preview.style.opacity = '0';
