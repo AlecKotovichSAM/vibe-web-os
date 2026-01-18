@@ -205,6 +205,7 @@ Apps.register({
 
     function handleRightClick(row, col, e) {
       e.preventDefault();
+      e.stopPropagation();
 
       if (gameOver || revealed[row][col]) return;
 
