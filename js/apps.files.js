@@ -23,6 +23,37 @@ Apps.register({
 
     let cwd = FS.root;
 
+    // Get icon for file based on extension
+    function getFileIcon(fileName) {
+      const ext = fileName.split('.').pop()?.toLowerCase() || '';
+      const iconMap = {
+        // Images
+        'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 'gif': '🖼️', 'webp': '🖼️', 'svg': '🖼️', 'bmp': '🖼️', 'ico': '🖼️',
+        // Documents
+        'txt': '📄', 'md': '📝', 'doc': '📄', 'docx': '📄', 'pdf': '📕',
+        // Code
+        'js': '📜', 'html': '🌐', 'css': '🎨', 'json': '📋', 'xml': '📋',
+        // Archives
+        'zip': '📦', 'rar': '📦', '7z': '📦', 'tar': '📦', 'gz': '📦',
+        // Audio
+        'mp3': '🎵', 'wav': '🎵', 'ogg': '🎵', 'flac': '🎵',
+        // Video
+        'mp4': '🎬', 'avi': '🎬', 'mov': '🎬', 'mkv': '🎬', 'webm': '🎬',
+      };
+      return iconMap[ext] || '📄';
+    }
+
+    // Check if file is an image based on extension
+    function isImageFile(fileName) {
+      const ext = fileName.split('.').pop()?.toLowerCase() || '';
+      return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(ext);
+    }
+
+    // Check if content is a data URL (image)
+    function isDataUrl(content) {
+      return typeof content === 'string' && content.startsWith('data:image/');
+    }
+
     function render() {
       pathInput.value = cwd;
       let rows = '';
@@ -30,14 +61,17 @@ Apps.register({
         const items = FS.ls(cwd);
         if (items.length === 0) rows = `<div class="app-empty">Empty folder</div>`;
         else {
-          rows = items.map(i => `
+          rows = items.map(i => {
+            const icon = i.type === 'dir' ? '📁' : getFileIcon(i.name);
+            return `
             <div class="row" data-path="${i.path}" data-type="${i.type}" style="display:flex; gap:10px; align-items:center; padding:6px; border-bottom:1px solid #2a2d3f; cursor:pointer;">
-              <div>${i.type === 'dir' ? '📁' : '📄'}</div>
+              <div>${icon}</div>
               <div style="flex:1">${i.name}</div>
               <div style="color:#a7a7a7; font-size:.85rem">${i.mtime.slice(0,19).replace('T',' ')}</div>
               <button class="del" title="Delete" style="background:#2a2230; color:#ffb1b1; border:none; border-radius:6px; padding:4px 8px">Delete</button>
             </div>
-          `).join('');
+          `;
+          }).join('');
         }
       } catch (e) {
         rows = `<div class="app-empty">Error: ${e.message}</div>`;
@@ -53,15 +87,36 @@ Apps.register({
       }
       if (t === 'dir') { cwd = p; render(); }
       if (t === 'file') {
-        // Open file content in a new notes window (read-only)
+        const fileName = p.split('/').pop();
         const id2 = 'viewer-' + Date.now();
         const content = FS.read(p);
+        
+        let viewerContent = '';
+        let viewerIcon = '📄';
+        let viewerWidth = 520;
+        let viewerHeight = 360;
+        
+        // Check if it's an image (by extension or data URL)
+        if (isImageFile(fileName) || isDataUrl(content)) {
+          viewerIcon = '🖼️';
+          viewerWidth = 800;
+          viewerHeight = 600;
+          viewerContent = `
+            <div style="display:flex; justify-content:center; align-items:center; height:100%; background:#0f111a; overflow:auto;">
+              <img src="${content}" style="max-width:100%; max-height:100%; object-fit:contain;" alt="${fileName}" />
+            </div>
+          `;
+        } else {
+          // Display as text
+          viewerContent = `<pre style="white-space:pre-wrap; margin:0; padding:10px;">${content.replace(/[&<>]/g, (m)=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m]))}</pre>`;
+        }
+        
         const win2 = WindowManager.makeWindow({
-          id: id2, title: `Viewer - ${p.split('/').pop()}`,
-          content: `<pre style="white-space:pre-wrap">${content.replace(/[&<>]/g, (m)=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m]))}</pre>`,
-          width: 520, height: 360
+          id: id2, title: `Viewer - ${fileName}`,
+          content: viewerContent,
+          width: viewerWidth, height: viewerHeight
         });
-        Bus.emit('app:opened', { id: id2, title: 'Viewer', icon: '📄' });
+        Bus.emit('app:opened', { id: id2, title: 'Viewer', icon: viewerIcon });
       }
     });
 
