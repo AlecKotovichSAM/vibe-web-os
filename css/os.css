@@ -87,10 +87,10 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
 
 .window.focus { outline:2px solid var(--accent); }
 .win-titlebar {
-  height:36px; background:linear-gradient(180deg,#202437,#1b1e2d); display:flex; align-items:center; gap:8px; padding:0 8px; cursor:grab; user-select:none;
+  height:36px; background:linear-gradient(180deg,#202437,#1b1e2d); display:flex; align-items:center; gap:8px; padding:0 8px; cursor:grab; user-select:none; min-width:0;
 }
-.win-title { flex:1; font-weight:600; font-size:.95rem; }
-.win-btns { display:flex; gap:6px; }
+.win-title { flex:1; font-weight:600; font-size:.95rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.win-btns { display:flex; gap:6px; flex-shrink:0; }
 .win-btns button {
   height:26px; width:26px; border:none; border-radius:6px; background:var(--panel-2); color:var(--text); cursor:pointer;
 }
@@ -350,4 +350,19 @@ hr { border:0; border-top:1px solid var(--panel-2); margin:12px 0; }
 
 [data-theme="light"] hr {
   border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* File list row filename truncation */
+.row > div:nth-child(2) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Editor filename input truncation */
+#editor-filename {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

@@ -65,10 +65,10 @@ Apps.register({
             const icon = i.type === 'dir' ? '📁' : getFileIcon(i.name);
             return `
             <div class="row" data-path="${i.path}" data-type="${i.type}" style="display:flex; gap:10px; align-items:center; padding:6px; border-bottom:1px solid var(--panel-2); cursor:pointer;">
-              <div>${icon}</div>
-              <div style="flex:1">${i.name}</div>
-              <div style="color:var(--muted); font-size:.85rem">${i.mtime.slice(0,19).replace('T',' ')}</div>
-              <button class="del" title="Delete" style="background:var(--panel-2); color:var(--danger); border:none; border-radius:6px; padding:4px 8px">Delete</button>
+              <div style="flex-shrink:0">${icon}</div>
+              <div style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${i.name}">${i.name}</div>
+              <div style="color:var(--muted); font-size:.85rem; flex-shrink:0; white-space:nowrap;">${i.mtime.slice(0,19).replace('T',' ')}</div>
+              <button class="del" title="Delete" style="background:var(--panel-2); color:var(--danger); border:none; border-radius:6px; padding:4px 8px; flex-shrink:0;">Delete</button>
             </div>
           `;
           }).join('');
