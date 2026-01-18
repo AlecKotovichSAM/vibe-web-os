@@ -41,11 +41,18 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
   font-size:1.75rem; 
   text-shadow: 0 1px 2px rgba(0,0,0,0.8), 0 0 4px rgba(0,0,0,0.6);
 }
-.icon-label { 
-  font-size:.85rem; 
-  color:var(--muted); 
+.icon-label {
+  font-size:.85rem;
+  color:var(--muted);
   text-shadow: 0 1px 2px rgba(0,0,0,0.9), 0 0 3px rgba(0,0,0,0.7);
   font-weight: 500;
+  text-align: center;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 #taskbar {
