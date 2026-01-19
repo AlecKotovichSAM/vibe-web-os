@@ -192,7 +192,10 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
 }
 .task-button {
   height:32px; min-width:110px; max-width:220px; padding:0 10px; background:var(--panel-2); color:#ddd;
-  border:none; border-radius:6px; display:flex; align-items:center; gap:8px; cursor:pointer;
+  border:none; border-radius:6px; display:flex; align-items:center; gap:8px; cursor:pointer; overflow:hidden;
+}
+.task-button .title {
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1;
 }
 .task-button.active { 
   background:var(--accent); 
