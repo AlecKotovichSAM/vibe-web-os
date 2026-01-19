@@ -12,34 +12,34 @@ Apps.register({
 
     const content = `
       <div>
-        <h3>Appearance</h3>
+        <h3>${I18n.t('settings.appearance')}</h3>
         <label>
-          Theme:
+          ${I18n.t('settings.theme')}:
           <select id="theme">
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-            <option value="classic">Classic</option>
-            <option value="high-contrast">High Contrast</option>
+            <option value="dark">${I18n.t('settings.themeDark')}</option>
+            <option value="light">${I18n.t('settings.themeLight')}</option>
+            <option value="classic">${I18n.t('settings.themeClassic')}</option>
+            <option value="high-contrast">${I18n.t('settings.themeHighContrast')}</option>
           </select>
         </label>
         <hr />
-        <h3>Wallpaper</h3>
+        <h3>${I18n.t('settings.wallpaper')}</h3>
           <div class="settings-wallpaper-preview" id="wallpaper-preview"></div>
           <div class="settings-wallpaper-row">
-            <input type="text" id="wallpaper-url" class="settings-wallpaper-input" placeholder="Enter image URL for wallpaper">
-            <button id="choose-wallpaper-btn" class="settings-wallpaper-file-btn">📁 Choose File...</button>
+            <input type="text" id="wallpaper-url" class="settings-wallpaper-input" placeholder="${I18n.t('settings.wallpaperUrlPlaceholder')}">
+            <button id="choose-wallpaper-btn" class="settings-wallpaper-file-btn">📁 ${I18n.t('settings.chooseFile')}</button>
           </div>
           <input type="file" id="wallpaper-file" accept="image/*" style="display:none">
-          <button id="apply-wallpaper-btn">Apply Wallpaper</button>
-          <button id="remove-wallpaper-btn">Remove</button>
+          <button id="apply-wallpaper-btn">${I18n.t('settings.applyWallpaper')}</button>
+          <button id="remove-wallpaper-btn">${I18n.t('settings.removeWallpaper')}</button>
         <hr />
-        <h3>Storage</h3>
-        <button id="reset-fs" class="danger">Reset File System</button>
+        <h3>${I18n.t('settings.storage')}</h3>
+        <button id="reset-fs" class="danger">${I18n.t('settings.resetFileSystem')}</button>
       </div>
     `;
 
     // const win = WindowManager.makeWindow({ id, title:'Settings', content, width:440, height:300 });
-    const win = WindowManager.makeWindow({ id, title:'Settings', content});
+    const win = WindowManager.makeWindow({ id, title: I18n.t('settings.title'), content});
     const sel = win.querySelector('#theme');
     sel.value = theme;
 
@@ -339,15 +339,75 @@ Apps.register({
     });    */
 
     win.querySelector('#reset-fs').addEventListener('click', ()=>{
-      if (confirm('Reset the file system to defaults?')) {
+      if (confirm(I18n.t('settings.resetConfirm'))) {
         FS.reset();
-        alert('Reset complete. Open Files to see changes.');
+        alert(I18n.t('settings.resetSuccess'));
       }
     });
 
     // On first open, apply stored theme
     if (theme !== 'dark') applyTheme(theme);
 
-    Bus.emit('app:opened', { id, title:'Settings', icon:'⚙️' });
+    // Function to update UI elements on locale change
+    function updateUIOnLocaleChange() {
+      // Update headings
+      const headings = win.querySelectorAll('h3');
+      if (headings.length >= 1) headings[0].textContent = I18n.t('settings.appearance');
+      if (headings.length >= 2) headings[1].textContent = I18n.t('settings.wallpaper');
+      if (headings.length >= 3) headings[2].textContent = I18n.t('settings.storage');
+      
+      // Update theme label text (keep select element intact)
+      const themeLabel = win.querySelector('label');
+      if (themeLabel) {
+        const selectEl = themeLabel.querySelector('select');
+        const labelText = themeLabel.childNodes[0];
+        if (labelText && labelText.nodeType === 3) {
+          labelText.textContent = I18n.t('settings.theme') + ':';
+        } else {
+          // If no text node, prepend it
+          themeLabel.insertBefore(document.createTextNode(I18n.t('settings.theme') + ': '), selectEl);
+        }
+      }
+      
+      // Update theme option texts
+      const themeSelect = win.querySelector('#theme');
+      if (themeSelect) {
+        const currentValue = themeSelect.value;
+        themeSelect.querySelector('option[value="dark"]').textContent = I18n.t('settings.themeDark');
+        themeSelect.querySelector('option[value="light"]').textContent = I18n.t('settings.themeLight');
+        themeSelect.querySelector('option[value="classic"]').textContent = I18n.t('settings.themeClassic');
+        themeSelect.querySelector('option[value="high-contrast"]').textContent = I18n.t('settings.themeHighContrast');
+        themeSelect.value = currentValue; // Restore selection
+      }
+      
+      // Update wallpaper input placeholder
+      const wallpaperInput = win.querySelector('#wallpaper-url');
+      if (wallpaperInput) wallpaperInput.placeholder = I18n.t('settings.wallpaperUrlPlaceholder');
+      
+      // Update buttons
+      const chooseBtn = win.querySelector('#choose-wallpaper-btn');
+      const applyBtn = win.querySelector('#apply-wallpaper-btn');
+      const removeBtn = win.querySelector('#remove-wallpaper-btn');
+      const resetBtn = win.querySelector('#reset-fs');
+      
+      if (chooseBtn) chooseBtn.textContent = `📁 ${I18n.t('settings.chooseFile')}`;
+      if (applyBtn) applyBtn.textContent = I18n.t('settings.applyWallpaper');
+      if (removeBtn) removeBtn.textContent = I18n.t('settings.removeWallpaper');
+      if (resetBtn) resetBtn.textContent = I18n.t('settings.resetFileSystem');
+    }
+
+    // Listen for locale changes
+    const unsubscribeLocale = Bus.on('locale:changed', () => {
+      updateUIOnLocaleChange();
+    });
+
+    // Cleanup on window close
+    Bus.once('wm:closed', ({ id: closedId }) => {
+      if (closedId === id) {
+        unsubscribeLocale();
+      }
+    });
+
+    Bus.emit('app:opened', { id, title: I18n.t('settings.title'), icon:'⚙️', appId: 'settings', titleKey: 'settings.title' });
   }
 });

@@ -28,11 +28,15 @@ Apps.register({
         if (localeObj.weekInfo) {
           firstDayOfWeek = localeObj.weekInfo.firstDay % 7;
         } else if (locale === 'de' || locale === 'fr' || locale === 'es' || locale === 'it' || locale === 'pt' || locale === 'ru') {
-          firstDayOfWeek = 1;
+          firstDayOfWeek = 1; // Monday
+        } else if (locale === 'ar') {
+          firstDayOfWeek = 6; // Saturday
         }
       } catch (e) {
         if (locale === 'de' || locale === 'fr' || locale === 'es' || locale === 'it' || locale === 'pt' || locale === 'ru') {
-          firstDayOfWeek = 1;
+          firstDayOfWeek = 1; // Monday
+        } else if (locale === 'ar') {
+          firstDayOfWeek = 6; // Saturday
         }
       }
       const dayOfWeek = new Date(year, month, 1).getDay();
@@ -72,11 +76,16 @@ Apps.register({
         } else if (locale === 'de' || locale === 'fr' || locale === 'es' || locale === 'it' || locale === 'pt' || locale === 'ru') {
           // Most European locales start week on Monday
           firstDayOfWeek = 1;
+        } else if (locale === 'ar') {
+          // Arabic locales start week on Saturday
+          firstDayOfWeek = 6;
         }
       } catch (e) {
         // Fallback: use locale defaults
         if (locale === 'de' || locale === 'fr' || locale === 'es' || locale === 'it' || locale === 'pt' || locale === 'ru') {
           firstDayOfWeek = 1;
+        } else if (locale === 'ar') {
+          firstDayOfWeek = 6;
         }
       }
       // Generate day names starting from the locale's first day
@@ -223,7 +232,7 @@ Apps.register({
 
     const win = WindowManager.makeWindow({
       id,
-      title: 'Date and Time',
+      title: I18n.t('datetime.title'),
       content,
       width: 600,
       height: 400
@@ -289,6 +298,6 @@ Apps.register({
       }
     });
 
-    Bus.emit('app:opened', { id, title: 'Date and Time', icon: '🕐' });
+    Bus.emit('app:opened', { id, title: I18n.t('datetime.title'), icon: '🕐', appId: 'datetime', titleKey: 'datetime.title' });
   }
 });

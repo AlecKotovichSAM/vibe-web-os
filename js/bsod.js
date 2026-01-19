@@ -7,9 +7,9 @@ window.BSOD = (() => {
       bsod.id = 'bsod';
       bsod.innerHTML = `
         <div class="sad-face">:(</div>
-        <div class="title">Your Web OS ran into a problem</div>
-        <div class="message">We're just collecting some error info, and then we'll restart for you.</div>
-        <div class="error-code">Stop code: CRITICAL_PROCESS_DIED</div>
+        <div class="title">${I18n.t('bsod.title')}</div>
+        <div class="message">${I18n.t('bsod.message')}</div>
+        <div class="error-code">${I18n.t('bsod.errorCode', { code: 'CRITICAL_PROCESS_DIED' })}</div>
         <div class="progress">
           <div class="progress-bar"></div>
         </div>
@@ -23,8 +23,8 @@ window.BSOD = (() => {
     init();
 
     const {
-      title = 'Your Web OS ran into a problem',
-      message = "We're just collecting some error info, and then we'll restart for you.",
+      title = I18n.t('bsod.title'),
+      message = I18n.t('bsod.message'),
       errorCode = 'CRITICAL_PROCESS_DIED',
       autoRecover = true,
       recoverTime = 5000
@@ -36,7 +36,7 @@ window.BSOD = (() => {
 
     bsod.querySelector('.title').textContent = title;
     bsod.querySelector('.message').textContent = message;
-    bsod.querySelector('.error-code').textContent = `Stop code: ${errorCode}`;
+    bsod.querySelector('.error-code').textContent = I18n.t('bsod.errorCode', { code: errorCode });
 
     bsod.classList.add('show');
 

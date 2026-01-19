@@ -159,7 +159,7 @@ Apps.register({
             word-break: break-all;
             font-family: monospace;
           ">
-            <div style="margin-bottom: 8px; color: ${colors.text}; font-weight: 600;">You tried to visit:</div>
+            <div style="margin-bottom: 8px; color: ${colors.text}; font-weight: 600;">${I18n.t('browser.youTriedToVisit')}</div>
             <div>${url || 'about:blank'}</div>
           </div>
           <div style="
@@ -168,7 +168,7 @@ Apps.register({
             max-width: 500px;
             font-style: italic;
           ">
-            Welcome to PageNotFound Explorer! Every page is a 404 page. It's our specialty! 🎉
+            ${I18n.t('browser.welcomeMessage')}
           </div>
         </div>
       `;
@@ -177,14 +177,14 @@ Apps.register({
     const content = `
       <div style="display:flex; flex-direction:column; height:100%;">
         <div style="display:flex; gap:4px; padding:8px; background:var(--panel-2); border-bottom:1px solid rgba(255,255,255,0.1); align-items:center; flex-wrap:wrap;">
-          <button id="btn-back" title="Back" style="padding:4px 8px; min-width:32px; background:var(--panel); border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:var(--text); cursor:pointer;">◀</button>
-          <button id="btn-forward" title="Forward" style="padding:4px 8px; min-width:32px; background:var(--panel); border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:var(--text); cursor:pointer;">▶</button>
-          <button id="btn-refresh" title="Refresh" style="padding:4px 8px; min-width:32px; background:var(--panel); border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:var(--text); cursor:pointer;">↻</button>
-          <input id="address-bar" type="text" placeholder="Enter any URL... (it will be 404 anyway!)" 
+          <button id="btn-back" title="${I18n.t('browser.back')}" style="padding:4px 8px; min-width:32px; background:var(--panel); border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:var(--text); cursor:pointer;">◀</button>
+          <button id="btn-forward" title="${I18n.t('browser.forward')}" style="padding:4px 8px; min-width:32px; background:var(--panel); border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:var(--text); cursor:pointer;">▶</button>
+          <button id="btn-refresh" title="${I18n.t('browser.refresh')}" style="padding:4px 8px; min-width:32px; background:var(--panel); border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:var(--text); cursor:pointer;">↻</button>
+          <input id="address-bar" type="text" placeholder="${I18n.t('browser.addressPlaceholder')}" 
             style="flex:1; min-width:200px; padding:6px 12px; background:var(--panel); border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:var(--text); font-size:0.9rem;"
             autocomplete="off" />
-          <button id="btn-go" style="padding:6px 12px; background:var(--accent); border:none; border-radius:4px; color:#fff; cursor:pointer; font-weight:600;">Go</button>
-          <button id="btn-history" title="History" style="padding:4px 8px; min-width:32px; background:var(--panel); border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:var(--text); cursor:pointer;">🕐</button>
+          <button id="btn-go" style="padding:6px 12px; background:var(--accent); border:none; border-radius:4px; color:#fff; cursor:pointer; font-weight:600;">${I18n.t('browser.go')}</button>
+          <button id="btn-history" title="${I18n.t('browser.history')}" style="padding:4px 8px; min-width:32px; background:var(--panel); border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:var(--text); cursor:pointer;">🕐</button>
         </div>
         <div id="browser-content" style="flex:1; position:relative; background:var(--bg); overflow:auto;">
         </div>
@@ -306,16 +306,16 @@ Apps.register({
           onmouseout="this.style.background='transparent'"
           data-url="${url}">
             <div style="font-weight:600; margin-bottom:4px;">${url}</div>
-            <div style="font-size:0.85rem; color:var(--muted);">Click to visit (and get 404!)</div>
+            <div style="font-size:0.85rem; color:var(--muted);">${I18n.t('shell.searchClickToVisit')}</div>
           </div>
         `).join('')
-        : '<div style="padding:20px; text-align:center; color:var(--muted);">No history yet. Start browsing to see your 404 adventures!</div>';
+        : `<div style="padding:20px; text-align:center; color:var(--muted);">${I18n.t('shell.searchHistoryEmpty')}</div>`;
 
       const historyContent = `
         <div style="max-height:400px; overflow-y:auto;">
-          <h3 style="margin:0 0 12px 0; color:var(--text);">404 History</h3>
+          <h3 style="margin:0 0 12px 0; color:var(--text);">${I18n.t('shell.searchHistoryTitle')}</h3>
           <div style="font-size:0.85rem; color:var(--muted); margin-bottom:16px;">
-            All the pages that don't exist, in one convenient list!
+            ${I18n.t('shell.searchHistoryDescription')}
           </div>
           ${historyList}
         </div>
@@ -323,7 +323,7 @@ Apps.register({
 
       const historyWin = WindowManager.makeWindow({ 
         id: 'browser-history-' + Date.now(), 
-        title: '404 History', 
+        title: I18n.t('shell.searchHistoryTitle'), 
         content: historyContent, 
         width: 500, 
         height: 450 
@@ -348,6 +348,38 @@ Apps.register({
     updateNavButtons();
     navigateTo('https://www.google.com');
 
-    Bus.emit('app:opened', { id, title: 'PageNotFound Explorer', icon: '🌐' });
+    // Function to update UI elements on locale change
+    function updateUIOnLocaleChange() {
+      // Update navigation buttons
+      if (btnBack) btnBack.title = I18n.t('browser.back');
+      if (btnForward) btnForward.title = I18n.t('browser.forward');
+      if (btnRefresh) btnRefresh.title = I18n.t('browser.refresh');
+      if (btnHistory) btnHistory.title = I18n.t('browser.history');
+      
+      // Update address bar placeholder
+      if (addressBar) addressBar.placeholder = I18n.t('browser.addressPlaceholder');
+      
+      // Update Go button
+      if (btnGo) btnGo.textContent = I18n.t('browser.go');
+      
+      // Re-render current page to update 404 message
+      if (currentUrl) {
+        browserContent.innerHTML = render404Page(currentUrl);
+      }
+    }
+
+    // Listen for locale changes
+    const unsubscribeLocale = Bus.on('locale:changed', () => {
+      updateUIOnLocaleChange();
+    });
+
+    // Cleanup on window close
+    Bus.once('wm:closed', ({ id: closedId }) => {
+      if (closedId === id) {
+        unsubscribeLocale();
+      }
+    });
+
+    Bus.emit('app:opened', { id, title: I18n.t('browser.title'), icon: '🌐', appId: 'browser', titleKey: 'browser.title' });
   }
 });

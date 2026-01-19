@@ -27,8 +27,8 @@ Apps.register({
     const content = `
       <div style="display:flex; flex-direction:column; height:100%; gap:12px; padding:12px;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-          <div style="font-size:1.1rem; font-weight:600; color:var(--text);">Games</div>
-          <button id="btn-view-toggle" title="Toggle View" data-view="list">☰</button>
+          <div style="font-size:1.1rem; font-weight:600; color:var(--text);">${I18n.t('games.folder')}</div>
+          <button id="btn-view-toggle" title="${I18n.t('files.toggleView')}" data-view="list">☰</button>
         </div>
         <div id="games-list" style="overflow-y:auto; flex:1;"></div>
       </div>
@@ -36,7 +36,7 @@ Apps.register({
 
     const win = WindowManager.makeWindow({
       id,
-      title: 'Games',
+      title: I18n.t('games.folder'),
       content,
       width: 500,
       height: 400
@@ -170,7 +170,7 @@ Apps.register({
           
           const infoWin = WindowManager.makeWindow({ 
             id: infoId, 
-            title: `App Info - ${app.name}`, 
+            title: `${I18n.t('apps.appInfo')} - ${app.name}`, 
             content, 
             width: 400, 
             height: 280 
@@ -190,7 +190,7 @@ Apps.register({
             WindowManager.closeWindow(infoId);
           });
           
-          Bus.emit('app:opened', { id: infoId, title: `App Info - ${app.name}`, icon: 'ℹ️' });
+          Bus.emit('app:opened', { id: infoId, title: `${I18n.t('apps.appInfo')} - ${app.name}`, icon: 'ℹ️' });
         });
         
         btn.addEventListener('mouseenter', () => {
@@ -208,8 +208,30 @@ Apps.register({
       render();
     });
 
+    // Function to update UI elements on locale change
+    function updateUIOnLocaleChange() {
+      const titleDiv = win.querySelector('div[style*="font-size:1.1rem"]');
+      if (titleDiv) titleDiv.textContent = I18n.t('games.folder');
+      const viewToggleBtn = win.querySelector('#btn-view-toggle');
+      if (viewToggleBtn) viewToggleBtn.title = I18n.t('files.toggleView');
+      // Re-render to update any text in the list
+      render();
+    }
+
+    // Listen for locale changes
+    const unsubscribeLocale = Bus.on('locale:changed', () => {
+      updateUIOnLocaleChange();
+    });
+
+    // Cleanup on window close
+    Bus.once('wm:closed', ({ id: closedId }) => {
+      if (closedId === id) {
+        unsubscribeLocale();
+      }
+    });
+
     render();
-    Bus.emit('app:opened', { id, title: 'Games', icon: '🎮' });
+    Bus.emit('app:opened', { id, title: I18n.t('games.folder'), icon: '🎮', appId: 'games-folder', titleKey: 'games.folder' });
   }
 });
 

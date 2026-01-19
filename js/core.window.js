@@ -15,9 +15,9 @@ window.WindowManager = (() => {
       <div class="win-titlebar" aria-grabbed="false">
         <div class="win-title">${title}</div>
         <div class="win-btns">
-          <button class="min" title="Minimize">—</button>
-          <button class="max" title="Maximize">▢</button>
-          <button class="close" title="Close">✕</button>
+          <button class="min" title="${I18n.t('window.minimize')}">—</button>
+          <button class="max" title="${I18n.t('window.maximize')}">▢</button>
+          <button class="close" title="${I18n.t('window.close')}">✕</button>
         </div>
       </div>
       <div class="win-content">${content || ''}</div>

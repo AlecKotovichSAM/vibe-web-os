@@ -1,0 +1,164 @@
+// Portuguese (PT) locale translations
+window.I18n_PT = {
+  // Shell / Taskbar
+  shell: {
+    startMenu: 'Iniciar',
+    searchPlaceholder: 'Digite aqui para pesquisar',
+    searchAriaLabel: 'Pesquisar',
+    languageAriaLabel: 'Idioma',
+    openWindowsAriaLabel: 'Janelas abertas',
+    taskbarAriaLabel: 'Barra de tarefas',
+    clockTooltip: 'Clique duas vezes para abrir Data e Hora',
+    searchResultsFound: '{count} resultado{plural} encontrado',
+    searchNoResults: 'Nenhum resultado encontrado para "{query}"',
+    searchClickToVisit: 'Clique para visitar (e obter 404!)',
+    searchHistoryTitle: 'Histórico 404',
+    searchHistoryDescription: 'Todas as páginas que não existem, em uma lista conveniente!',
+    searchHistoryEmpty: 'Ainda não há histórico. Comece a navegar para ver suas aventuras 404!'
+  },
+
+  // Window Manager
+  window: {
+    minimize: 'Minimizar',
+    maximize: 'Maximizar',
+    close: 'Fechar',
+    restore: 'Restaurar'
+  },
+
+  // Apps - Common
+  apps: {
+    appInfo: 'Informações do aplicativo',
+    appInfoDescription: 'Descrição:',
+    appInfoNoDescription: 'Nenhuma descrição disponível.',
+    open: 'Abrir',
+    close: 'Fechar'
+  },
+
+  // Files App
+  files: {
+    title: 'Arquivos',
+    up: 'Acima',
+    newFolder: 'Nova pasta',
+    newFile: 'Novo arquivo',
+    toggleView: 'Alternar visualização',
+    emptyFolder: 'Esta pasta está vazia',
+    deleteConfirm: 'Excluir "{name}"?',
+    renamePrompt: 'Digite o novo nome:',
+    openFile: 'Abrir',
+    deleteFile: 'Excluir',
+    renameFile: 'Renomear',
+    folderName: 'Pasta',
+    fileName: 'Arquivo',
+    viewer: 'Visualizador'
+  },
+
+  // Notes App
+  notes: {
+    title: 'Notas',
+    save: 'Salvar',
+    saved: 'Salvo',
+    notSaved: 'Não salvo',
+    savedAt: 'Salvo às {time}',
+    placeholder: 'Digite suas notas aqui...'
+  },
+
+  // Text Editor App
+  editor: {
+    title: 'Editor de texto',
+    save: 'Salvar',
+    saveAs: 'Salvar como...',
+    placeholder: 'Comece a digitar...',
+    newFileNotSaved: 'Novo arquivo - não salvo',
+    modifiedNotSaved: 'Modificado - não salvo',
+    savedAt: 'Salvo às {time}',
+    error: 'Erro: {message}',
+    errorEmptyFilename: 'Erro: O nome do arquivo não pode estar vazio',
+    saveAsPrompt: 'Digite o nome do arquivo:'
+  },
+
+  // Settings App
+  settings: {
+    title: 'Configurações',
+    appearance: 'Aparência',
+    theme: 'Tema',
+    themeDark: 'Escuro',
+    themeLight: 'Claro',
+    themeClassic: 'Clássico',
+    themeHighContrast: 'Alto contraste',
+    wallpaper: 'Papel de parede',
+    wallpaperUrlPlaceholder: 'Digite a URL da imagem para o papel de parede',
+    chooseFile: 'Escolher arquivo...',
+    applyWallpaper: 'Aplicar papel de parede',
+    removeWallpaper: 'Remover',
+    storage: 'Armazenamento',
+    resetFileSystem: 'Redefinir sistema de arquivos',
+    resetConfirm: 'Tem certeza de que deseja redefinir o sistema de arquivos? Isso não pode ser desfeito.',
+    resetSuccess: 'Sistema de arquivos redefinido com sucesso'
+  },
+
+  // Browser App
+  browser: {
+    title: 'PageNotFound Explorer',
+    back: 'Voltar',
+    forward: 'Avançar',
+    refresh: 'Atualizar',
+    go: 'Ir',
+    history: 'Histórico',
+    addressPlaceholder: 'Digite qualquer URL... (será 404 mesmo assim!)',
+    youTriedToVisit: 'Você tentou visitar:',
+    welcomeMessage: 'Bem-vindo ao PageNotFound Explorer! Cada página é uma página 404. É nossa especialidade! 🎉'
+  },
+
+  // Date/Time App
+  datetime: {
+    title: 'Data e Hora'
+  },
+
+  // Games
+  games: {
+    folder: 'Jogos',
+    minesweeper: {
+      title: 'Campo Minado',
+      newGame: 'Novo jogo',
+      beginner: 'Iniciante',
+      intermediate: 'Intermediário',
+      expert: 'Especialista',
+      gameOver: 'Fim de jogo',
+      youWon: 'Você venceu!',
+      mines: 'Minas: {count}',
+      time: 'Tempo: {time}',
+      reset: 'Redefinir'
+    }
+  },
+
+  // BSOD
+  bsod: {
+    title: 'Seu Web OS encontrou um problema',
+    message: 'Estamos apenas coletando algumas informações de erro e depois reiniciaremos para você.',
+    errorCode: 'Código de parada: {code}',
+    autoRecover: 'O sistema se recuperará automaticamente em alguns segundos...',
+    pressAnyKey: 'Pressione qualquer tecla para recuperar'
+  },
+
+  // Desktop
+  desktop: {
+    new: 'Novo',
+    newTextDocument: 'Novo documento de texto'
+  },
+
+  // Common
+  common: {
+    yes: 'Sim',
+    no: 'Não',
+    ok: 'OK',
+    cancel: 'Cancelar',
+    delete: 'Excluir',
+    rename: 'Renomear',
+    save: 'Salvar',
+    close: 'Fechar',
+    open: 'Abrir',
+    loading: 'Carregando...',
+    error: 'Erro',
+    success: 'Sucesso'
+  }
+};
