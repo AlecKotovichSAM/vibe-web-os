@@ -1,10 +1,32 @@
 window.Shell = (() => {
 
   function initDesktop() {
+    // Update HTML strings with i18n
+    const searchInput = document.getElementById('taskbar-search');
+    if (searchInput) {
+      searchInput.placeholder = I18n.t('shell.searchPlaceholder');
+      searchInput.setAttribute('aria-label', I18n.t('shell.searchAriaLabel'));
+    }
+    const taskList = document.getElementById('task-list');
+    if (taskList) {
+      taskList.setAttribute('aria-label', I18n.t('shell.openWindowsAriaLabel'));
+    }
+    const taskbar = document.getElementById('taskbar');
+    if (taskbar) {
+      taskbar.setAttribute('aria-label', I18n.t('shell.taskbarAriaLabel'));
+    }
+    const localeSwitcher = document.getElementById('task-locale');
+    if (localeSwitcher) {
+      localeSwitcher.setAttribute('aria-label', I18n.t('shell.languageAriaLabel'));
+    }
+    const startTitle = document.querySelector('.start-title');
+    if (startTitle) {
+      startTitle.textContent = I18n.t('shell.startMenu');
+    }
+
     const startBtn = document.getElementById('btn-start');
     const startMenu = document.getElementById('start-menu');
     const startApps = document.getElementById('start-apps');
-    const taskList = document.getElementById('task-list');
     const desktop = document.getElementById('desktop');
 
     // Locale management
@@ -17,6 +39,7 @@ window.Shell = (() => {
       { code: 'it', name: 'Italiano' },
       { code: 'pt', name: 'Português' },
       { code: 'ru', name: 'Русский' },
+      { code: 'ar', name: 'العربية' },
       { code: 'ja', name: '日本語' },
       { code: 'zh', name: '中文' },
       { code: 'ko', name: '한국어' }
@@ -43,7 +66,11 @@ window.Shell = (() => {
     }
 
     // Locale switcher
-    const localeSwitcher = document.getElementById('task-locale');
+    if (!localeSwitcher) {
+      console.error('Locale switcher element not found');
+      desktop.hidden = false;
+      return;
+    }
     const browserLocale = detectBrowserLocale();
     let currentLocale = getCurrentLocale();
 
@@ -114,11 +141,10 @@ window.Shell = (() => {
       if (newLocale !== currentLocale) {
         currentLocale = newLocale;
         saveLocale(currentLocale);
+        // Use I18n.setLocale which will load translations and emit event
+        I18n.setLocale(currentLocale);
         updateLocaleDisplay();
-        // Update clock immediately
-        updateClock();
-        // Emit locale change event
-        Bus.emit('locale:changed', { locale: currentLocale });
+        // Clock will be updated by locale:changed listener
       }
       toggleLocaleMenu(false);
     });
@@ -139,14 +165,45 @@ window.Shell = (() => {
       localeSwitcher.title = `Current: ${currentLocale.toUpperCase()}, Browser: ${browserLocale.toUpperCase()}`;
     }
 
+    // Function to update desktop icons on locale change
+    function updateDesktopIcons() {
+      const desktopIcons = document.getElementById('desktop-icons');
+      if (!desktopIcons) return;
+      
+      const iconButtons = desktopIcons.querySelectorAll('button.icon');
+      iconButtons.forEach(btn => {
+        const appId = btn.dataset.app;
+        if (!appId) return;
+        
+        const app = Apps.get(appId);
+        if (!app) return;
+        
+        const labelSpan = btn.querySelector('.icon-label');
+        if (labelSpan) {
+          // Handle special case for browser with line break
+          if (appId === 'browser') {
+            labelSpan.innerHTML = I18n.t('browser.title').replace(' ', '<br>');
+          } else {
+            labelSpan.textContent = app.name;
+          }
+        }
+        
+        // Update aria-label
+        btn.setAttribute('aria-label', `${I18n.t('apps.open')} ${app.name}`);
+      });
+    }
+
     // Initialize clock
     setInterval(updateClock, 1000);
     updateClock();
+    
+    // Initialize desktop icons with localized names
+    updateDesktopIcons();
 
     // Double-click clock to open Date/Time app
     const clockContainer = document.getElementById('task-clock-container');
     if (clockContainer) {
-      clockContainer.title = 'Double-click to open Date and Time';
+      clockContainer.title = I18n.t('shell.clockTooltip');
       clockContainer.addEventListener('dblclick', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -155,7 +212,11 @@ window.Shell = (() => {
     }
 
     // Search functionality
-    const searchInput = document.getElementById('taskbar-search');
+    if (!searchInput) {
+      console.error('Search input element not found');
+      desktop.hidden = false;
+      return;
+    }
     let searchResultsMenu = null;
     let searchTimeout = null;
 
@@ -192,11 +253,63 @@ window.Shell = (() => {
 
       const searchTerm = query.toLowerCase().trim();
       const results = [];
+      const currentLocale = I18n.getLocale();
+      
+      // Get English translations for fallback search
+      const enTranslations = window.I18n_EN || {};
 
       // Search apps
       Apps.list().forEach(app => {
-        const nameMatch = app.name.toLowerCase().includes(searchTerm);
-        const descMatch = app.description.toLowerCase().includes(searchTerm);
+        // Get localized name (current locale)
+        const localizedName = app.name.toLowerCase();
+        
+        // Get English name if available
+        let englishName = '';
+        if (app.nameKey && enTranslations) {
+          const keys = app.nameKey.split('.');
+          let enValue = enTranslations;
+          for (const key of keys) {
+            if (enValue && typeof enValue === 'object' && key in enValue) {
+              enValue = enValue[key];
+            } else {
+              enValue = null;
+              break;
+            }
+          }
+          if (typeof enValue === 'string') {
+            englishName = enValue.toLowerCase();
+          }
+        }
+        
+        // Get English description if available
+        let englishDescription = '';
+        if (app.descriptionKey && enTranslations) {
+          const keys = app.descriptionKey.split('.');
+          let enDescValue = enTranslations;
+          for (const key of keys) {
+            if (enDescValue && typeof enDescValue === 'object' && key in enDescValue) {
+              enDescValue = enDescValue[key];
+            } else {
+              enDescValue = null;
+              break;
+            }
+          }
+          if (typeof enDescValue === 'string') {
+            englishDescription = enDescValue.toLowerCase();
+          }
+        }
+        
+        // Search in both localized and English names
+        const nameMatchLocalized = localizedName.includes(searchTerm);
+        const nameMatchEnglish = englishName && englishName.includes(searchTerm);
+        const nameMatch = nameMatchLocalized || nameMatchEnglish;
+        
+        // Search in both localized and English descriptions
+        const localizedDescription = app.description.toLowerCase();
+        const descMatchLocalized = localizedDescription.includes(searchTerm);
+        const descMatchEnglish = englishDescription && englishDescription.includes(searchTerm);
+        const descMatch = descMatchLocalized || descMatchEnglish;
+        
         if (nameMatch || descMatch) {
           results.push({
             type: 'app',
@@ -204,12 +317,12 @@ window.Shell = (() => {
             name: app.name,
             icon: app.icon,
             description: app.description,
-            matchScore: nameMatch ? 2 : 1
+            matchScore: nameMatchLocalized ? 3 : (nameMatchEnglish ? 2 : (descMatch ? 1 : 0))
           });
         }
       });
 
-      // Sort by relevance (name matches first)
+      // Sort by relevance (localized name matches first, then English, then description)
       results.sort((a, b) => b.matchScore - a.matchScore);
 
       displaySearchResults(results, query);
@@ -227,7 +340,7 @@ window.Shell = (() => {
       } else {
         menu.innerHTML = `
           <div style="padding: 8px 12px; font-size: 0.85rem; color: var(--muted); border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 4px;">
-            ${results.length} result${results.length > 1 ? 's' : ''} found
+            ${I18n.t('shell.searchResultsFound', { count: results.length, plural: results.length > 1 ? 's' : '' })}
           </div>
           ${results.map(result => `
             <div class="search-result-item" data-type="${result.type}" data-id="${result.id}" style="
@@ -377,7 +490,10 @@ window.Shell = (() => {
         if (categoryApps.length > 0) {
           const btn = document.createElement('button');
           const folderIcon = category === 'games' ? '🎮' : '📁';
-          btn.innerHTML = `<div style="font-size:1.2rem">${folderIcon}</div><div>${category.charAt(0).toUpperCase() + category.slice(1)}</div>`;
+          // Get localized category name
+          const categoryNameKey = `categories.${category}`;
+          const categoryName = I18n.t(categoryNameKey) !== categoryNameKey ? I18n.t(categoryNameKey) : category.charAt(0).toUpperCase() + category.slice(1);
+          btn.innerHTML = `<div style="font-size:1.2rem">${folderIcon}</div><div>${categoryName}</div>`;
           btn.addEventListener('click', ()=>{
             // Open the folder app for this category
             if (category === 'games') {
@@ -455,6 +571,69 @@ window.Shell = (() => {
           
           // Show description window
           const id = 'app-info-' + Date.now();
+          
+          function updateAppInfoContent() {
+            const currentApp = Apps.get(appId);
+            if (!currentApp) return;
+            
+            const win = document.querySelector(`[data-win-id="${id}"]`);
+            if (!win) return;
+            
+            const contentDiv = win.querySelector('.win-content');
+            if (!contentDiv) return;
+            
+            contentDiv.innerHTML = `
+              <div style="padding:8px;">
+                <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+                  <div style="font-size:2rem">${currentApp.icon || '🟦'}</div>
+                  <div>
+                    <div style="font-weight:600; font-size:1.1rem">${currentApp.name}</div>
+                    <div style="color:#a7a7a7; font-size:.85rem">${appId}</div>
+                  </div>
+                </div>
+                <hr />
+                <div style="margin-top:12px;">
+                  <div style="color:#a7a7a7; font-size:.9rem; margin-bottom:6px">${I18n.t('apps.appInfoDescription')}</div>
+                  <div style="color:#e6e6e6; line-height:1.5">${currentApp.description || I18n.t('apps.appInfoNoDescription')}</div>
+                </div>
+                <div style="margin-top:16px; display:flex; gap:8px;">
+                  <button id="app-info-open" style="background:var(--accent); color:#fff; border:none; border-radius:6px; padding:8px 16px; cursor:pointer; flex:1">${I18n.t('apps.open')}</button>
+                  <button id="app-info-close" style="background:var(--panel-2); color:#ddd; border:none; border-radius:6px; padding:8px 16px; cursor:pointer">${I18n.t('apps.close')}</button>
+                </div>
+              </div>
+            `;
+            
+            // Re-attach event listeners
+            const openBtn = contentDiv.querySelector('#app-info-open');
+            const closeBtn = contentDiv.querySelector('#app-info-close');
+            if (openBtn) {
+              openBtn.addEventListener('click', () => {
+                WindowManager.closeWindow(id);
+                Apps.open(appId);
+              });
+            }
+            if (closeBtn) {
+              closeBtn.addEventListener('click', () => {
+                WindowManager.closeWindow(id);
+              });
+            }
+            
+            // Update window title
+            const titleBar = win.querySelector('.win-title');
+            if (titleBar) {
+              titleBar.textContent = `${I18n.t('apps.appInfo')} - ${currentApp.name}`;
+            }
+            
+            // Update windowAppMap entry
+            if (window.Shell && window.Shell.windowAppMap) {
+              const entry = window.Shell.windowAppMap.get(id);
+              if (entry) {
+                entry.titleKey = 'apps.appInfo';
+                entry.extraData = { appName: currentApp.name };
+              }
+            }
+          }
+          
           const content = `
             <div style="padding:8px;">
               <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
@@ -466,19 +645,19 @@ window.Shell = (() => {
               </div>
               <hr />
               <div style="margin-top:12px;">
-                <div style="color:#a7a7a7; font-size:.9rem; margin-bottom:6px">Description:</div>
-                <div style="color:#e6e6e6; line-height:1.5">${app.description || 'No description available.'}</div>
+                <div style="color:#a7a7a7; font-size:.9rem; margin-bottom:6px">${I18n.t('apps.appInfoDescription')}</div>
+                <div style="color:#e6e6e6; line-height:1.5">${app.description || I18n.t('apps.appInfoNoDescription')}</div>
               </div>
               <div style="margin-top:16px; display:flex; gap:8px;">
-                <button id="app-info-open" style="background:var(--accent); color:#fff; border:none; border-radius:6px; padding:8px 16px; cursor:pointer; flex:1">Open</button>
-                <button id="app-info-close" style="background:var(--panel-2); color:#ddd; border:none; border-radius:6px; padding:8px 16px; cursor:pointer">Close</button>
+                <button id="app-info-open" style="background:var(--accent); color:#fff; border:none; border-radius:6px; padding:8px 16px; cursor:pointer; flex:1">${I18n.t('apps.open')}</button>
+                <button id="app-info-close" style="background:var(--panel-2); color:#ddd; border:none; border-radius:6px; padding:8px 16px; cursor:pointer">${I18n.t('apps.close')}</button>
               </div>
             </div>
           `;
           
           const win = WindowManager.makeWindow({ 
             id, 
-            title: `App Info - ${app.name}`, 
+            title: `${I18n.t('apps.appInfo')} - ${app.name}`, 
             content, 
             width: 400, 
             height: 280 
@@ -498,7 +677,20 @@ window.Shell = (() => {
             WindowManager.closeWindow(id);
           });
           
-          Bus.emit('app:opened', { id, title: `App Info - ${app.name}`, icon: 'ℹ️' });
+          // Listen for locale changes
+          const localeChangeHandler = () => {
+            updateAppInfoContent();
+          };
+          const unsubscribeLocale = Bus.on('locale:changed', localeChangeHandler);
+          
+          // Clean up listener when window is closed
+          Bus.once('wm:closed', (payload) => {
+            if (payload.id === id) {
+              unsubscribeLocale();
+            }
+          });
+          
+          Bus.emit('app:opened', { id, title: `${I18n.t('apps.appInfo')} - ${app.name}`, icon: 'ℹ️' });
         }, true);
       });
     }, 100); // Small delay to ensure DOM is ready
@@ -704,8 +896,19 @@ window.Shell = (() => {
 
     // Task buttons for windows
     const mapTaskBtn = new Map();
+    // Store app metadata for windows to update titles on locale change
+    const windowAppMap = new Map(); // winId -> { appId, titleKey, icon, extraData }
+    // Expose globally for apps to update (e.g., editor filename changes)
+    window.windowAppMap = windowAppMap;
+    
     function ensureTaskButton(id, title, icon='🟦') {
-      if (mapTaskBtn.has(id)) return mapTaskBtn.get(id);
+      if (mapTaskBtn.has(id)) {
+        const btn = mapTaskBtn.get(id);
+        // Update title if it changed
+        const titleSpan = btn.querySelector('.title');
+        if (titleSpan) titleSpan.textContent = title;
+        return btn;
+      }
       const btn = document.createElement('button');
       btn.className = 'task-button';
       btn.innerHTML = `<span>${icon}</span><span class="title">${title}</span>`;
@@ -728,10 +931,128 @@ window.Shell = (() => {
       return btn;
     }
 
-    Bus.on('app:opened', ({ id, title, icon })=>{
+    // Function to update UI elements when locale changes
+    function updateUIOnLocaleChange() {
+      // Update static UI elements
+      if (searchInput) {
+        searchInput.placeholder = I18n.t('shell.searchPlaceholder');
+        searchInput.setAttribute('aria-label', I18n.t('shell.searchAriaLabel'));
+      }
+      if (taskList) {
+        taskList.setAttribute('aria-label', I18n.t('shell.openWindowsAriaLabel'));
+      }
+      if (taskbar) {
+        taskbar.setAttribute('aria-label', I18n.t('shell.taskbarAriaLabel'));
+      }
+      if (localeSwitcher) {
+        localeSwitcher.setAttribute('aria-label', I18n.t('shell.languageAriaLabel'));
+      }
+      const startTitle = document.querySelector('.start-title');
+      if (startTitle) {
+        startTitle.textContent = I18n.t('shell.startMenu');
+      }
+      const clockContainer = document.getElementById('task-clock-container');
+      if (clockContainer) {
+        clockContainer.title = I18n.t('shell.clockTooltip');
+      }
+      
+      // Update desktop icons
+      updateDesktopIcons();
+      
+      // Update window titles
+      windowAppMap.forEach((appData, winId) => {
+        const win = WindowManager.findWindow(winId);
+        if (!win) return;
+        
+        const titleEl = win.querySelector('.win-title');
+        if (!titleEl) return;
+        
+        let newTitle = '';
+        if (appData.titleKey) {
+          // Use translation key
+          newTitle = I18n.t(appData.titleKey);
+          // Add extra data if needed (like filename for editor)
+          if (appData.extraData) {
+            if (appData.extraData.filename) {
+              newTitle += ` - ${appData.extraData.filename}`;
+            } else if (appData.extraData.name) {
+              newTitle += ` - ${appData.extraData.name}`;
+            }
+          }
+        } else if (appData.appId) {
+          // Fallback: try to get app name
+          const app = Apps.get(appData.appId);
+          if (app) {
+            newTitle = app.name;
+          }
+        }
+        
+        if (newTitle) {
+          titleEl.textContent = newTitle;
+        }
+        
+        // Update window button tooltips
+        const minBtn = win.querySelector('.min');
+        const maxBtn = win.querySelector('.max');
+        const closeBtn = win.querySelector('.close');
+        if (minBtn) minBtn.title = I18n.t('window.minimize');
+        if (maxBtn) maxBtn.title = I18n.t('window.maximize');
+        if (closeBtn) closeBtn.title = I18n.t('window.close');
+      });
+      
+      // Update taskbar button titles
+      mapTaskBtn.forEach((btn, winId) => {
+        const appData = windowAppMap.get(winId);
+        if (!appData) return;
+        
+        const titleSpan = btn.querySelector('.title');
+        if (!titleSpan) return;
+        
+        let newTitle = '';
+        if (appData.titleKey) {
+          newTitle = I18n.t(appData.titleKey);
+          if (appData.extraData) {
+            if (appData.extraData.filename) {
+              newTitle += ` - ${appData.extraData.filename}`;
+            } else if (appData.extraData.name) {
+              newTitle += ` - ${appData.extraData.name}`;
+            }
+          }
+        } else if (appData.appId) {
+          const app = Apps.get(appData.appId);
+          if (app) {
+            newTitle = app.name;
+          }
+        }
+        
+        if (newTitle) {
+          titleSpan.textContent = newTitle;
+        }
+      });
+      
+      // Update start menu (app names might need refresh)
+      renderStart();
+    }
+
+    Bus.on('app:opened', ({ id, title, icon, appId, titleKey, extraData })=>{
       const btn = ensureTaskButton(id, title, icon);
       taskList.querySelectorAll('.task-button').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active');
+      
+      // Store app metadata for locale updates
+      if (appId || titleKey) {
+        windowAppMap.set(id, { appId, titleKey, icon, extraData });
+      }
+    });
+    
+    // Listen for locale changes
+    Bus.on('locale:changed', ({ locale }) => {
+      // Update current locale reference
+      currentLocale = locale;
+      // Update all UI elements
+      updateUIOnLocaleChange();
+      // Update clock
+      updateClock();
     });
     Bus.on('wm:focus', ({ id })=>{
       const btn = mapTaskBtn.get(id); if (!btn) return;

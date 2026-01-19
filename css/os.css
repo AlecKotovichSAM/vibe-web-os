@@ -300,14 +300,22 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
 }
 
 #start-menu {
-  position:absolute; left:8px; bottom:52px; width:320px; background:var(--panel);
+  position:absolute; left:8px; bottom:52px; width:max-content; min-width:320px; max-width:450px; background:var(--panel);
   border-radius:10px; box-shadow:var(--shadow); padding:10px; display:none;
 }
 #start-menu[aria-hidden="false"] { display:block; }
 .start-title { font-weight:600; margin-bottom:8px; }
-.start-apps { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.start-apps { display:grid; grid-template-columns:repeat(3,minmax(min-content,1fr)); gap:8px; width:fit-content; }
 .start-apps button {
-  background:var(--panel-2); border:none; border-radius:8px; padding:10px; color:var(--text); cursor:pointer; text-align:left;
+  background:var(--panel-2); border:none; border-radius:8px; padding:10px; color:var(--text); cursor:pointer; text-align:center;
+  display:flex; flex-direction:column; align-items:center; gap:6px; min-width:fit-content; width:auto;
+}
+.start-apps button > div:first-child {
+  font-size:1.2rem; flex-shrink:0;
+}
+.start-apps button > div:last-child {
+  font-size:0.85rem; word-wrap:break-word; overflow-wrap:break-word; hyphens:auto;
+  line-height:1.2; text-align:center; white-space:normal;
 }
 .start-apps button:hover{ outline:2px solid var(--accent); }
 

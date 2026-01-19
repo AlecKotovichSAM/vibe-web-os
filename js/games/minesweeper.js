@@ -1,8 +1,10 @@
 Apps.register({
   id: 'minesweeper',
   name: 'Minesweeper',
+  nameKey: 'games.minesweeper.title',
   icon: '💣',
   description: 'Classic puzzle game. Find all mines without detonating them.',
+  descriptionKey: 'games.minesweeper.description',
   category: 'games',
   singleton: true,
   launch() {
@@ -31,11 +33,11 @@ Apps.register({
         <div style="display:flex; flex-direction:column; height:100%; gap:12px; padding:8px;">
           <div style="display:flex; gap:8px; align-items:center; justify-content:space-between;">
             <div style="display:flex; gap:8px; align-items:center;">
-              <label style="color:var(--text); font-size:.9rem;">Difficulty:</label>
+              <label style="color:var(--text); font-size:.9rem;">${I18n.t('games.minesweeper.beginner')}:</label>
               <select id="minesweeper-difficulty" style="padding:6px; background:var(--panel-2); color:var(--text); border:1px solid var(--accent); border-radius:4px; cursor:pointer;">
-                <option value="beginner">Beginner</option>
-                <option value="intermediate">Intermediate</option>
-                <option value="expert">Expert</option>
+                <option value="beginner">${I18n.t('games.minesweeper.beginner')}</option>
+                <option value="intermediate">${I18n.t('games.minesweeper.intermediate')}</option>
+                <option value="expert">${I18n.t('games.minesweeper.expert')}</option>
               </select>
             </div>
             <div style="display:flex; gap:8px; align-items:center;">
@@ -334,9 +336,37 @@ Apps.register({
 
     win.querySelector('#minesweeper-status').addEventListener('click', resetGame);
 
+    // Function to update UI elements on locale change
+    function updateUIOnLocaleChange() {
+      const difficultyLabel = win.querySelector('label');
+      const difficultySelect = win.querySelector('#minesweeper-difficulty');
+      if (difficultyLabel) {
+        difficultyLabel.textContent = I18n.t('games.minesweeper.beginner') + ':';
+      }
+      if (difficultySelect) {
+        const currentValue = difficultySelect.value;
+        difficultySelect.querySelector('option[value="beginner"]').textContent = I18n.t('games.minesweeper.beginner');
+        difficultySelect.querySelector('option[value="intermediate"]').textContent = I18n.t('games.minesweeper.intermediate');
+        difficultySelect.querySelector('option[value="expert"]').textContent = I18n.t('games.minesweeper.expert');
+        difficultySelect.value = currentValue;
+      }
+    }
+
+    // Listen for locale changes
+    const unsubscribeLocale = Bus.on('locale:changed', () => {
+      updateUIOnLocaleChange();
+    });
+
+    // Cleanup on window close
+    Bus.once('wm:closed', ({ id: closedId }) => {
+      if (closedId === id) {
+        unsubscribeLocale();
+      }
+    });
+
     initGame(currentDifficulty);
 
-    Bus.emit('app:opened', { id, title:'Minesweeper', icon:'💣' });
+    Bus.emit('app:opened', { id, title: I18n.t('games.minesweeper.title'), icon:'💣', appId: 'minesweeper', titleKey: 'games.minesweeper.title' });
     
     // Return window object for parent-child tracking
     return { id, win };

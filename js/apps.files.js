@@ -1,24 +1,26 @@
 Apps.register({
   id: 'files',
   name: 'Files',
+  nameKey: 'files.title',
   icon: '📁',
   description: 'Browse and manage your virtual file system. Create folders, files, and organize your documents.',
+  descriptionKey: 'files.description',
   singleton: true,
   launch() {
     const id = 'files-' + Date.now();
 
     const content = `
       <div style="display:flex; gap:8px; margin-bottom:8px; align-items:center; flex-wrap:wrap;">
-        <button id="btn-up">⬆️ Up</button>
-        <button id="btn-mkdir">📂 New Folder</button>
-        <button id="btn-newfile">📄 New File</button>
-        <button id="btn-view-toggle" title="Toggle View" data-view="list">☰</button>
+        <button id="btn-up">⬆️ ${I18n.t('files.up')}</button>
+        <button id="btn-mkdir">📂 ${I18n.t('files.newFolder')}</button>
+        <button id="btn-newfile">📄 ${I18n.t('files.newFile')}</button>
+        <button id="btn-view-toggle" title="${I18n.t('files.toggleView')}" data-view="list">☰</button>
         <input id="path" type="text" readonly style="flex:1; min-width:0;" />
       </div>
       <div id="list"></div>
     `;
 
-    const win = WindowManager.makeWindow({ id, title:'Files', content, width:640, height:420 });
+    const win = WindowManager.makeWindow({ id, title: I18n.t('files.title'), content, width:640, height:420 });
 
     const pathInput = win.querySelector('#path');
     const listDiv = win.querySelector('#list');
@@ -98,7 +100,7 @@ Apps.register({
       try {
         const items = FS.ls(cwd);
         if (items.length === 0) {
-          rows = `<div class="app-empty">Empty folder</div>`;
+          rows = `<div class="app-empty">${I18n.t('files.emptyFolder')}</div>`;
         } else {
           if (viewMode === 'grid') {
             listDiv.className = 'file-grid';
@@ -121,7 +123,7 @@ Apps.register({
               <div class="grid-item" data-path="${i.path}" data-type="${i.type}">
                 ${iconContent}
                 <div class="grid-name">${i.name}</div>
-                <button class="grid-del" title="Delete" data-path="${i.path}">✕</button>
+                <button class="grid-del" title="${I18n.t('files.deleteFile')}" data-path="${i.path}">✕</button>
               </div>
             `;
             }).join('');
@@ -147,14 +149,14 @@ Apps.register({
                 ${iconContent}
                 <div style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${i.name}">${i.name}</div>
                 <div style="color:var(--muted); font-size:.85rem; flex-shrink:0; white-space:nowrap;">${i.mtime.slice(0,19).replace('T',' ')}</div>
-                <button class="del" title="Delete" style="background:var(--panel-2); color:var(--danger); border:none; border-radius:6px; padding:4px 8px; flex-shrink:0;">Delete</button>
+                <button class="del" title="${I18n.t('files.deleteFile')}" style="background:var(--panel-2); color:var(--danger); border:none; border-radius:6px; padding:4px 8px; flex-shrink:0;">${I18n.t('files.deleteFile')}</button>
               </div>
             `;
             }).join('');
           }
         }
       } catch (e) {
-        rows = `<div class="app-empty">Error: ${e.message}</div>`;
+        rows = `<div class="app-empty">${I18n.t('common.error')}: ${e.message}</div>`;
       }
       listDiv.innerHTML = rows;
     }
@@ -207,11 +209,47 @@ Apps.register({
         }
 
         const win2 = WindowManager.makeWindow({
-          id: id2, title: `Viewer - ${fileName}`,
+          id: id2, title: `${I18n.t('files.viewer')} - ${fileName}`,
           content: viewerContent,
           width: viewerWidth, height: viewerHeight
         });
-        Bus.emit('app:opened', { id: id2, title: 'Viewer', icon: viewerIcon });
+        
+        // Function to update viewer window title on locale change
+        function updateViewerTitle() {
+          const titleEl = win2.querySelector('.win-title');
+          if (titleEl) {
+            titleEl.textContent = `${I18n.t('files.viewer')} - ${fileName}`;
+          }
+          // Update taskbar button title
+          const taskBtn = document.querySelector(`[data-win-id="${id2}"]`)?.closest('.task-button');
+          if (taskBtn) {
+            const titleSpan = taskBtn.querySelector('.title');
+            if (titleSpan) {
+              titleSpan.textContent = `${I18n.t('files.viewer')} - ${fileName}`;
+            }
+          }
+        }
+        
+        // Listen for locale changes
+        const unsubscribeLocale = Bus.on('locale:changed', () => {
+          updateViewerTitle();
+        });
+        
+        // Cleanup on window close
+        Bus.once('wm:closed', ({ id: closedId }) => {
+          if (closedId === id2) {
+            unsubscribeLocale();
+          }
+        });
+        
+        Bus.emit('app:opened', { 
+          id: id2, 
+          title: `${I18n.t('files.viewer')} - ${fileName}`, 
+          icon: viewerIcon,
+          appId: 'files',
+          titleKey: 'files.viewer',
+          extraData: { name: fileName }
+        });
       }
     });
 
@@ -221,13 +259,13 @@ Apps.register({
     });
 
     win.querySelector('#btn-mkdir').addEventListener('click', ()=>{
-      const name = prompt('Folder name?'); if (!name) return;
+      const name = prompt(I18n.t('files.folderName') + '?'); if (!name) return;
       FS.mkdir(cwd, name); render();
     });
 
     win.querySelector('#btn-newfile').addEventListener('click', ()=>{
-      const name = prompt('File name?'); if (!name) return;
-      FS.write(cwd, name, 'New file'); render();
+      const name = prompt(I18n.t('files.fileName') + '?'); if (!name) return;
+      FS.write(cwd, name, I18n.t('files.newFile')); render();
     });
 
     win.querySelector('#btn-view-toggle').addEventListener('click', ()=>{
@@ -237,7 +275,35 @@ Apps.register({
       render();
     });
 
+    // Function to update UI elements on locale change
+    function updateUIOnLocaleChange() {
+      const btnUp = win.querySelector('#btn-up');
+      const btnMkdir = win.querySelector('#btn-mkdir');
+      const btnNewfile = win.querySelector('#btn-newfile');
+      const btnViewToggle = win.querySelector('#btn-view-toggle');
+      
+      if (btnUp) btnUp.textContent = `⬆️ ${I18n.t('files.up')}`;
+      if (btnMkdir) btnMkdir.textContent = `📂 ${I18n.t('files.newFolder')}`;
+      if (btnNewfile) btnNewfile.textContent = `📄 ${I18n.t('files.newFile')}`;
+      if (btnViewToggle) btnViewToggle.title = I18n.t('files.toggleView');
+      
+      // Re-render to update delete buttons and empty folder message
+      render();
+    }
+
+    // Listen for locale changes
+    const unsubscribeLocale = Bus.on('locale:changed', () => {
+      updateUIOnLocaleChange();
+    });
+
+    // Cleanup on window close
+    Bus.once('wm:closed', ({ id: closedId }) => {
+      if (closedId === id) {
+        unsubscribeLocale();
+      }
+    });
+
     render();
-    Bus.emit('app:opened', { id, title:'Files', icon:'📁' });
+    Bus.emit('app:opened', { id, title: I18n.t('files.title'), icon:'📁', appId: 'files', titleKey: 'files.title' });
   }
 });

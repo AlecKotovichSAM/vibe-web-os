@@ -1,5 +1,8 @@
 
 (function boot(){
+  // Initialize i18n system first
+  I18n.init();
+
   const boot = document.getElementById('boot-screen');
   const bar = boot.querySelector('.bar');
   const hint = boot.querySelector('.hint');

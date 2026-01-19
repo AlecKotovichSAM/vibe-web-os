@@ -2,16 +2,42 @@
 window.Apps = (() => {
   const registry = new Map();
 
-  function register({ id, name, icon, description = '', category = '', singleton = true, launch }) {
-    registry.set(id, { id, name, icon, description, category, singleton, launch });
+  function register({ id, name, nameKey, icon, description = '', descriptionKey, category = '', singleton = true, launch }) {
+    registry.set(id, { id, name, nameKey, icon, description, descriptionKey, category, singleton, launch });
+  }
+
+  // Get localized name for an app
+  function getLocalizedName(app) {
+    if (app.nameKey && window.I18n) {
+      return I18n.t(app.nameKey);
+    }
+    return app.name || '';
+  }
+
+  // Get localized description for an app
+  function getLocalizedDescription(app) {
+    if (app.descriptionKey && window.I18n) {
+      return I18n.t(app.descriptionKey);
+    }
+    return app.description || '';
   }
 
   function list() {
-    return Array.from(registry.values());
+    return Array.from(registry.values()).map(app => ({
+      ...app,
+      name: getLocalizedName(app),
+      description: getLocalizedDescription(app)
+    }));
   }
 
   function listByCategory(category) {
-    return Array.from(registry.values()).filter(app => app.category === category);
+    return Array.from(registry.values())
+      .filter(app => app.category === category)
+      .map(app => ({
+        ...app,
+        name: getLocalizedName(app),
+        description: getLocalizedDescription(app)
+      }));
   }
 
   function getCategories() {
@@ -23,7 +49,13 @@ window.Apps = (() => {
   }
 
   function get(id) {
-    return registry.get(id);
+    const app = registry.get(id);
+    if (!app) return null;
+    return {
+      ...app,
+      name: getLocalizedName(app),
+      description: getLocalizedDescription(app)
+    };
   }
 
   // Find existing window for a singleton app
