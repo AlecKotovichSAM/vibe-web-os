@@ -34,9 +34,15 @@ window.I18n_FR = {
     close: 'Fermer'
   },
 
+  // Categories
+  categories: {
+    games: 'Jeux'
+  },
+
   // Files App
   files: {
     title: 'Fichiers',
+    description: 'Parcourez et gérez votre système de fichiers virtuel. Créez des dossiers, des fichiers et organisez vos documents.',
     up: 'Haut',
     newFolder: 'Nouveau dossier',
     newFile: 'Nouveau fichier',
@@ -55,6 +61,7 @@ window.I18n_FR = {
   // Notes App
   notes: {
     title: 'Notes',
+    description: 'Un éditeur de texte simple pour prendre des notes. Vos notes sont automatiquement enregistrées dans le stockage local.',
     save: 'Enregistrer',
     saved: 'Enregistré',
     notSaved: 'Non enregistré',
@@ -65,6 +72,7 @@ window.I18n_FR = {
   // Text Editor App
   editor: {
     title: 'Éditeur de texte',
+    description: 'Créez et modifiez des fichiers texte. Enregistrez vos documents dans le système de fichiers.',
     save: 'Enregistrer',
     saveAs: 'Enregistrer sous...',
     placeholder: 'Commencez à taper...',
@@ -79,6 +87,7 @@ window.I18n_FR = {
   // Settings App
   settings: {
     title: 'Paramètres',
+    description: 'Configurez l\'apparence de votre Web OS et gérez le stockage. Changez les thèmes et réinitialisez le système de fichiers.',
     appearance: 'Apparence',
     theme: 'Thème',
     themeDark: 'Sombre',
@@ -99,6 +108,7 @@ window.I18n_FR = {
   // Browser App
   browser: {
     title: 'PageNotFound Explorer',
+    description: 'Le navigateur qui trouve toujours des pages 404 ! Chaque URL mène nulle part. C\'est une fonctionnalité, pas un bug !',
     back: 'Retour',
     forward: 'Avancer',
     refresh: 'Actualiser',
@@ -111,14 +121,17 @@ window.I18n_FR = {
 
   // Date/Time App
   datetime: {
-    title: 'Date et Heure'
+    title: 'Date et Heure',
+    description: 'Afficher et gérer les paramètres de date et d\'heure. Calendrier et horloge style Windows XP.'
   },
 
   // Games
   games: {
     folder: 'Jeux',
+    folderDescription: 'Dossier de jeux',
     minesweeper: {
       title: 'Démineur',
+      description: 'Jeu de puzzle classique. Trouvez toutes les mines sans les faire exploser.',
       newGame: 'Nouvelle partie',
       beginner: 'Débutant',
       intermediate: 'Intermédiaire',

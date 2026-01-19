@@ -34,9 +34,15 @@ window.I18n_DE = {
     close: 'Schließen'
   },
 
+  // Categories
+  categories: {
+    games: 'Spiele'
+  },
+
   // Files App
   files: {
     title: 'Dateien',
+    description: 'Durchsuchen und verwalten Sie Ihr virtuelles Dateisystem. Erstellen Sie Ordner, Dateien und organisieren Sie Ihre Dokumente.',
     up: 'Nach oben',
     newFolder: 'Neuer Ordner',
     newFile: 'Neue Datei',
@@ -55,6 +61,7 @@ window.I18n_DE = {
   // Notes App
   notes: {
     title: 'Notizen',
+    description: 'Ein einfacher Texteditor zum Erstellen von Notizen. Ihre Notizen werden automatisch im lokalen Speicher gespeichert.',
     save: 'Speichern',
     saved: 'Gespeichert',
     notSaved: 'Nicht gespeichert',
@@ -65,6 +72,7 @@ window.I18n_DE = {
   // Text Editor App
   editor: {
     title: 'Texteditor',
+    description: 'Erstellen und bearbeiten Sie Textdateien. Speichern Sie Ihre Dokumente im Dateisystem.',
     save: 'Speichern',
     saveAs: 'Speichern unter...',
     placeholder: 'Beginnen Sie zu tippen...',
@@ -79,6 +87,7 @@ window.I18n_DE = {
   // Settings App
   settings: {
     title: 'Einstellungen',
+    description: 'Konfigurieren Sie das Erscheinungsbild Ihres Web-OS und verwalten Sie den Speicher. Ändern Sie Designs und setzen Sie das Dateisystem zurück.',
     appearance: 'Erscheinungsbild',
     theme: 'Design',
     themeDark: 'Dunkel',
@@ -99,6 +108,7 @@ window.I18n_DE = {
   // Browser App
   browser: {
     title: 'PageNotFound Explorer',
+    description: 'Der Browser, der immer 404-Seiten findet! Jede URL führt ins Nichts. Das ist ein Feature, kein Fehler!',
     back: 'Zurück',
     forward: 'Vorwärts',
     refresh: 'Aktualisieren',
@@ -111,14 +121,17 @@ window.I18n_DE = {
 
   // Date/Time App
   datetime: {
-    title: 'Datum und Uhrzeit'
+    title: 'Datum und Uhrzeit',
+    description: 'Anzeigen und Verwalten von Datums- und Zeiteinstellungen. Windows XP-Stil Kalender und Uhr.'
   },
 
   // Games
   games: {
     folder: 'Spiele',
+    folderDescription: 'Spieleordner',
     minesweeper: {
       title: 'Minesweeper',
+      description: 'Klassisches Puzzlespiel. Finden Sie alle Minen, ohne sie zu detonieren.',
       newGame: 'Neues Spiel',
       beginner: 'Anfänger',
       intermediate: 'Fortgeschritten',

@@ -1,8 +1,10 @@
 Apps.register({
     id: 'editor',
     name: 'Text Editor',
+    nameKey: 'editor.title',
     icon: '📄',
     description: 'Create and edit text files. Save your documents to the file system.',
+    descriptionKey: 'editor.description',
     singleton: false,
     launch() {
       const id = 'text-editor-' + Date.now();

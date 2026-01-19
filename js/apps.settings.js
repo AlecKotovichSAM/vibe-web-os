@@ -1,8 +1,10 @@
 Apps.register({
   id: 'settings',
   name: 'Settings',
+  nameKey: 'settings.title',
   icon: '⚙️',
   description: 'Configure your Web OS appearance and manage storage. Change themes and reset the file system.',
+  descriptionKey: 'settings.description',
   singleton: true,
   launch() {
     const id = 'settings-' + Date.now();

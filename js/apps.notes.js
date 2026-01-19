@@ -1,8 +1,10 @@
 Apps.register({
   id: 'notes',
   name: 'Notes',
+  nameKey: 'notes.title',
   icon: '📝',
   description: 'A simple text editor for taking notes. Your notes are automatically saved to local storage.',
+  descriptionKey: 'notes.description',
   singleton: true,
   launch() {
     const id = 'notes-' + Date.now();

@@ -34,9 +34,15 @@ window.I18n_IT = {
     close: 'Chiudi'
   },
 
+  // Categories
+  categories: {
+    games: 'Giochi'
+  },
+
   // Files App
   files: {
     title: 'File',
+    description: 'Sfoglia e gestisci il tuo file system virtuale. Crea cartelle, file e organizza i tuoi documenti.',
     up: 'Su',
     newFolder: 'Nuova cartella',
     newFile: 'Nuovo file',
@@ -55,6 +61,7 @@ window.I18n_IT = {
   // Notes App
   notes: {
     title: 'Note',
+    description: 'Un semplice editor di testo per prendere appunti. Le tue note vengono salvate automaticamente nella memoria locale.',
     save: 'Salva',
     saved: 'Salvato',
     notSaved: 'Non salvato',
@@ -65,6 +72,7 @@ window.I18n_IT = {
   // Text Editor App
   editor: {
     title: 'Editor di testo',
+    description: 'Crea e modifica file di testo. Salva i tuoi documenti nel file system.',
     save: 'Salva',
     saveAs: 'Salva con nome...',
     placeholder: 'Inizia a digitare...',
@@ -79,6 +87,7 @@ window.I18n_IT = {
   // Settings App
   settings: {
     title: 'Impostazioni',
+    description: 'Configura l\'aspetto del tuo Web OS e gestisci lo storage. Cambia temi e reimposta il file system.',
     appearance: 'Aspetto',
     theme: 'Tema',
     themeDark: 'Scuro',
@@ -99,6 +108,7 @@ window.I18n_IT = {
   // Browser App
   browser: {
     title: 'PageNotFound Explorer',
+    description: 'Il browser che trova sempre pagine 404! Ogni URL porta da nessuna parte. È una funzionalità, non un bug!',
     back: 'Indietro',
     forward: 'Avanti',
     refresh: 'Aggiorna',
@@ -111,14 +121,17 @@ window.I18n_IT = {
 
   // Date/Time App
   datetime: {
-    title: 'Data e Ora'
+    title: 'Data e Ora',
+    description: 'Visualizza e gestisci le impostazioni di data e ora. Calendario e orologio in stile Windows XP.'
   },
 
   // Games
   games: {
     folder: 'Giochi',
+    folderDescription: 'Cartella giochi',
     minesweeper: {
       title: 'Campo minato',
+      description: 'Gioco di puzzle classico. Trova tutte le mine senza farle esplodere.',
       newGame: 'Nuova partita',
       beginner: 'Principiante',
       intermediate: 'Intermedio',

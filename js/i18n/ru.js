@@ -34,9 +34,15 @@ window.I18n_RU = {
     close: 'Закрыть'
   },
 
+  // Categories
+  categories: {
+    games: 'Игры'
+  },
+
   // Files App
   files: {
     title: 'Файлы',
+    description: 'Просматривайте и управляйте вашей виртуальной файловой системой. Создавайте папки, файлы и организуйте ваши документы.',
     up: 'Вверх',
     newFolder: 'Новая папка',
     newFile: 'Новый файл',
@@ -55,6 +61,7 @@ window.I18n_RU = {
   // Notes App
   notes: {
     title: 'Заметки',
+    description: 'Простой текстовый редактор для создания заметок. Ваши заметки автоматически сохраняются в локальное хранилище.',
     save: 'Сохранить',
     saved: 'Сохранено',
     notSaved: 'Не сохранено',
@@ -65,6 +72,7 @@ window.I18n_RU = {
   // Text Editor App
   editor: {
     title: 'Текстовый редактор',
+    description: 'Создавайте и редактируйте текстовые файлы. Сохраняйте ваши документы в файловую систему.',
     save: 'Сохранить',
     saveAs: 'Сохранить как...',
     placeholder: 'Начните вводить...',
@@ -79,6 +87,7 @@ window.I18n_RU = {
   // Settings App
   settings: {
     title: 'Настройки',
+    description: 'Настройте внешний вид вашего Web OS и управляйте хранилищем. Изменяйте темы и сбрасывайте файловую систему.',
     appearance: 'Внешний вид',
     theme: 'Тема',
     themeDark: 'Темная',
@@ -99,6 +108,7 @@ window.I18n_RU = {
   // Browser App
   browser: {
     title: 'PageNotFound Explorer',
+    description: 'Браузер, который всегда находит страницы 404! Каждый URL ведет в никуда. Это функция, а не ошибка!',
     back: 'Назад',
     forward: 'Вперед',
     refresh: 'Обновить',
@@ -111,14 +121,17 @@ window.I18n_RU = {
 
   // Date/Time App
   datetime: {
-    title: 'Дата и время'
+    title: 'Дата и время',
+    description: 'Просмотр и управление настройками даты и времени. Календарь и часы в стиле Windows XP.'
   },
 
   // Games
   games: {
     folder: 'Игры',
+    folderDescription: 'Папка игр',
     minesweeper: {
       title: 'Сапер',
+      description: 'Классическая головоломка. Найдите все мины, не взорвав их.',
       newGame: 'Новая игра',
       beginner: 'Новичок',
       intermediate: 'Средний',

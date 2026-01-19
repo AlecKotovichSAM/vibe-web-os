@@ -1,8 +1,10 @@
 Apps.register({
   id: 'browser',
   name: 'PageNotFound Explorer',
+  nameKey: 'browser.title',
   icon: '🌐',
   description: 'The browser that always finds 404 pages! Every URL leads to nowhere. It\'s a feature, not a bug!',
+  descriptionKey: 'browser.description',
   singleton: true,
   launch() {
     const id = 'browser-' + Date.now();

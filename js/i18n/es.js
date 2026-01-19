@@ -34,9 +34,15 @@ window.I18n_ES = {
     close: 'Cerrar'
   },
 
+  // Categories
+  categories: {
+    games: 'Juegos'
+  },
+
   // Files App
   files: {
     title: 'Archivos',
+    description: 'Explorar y administrar su sistema de archivos virtual. Crear carpetas, archivos y organizar sus documentos.',
     up: 'Arriba',
     newFolder: 'Nueva carpeta',
     newFile: 'Nuevo archivo',
@@ -55,6 +61,7 @@ window.I18n_ES = {
   // Notes App
   notes: {
     title: 'Notas',
+    description: 'Un editor de texto simple para tomar notas. Sus notas se guardan automáticamente en el almacenamiento local.',
     save: 'Guardar',
     saved: 'Guardado',
     notSaved: 'No guardado',
@@ -65,6 +72,7 @@ window.I18n_ES = {
   // Text Editor App
   editor: {
     title: 'Editor de texto',
+    description: 'Crear y editar archivos de texto. Guardar sus documentos en el sistema de archivos.',
     save: 'Guardar',
     saveAs: 'Guardar como...',
     placeholder: 'Comience a escribir...',
@@ -79,6 +87,7 @@ window.I18n_ES = {
   // Settings App
   settings: {
     title: 'Configuración',
+    description: 'Configurar la apariencia de su Web OS y administrar el almacenamiento. Cambiar temas y restablecer el sistema de archivos.',
     appearance: 'Apariencia',
     theme: 'Tema',
     themeDark: 'Oscuro',
@@ -99,6 +108,7 @@ window.I18n_ES = {
   // Browser App
   browser: {
     title: 'PageNotFound Explorer',
+    description: '¡El navegador que siempre encuentra páginas 404! Cada URL lleva a ninguna parte. ¡Es una característica, no un error!',
     back: 'Atrás',
     forward: 'Adelante',
     refresh: 'Actualizar',
@@ -111,14 +121,17 @@ window.I18n_ES = {
 
   // Date/Time App
   datetime: {
-    title: 'Fecha y Hora'
+    title: 'Fecha y Hora',
+    description: 'Ver y administrar la configuración de fecha y hora. Calendario y reloj estilo Windows XP.'
   },
 
   // Games
   games: {
     folder: 'Juegos',
+    folderDescription: 'Carpeta de juegos',
     minesweeper: {
       title: 'Buscaminas',
+      description: 'Juego de rompecabezas clásico. Encuentra todas las minas sin detonarlas.',
       newGame: 'Nuevo juego',
       beginner: 'Principiante',
       intermediate: 'Intermedio',

@@ -1,8 +1,10 @@
 Apps.register({
   id: 'datetime',
   name: 'Date and Time',
+  nameKey: 'datetime.title',
   icon: '🕐',
   description: 'View and manage date and time settings. Windows XP style calendar and clock.',
+  descriptionKey: 'datetime.description',
   singleton: true,
   launch() {
     const id = 'datetime-' + Date.now();

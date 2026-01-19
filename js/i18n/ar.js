@@ -34,9 +34,15 @@ window.I18n_AR = {
     close: 'إغلاق'
   },
 
+  // Categories
+  categories: {
+    games: 'ألعاب'
+  },
+
   // Files App
   files: {
     title: 'الملفات',
+    description: 'تصفح وإدارة نظام الملفات الافتراضي الخاص بك. إنشاء مجلدات وملفات وتنظيم مستنداتك.',
     up: 'أعلى',
     newFolder: 'مجلد جديد',
     newFile: 'ملف جديد',
@@ -55,6 +61,7 @@ window.I18n_AR = {
   // Notes App
   notes: {
     title: 'الملاحظات',
+    description: 'محرر نصوص بسيط لتدوين الملاحظات. يتم حفظ ملاحظاتك تلقائيًا في التخزين المحلي.',
     save: 'حفظ',
     saved: 'تم الحفظ',
     notSaved: 'لم يتم الحفظ',
@@ -65,6 +72,7 @@ window.I18n_AR = {
   // Text Editor App
   editor: {
     title: 'محرر النصوص',
+    description: 'إنشاء وتحرير ملفات النصوص. حفظ مستنداتك في نظام الملفات.',
     save: 'حفظ',
     saveAs: 'حفظ باسم...',
     placeholder: 'ابدأ الكتابة...',
@@ -79,6 +87,7 @@ window.I18n_AR = {
   // Settings App
   settings: {
     title: 'الإعدادات',
+    description: 'تكوين مظهر Web OS الخاص بك وإدارة التخزين. تغيير السمات وإعادة تعيين نظام الملفات.',
     appearance: 'المظهر',
     theme: 'المظهر',
     themeDark: 'داكن',
@@ -99,6 +108,7 @@ window.I18n_AR = {
   // Browser App
   browser: {
     title: 'PageNotFound Explorer',
+    description: 'المتصفح الذي يجد دائمًا صفحات 404! كل رابط يؤدي إلى لا مكان. إنها ميزة وليست خطأ!',
     back: 'رجوع',
     forward: 'تقدم',
     refresh: 'تحديث',
@@ -111,14 +121,17 @@ window.I18n_AR = {
 
   // Date/Time App
   datetime: {
-    title: 'التاريخ والوقت'
+    title: 'التاريخ والوقت',
+    description: 'عرض وإدارة إعدادات التاريخ والوقت. تقويم وساعة على طراز Windows XP.'
   },
 
   // Games
   games: {
-    folder: 'الألعاب',
+    folder: 'ألعاب',
+    folderDescription: 'مجلد الألعاب',
     minesweeper: {
-      title: 'كشف الألغام',
+      title: 'كاسح الألغام',
+      description: 'لعبة ألغاز كلاسيكية. ابحث عن جميع الألغام دون تفجيرها.',
       newGame: 'لعبة جديدة',
       beginner: 'مبتدئ',
       intermediate: 'متوسط',

@@ -34,9 +34,15 @@ window.I18n_JA = {
     close: '閉じる'
   },
 
+  // Categories
+  categories: {
+    games: 'ゲーム'
+  },
+
   // Files App
   files: {
     title: 'ファイル',
+    description: '仮想ファイルシステムを閲覧および管理します。フォルダやファイルを作成し、ドキュメントを整理します。',
     up: '上へ',
     newFolder: '新しいフォルダ',
     newFile: '新しいファイル',
@@ -55,6 +61,7 @@ window.I18n_JA = {
   // Notes App
   notes: {
     title: 'メモ',
+    description: 'メモを取るためのシンプルなテキストエディタ。メモは自動的にローカルストレージに保存されます。',
     save: '保存',
     saved: '保存済み',
     notSaved: '未保存',
@@ -65,6 +72,7 @@ window.I18n_JA = {
   // Text Editor App
   editor: {
     title: 'テキストエディタ',
+    description: 'テキストファイルを作成および編集します。ドキュメントをファイルシステムに保存します。',
     save: '保存',
     saveAs: '名前を付けて保存...',
     placeholder: '入力開始...',
@@ -79,6 +87,7 @@ window.I18n_JA = {
   // Settings App
   settings: {
     title: '設定',
+    description: 'Web OSの外観を設定し、ストレージを管理します。テーマを変更し、ファイルシステムをリセットします。',
     appearance: '外観',
     theme: 'テーマ',
     themeDark: 'ダーク',
@@ -99,6 +108,7 @@ window.I18n_JA = {
   // Browser App
   browser: {
     title: 'PageNotFound Explorer',
+    description: '常に404ページを見つけるブラウザ！すべてのURLがどこにもつながりません。これは機能であり、バグではありません！',
     back: '戻る',
     forward: '進む',
     refresh: '更新',
@@ -111,14 +121,17 @@ window.I18n_JA = {
 
   // Date/Time App
   datetime: {
-    title: '日付と時刻'
+    title: '日付と時刻',
+    description: '日付と時刻の設定を表示および管理します。Windows XPスタイルのカレンダーと時計。'
   },
 
   // Games
   games: {
     folder: 'ゲーム',
+    folderDescription: 'ゲームフォルダ',
     minesweeper: {
       title: 'マインスイーパー',
+      description: 'クラシックなパズルゲーム。すべての地雷を見つけて爆発させないようにします。',
       newGame: '新しいゲーム',
       beginner: '初級',
       intermediate: '中級',

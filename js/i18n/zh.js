@@ -34,9 +34,15 @@ window.I18n_ZH = {
     close: '关闭'
   },
 
+  // Categories
+  categories: {
+    games: '游戏'
+  },
+
   // Files App
   files: {
     title: '文件',
+    description: '浏览和管理您的虚拟文件系统。创建文件夹、文件并组织您的文档。',
     up: '向上',
     newFolder: '新建文件夹',
     newFile: '新建文件',
@@ -55,6 +61,7 @@ window.I18n_ZH = {
   // Notes App
   notes: {
     title: '笔记',
+    description: '一个简单的文本编辑器，用于记笔记。您的笔记会自动保存到本地存储。',
     save: '保存',
     saved: '已保存',
     notSaved: '未保存',
@@ -65,6 +72,7 @@ window.I18n_ZH = {
   // Text Editor App
   editor: {
     title: '文本编辑器',
+    description: '创建和编辑文本文件。将您的文档保存到文件系统。',
     save: '保存',
     saveAs: '另存为...',
     placeholder: '开始输入...',
@@ -79,6 +87,7 @@ window.I18n_ZH = {
   // Settings App
   settings: {
     title: '设置',
+    description: '配置您的Web OS外观并管理存储。更改主题并重置文件系统。',
     appearance: '外观',
     theme: '主题',
     themeDark: '深色',
@@ -99,6 +108,7 @@ window.I18n_ZH = {
   // Browser App
   browser: {
     title: 'PageNotFound Explorer',
+    description: '总是找到404页面的浏览器！每个URL都无处可去。这是一个功能，而不是错误！',
     back: '后退',
     forward: '前进',
     refresh: '刷新',
@@ -111,14 +121,17 @@ window.I18n_ZH = {
 
   // Date/Time App
   datetime: {
-    title: '日期和时间'
+    title: '日期和时间',
+    description: '查看和管理日期和时间设置。Windows XP风格的日历和时钟。'
   },
 
   // Games
   games: {
     folder: '游戏',
+    folderDescription: '游戏文件夹',
     minesweeper: {
       title: '扫雷',
+      description: '经典益智游戏。找到所有地雷而不引爆它们。',
       newGame: '新游戏',
       beginner: '初级',
       intermediate: '中级',

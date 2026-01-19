@@ -34,9 +34,15 @@ window.I18n_KO = {
     close: '닫기'
   },
 
+  // Categories
+  categories: {
+    games: '게임'
+  },
+
   // Files App
   files: {
     title: '파일',
+    description: '가상 파일 시스템을 탐색하고 관리합니다. 폴더와 파일을 만들고 문서를 구성합니다.',
     up: '위로',
     newFolder: '새 폴더',
     newFile: '새 파일',
@@ -55,6 +61,7 @@ window.I18n_KO = {
   // Notes App
   notes: {
     title: '메모',
+    description: '메모를 작성하기 위한 간단한 텍스트 편집기. 메모는 자동으로 로컬 스토리지에 저장됩니다.',
     save: '저장',
     saved: '저장됨',
     notSaved: '저장되지 않음',
@@ -65,6 +72,7 @@ window.I18n_KO = {
   // Text Editor App
   editor: {
     title: '텍스트 편집기',
+    description: '텍스트 파일을 만들고 편집합니다. 문서를 파일 시스템에 저장합니다.',
     save: '저장',
     saveAs: '다른 이름으로 저장...',
     placeholder: '입력 시작...',
@@ -79,6 +87,7 @@ window.I18n_KO = {
   // Settings App
   settings: {
     title: '설정',
+    description: 'Web OS의 모양을 구성하고 스토리지를 관리합니다. 테마를 변경하고 파일 시스템을 재설정합니다.',
     appearance: '모양',
     theme: '테마',
     themeDark: '다크',
@@ -99,6 +108,7 @@ window.I18n_KO = {
   // Browser App
   browser: {
     title: 'PageNotFound Explorer',
+    description: '항상 404 페이지를 찾는 브라우저! 모든 URL이 아무 곳으로도 연결되지 않습니다. 이것은 기능이며 버그가 아닙니다!',
     back: '뒤로',
     forward: '앞으로',
     refresh: '새로고침',
@@ -111,14 +121,17 @@ window.I18n_KO = {
 
   // Date/Time App
   datetime: {
-    title: '날짜 및 시간'
+    title: '날짜 및 시간',
+    description: '날짜 및 시간 설정을 보기 및 관리합니다. Windows XP 스타일의 캘린더와 시계.'
   },
 
   // Games
   games: {
     folder: '게임',
+    folderDescription: '게임 폴더',
     minesweeper: {
       title: '지뢰 찾기',
+      description: '클래식 퍼즐 게임. 모든 지뢰를 찾아 폭발시키지 마세요.',
       newGame: '새 게임',
       beginner: '초급',
       intermediate: '중급',

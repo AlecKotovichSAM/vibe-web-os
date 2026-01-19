@@ -34,9 +34,15 @@ window.I18n_PT = {
     close: 'Fechar'
   },
 
+  // Categories
+  categories: {
+    games: 'Jogos'
+  },
+
   // Files App
   files: {
     title: 'Arquivos',
+    description: 'Navegar e gerenciar seu sistema de arquivos virtual. Criar pastas, arquivos e organizar seus documentos.',
     up: 'Acima',
     newFolder: 'Nova pasta',
     newFile: 'Novo arquivo',
@@ -55,6 +61,7 @@ window.I18n_PT = {
   // Notes App
   notes: {
     title: 'Notas',
+    description: 'Um editor de texto simples para fazer anotações. Suas notas são salvas automaticamente no armazenamento local.',
     save: 'Salvar',
     saved: 'Salvo',
     notSaved: 'Não salvo',
@@ -65,6 +72,7 @@ window.I18n_PT = {
   // Text Editor App
   editor: {
     title: 'Editor de texto',
+    description: 'Criar e editar arquivos de texto. Salvar seus documentos no sistema de arquivos.',
     save: 'Salvar',
     saveAs: 'Salvar como...',
     placeholder: 'Comece a digitar...',
@@ -79,6 +87,7 @@ window.I18n_PT = {
   // Settings App
   settings: {
     title: 'Configurações',
+    description: 'Configurar a aparência do seu Web OS e gerenciar o armazenamento. Alterar temas e redefinir o sistema de arquivos.',
     appearance: 'Aparência',
     theme: 'Tema',
     themeDark: 'Escuro',
@@ -99,6 +108,7 @@ window.I18n_PT = {
   // Browser App
   browser: {
     title: 'PageNotFound Explorer',
+    description: 'O navegador que sempre encontra páginas 404! Cada URL leva a lugar nenhum. É um recurso, não um bug!',
     back: 'Voltar',
     forward: 'Avançar',
     refresh: 'Atualizar',
@@ -111,14 +121,17 @@ window.I18n_PT = {
 
   // Date/Time App
   datetime: {
-    title: 'Data e Hora'
+    title: 'Data e Hora',
+    description: 'Visualizar e gerenciar configurações de data e hora. Calendário e relógio estilo Windows XP.'
   },
 
   // Games
   games: {
     folder: 'Jogos',
+    folderDescription: 'Pasta de jogos',
     minesweeper: {
       title: 'Campo Minado',
+      description: 'Jogo de quebra-cabeça clássico. Encontre todas as minas sem detoná-las.',
       newGame: 'Novo jogo',
       beginner: 'Iniciante',
       intermediate: 'Intermediário',

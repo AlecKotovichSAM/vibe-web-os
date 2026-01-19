@@ -2,8 +2,10 @@
 Apps.register({
   id: 'games-folder',
   name: 'Games',
+  nameKey: 'games.folder',
   icon: '🎮',
   description: 'Games folder',
+  descriptionKey: 'games.folderDescription',
   category: '',
   singleton: true,
   launch() {
@@ -147,6 +149,69 @@ Apps.register({
           if (!app) return;
           
           const infoId = 'app-info-' + Date.now();
+          
+          function updateAppInfoContent() {
+            const currentApp = Apps.get(appId);
+            if (!currentApp) return;
+            
+            const win = document.querySelector(`[data-win-id="${infoId}"]`);
+            if (!win) return;
+            
+            const contentDiv = win.querySelector('.win-content');
+            if (!contentDiv) return;
+            
+            contentDiv.innerHTML = `
+              <div style="padding:8px;">
+                <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+                  <div style="font-size:2rem">${currentApp.icon || '🟦'}</div>
+                  <div>
+                    <div style="font-weight:600; font-size:1.1rem">${currentApp.name}</div>
+                    <div style="color:#a7a7a7; font-size:.85rem">${appId}</div>
+                  </div>
+                </div>
+                <hr />
+                <div style="margin-top:12px;">
+                  <div style="color:#a7a7a7; font-size:.9rem; margin-bottom:6px">${I18n.t('apps.appInfoDescription')}</div>
+                  <div style="color:#e6e6e6; line-height:1.5">${currentApp.description || I18n.t('apps.appInfoNoDescription')}</div>
+                </div>
+                <div style="margin-top:16px; display:flex; gap:8px;">
+                  <button id="app-info-open" style="background:var(--accent); color:#fff; border:none; border-radius:6px; padding:8px 16px; cursor:pointer; flex:1">${I18n.t('apps.open')}</button>
+                  <button id="app-info-close" style="background:var(--panel-2); color:#ddd; border:none; border-radius:6px; padding:8px 16px; cursor:pointer">${I18n.t('apps.close')}</button>
+                </div>
+              </div>
+            `;
+            
+            // Re-attach event listeners
+            const openBtn = contentDiv.querySelector('#app-info-open');
+            const closeBtn = contentDiv.querySelector('#app-info-close');
+            if (openBtn) {
+              openBtn.addEventListener('click', () => {
+                WindowManager.closeWindow(infoId);
+                Apps.open(appId, { parentId: id });
+              });
+            }
+            if (closeBtn) {
+              closeBtn.addEventListener('click', () => {
+                WindowManager.closeWindow(infoId);
+              });
+            }
+            
+            // Update window title
+            const titleBar = win.querySelector('.win-title');
+            if (titleBar) {
+              titleBar.textContent = `${I18n.t('apps.appInfo')} - ${currentApp.name}`;
+            }
+            
+            // Update windowAppMap entry
+            if (window.Shell && window.Shell.windowAppMap) {
+              const entry = window.Shell.windowAppMap.get(infoId);
+              if (entry) {
+                entry.titleKey = 'apps.appInfo';
+                entry.extraData = { appName: currentApp.name };
+              }
+            }
+          }
+          
           const content = `
             <div style="padding:8px;">
               <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
@@ -158,12 +223,12 @@ Apps.register({
               </div>
               <hr />
               <div style="margin-top:12px;">
-                <div style="color:#a7a7a7; font-size:.9rem; margin-bottom:6px">Description:</div>
-                <div style="color:#e6e6e6; line-height:1.5">${app.description || 'No description available.'}</div>
+                <div style="color:#a7a7a7; font-size:.9rem; margin-bottom:6px">${I18n.t('apps.appInfoDescription')}</div>
+                <div style="color:#e6e6e6; line-height:1.5">${app.description || I18n.t('apps.appInfoNoDescription')}</div>
               </div>
               <div style="margin-top:16px; display:flex; gap:8px;">
-                <button id="app-info-open" style="background:var(--accent); color:#fff; border:none; border-radius:6px; padding:8px 16px; cursor:pointer; flex:1">Open</button>
-                <button id="app-info-close" style="background:var(--panel-2); color:#ddd; border:none; border-radius:6px; padding:8px 16px; cursor:pointer">Close</button>
+                <button id="app-info-open" style="background:var(--accent); color:#fff; border:none; border-radius:6px; padding:8px 16px; cursor:pointer; flex:1">${I18n.t('apps.open')}</button>
+                <button id="app-info-close" style="background:var(--panel-2); color:#ddd; border:none; border-radius:6px; padding:8px 16px; cursor:pointer">${I18n.t('apps.close')}</button>
               </div>
             </div>
           `;
@@ -188,6 +253,19 @@ Apps.register({
           
           infoWin.querySelector('#app-info-close').addEventListener('click', () => {
             WindowManager.closeWindow(infoId);
+          });
+          
+          // Listen for locale changes
+          const localeChangeHandler = () => {
+            updateAppInfoContent();
+          };
+          const unsubscribeLocale = Bus.on('locale:changed', localeChangeHandler);
+          
+          // Clean up listener when window is closed
+          Bus.once('wm:closed', (payload) => {
+            if (payload.id === infoId) {
+              unsubscribeLocale();
+            }
           });
           
           Bus.emit('app:opened', { id: infoId, title: `${I18n.t('apps.appInfo')} - ${app.name}`, icon: 'ℹ️' });

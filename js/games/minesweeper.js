@@ -1,8 +1,10 @@
 Apps.register({
   id: 'minesweeper',
   name: 'Minesweeper',
+  nameKey: 'games.minesweeper.title',
   icon: '💣',
   description: 'Classic puzzle game. Find all mines without detonating them.',
+  descriptionKey: 'games.minesweeper.description',
   category: 'games',
   singleton: true,
   launch() {

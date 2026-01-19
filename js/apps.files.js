@@ -1,8 +1,10 @@
 Apps.register({
   id: 'files',
   name: 'Files',
+  nameKey: 'files.title',
   icon: '📁',
   description: 'Browse and manage your virtual file system. Create folders, files, and organize your documents.',
+  descriptionKey: 'files.description',
   singleton: true,
   launch() {
     const id = 'files-' + Date.now();

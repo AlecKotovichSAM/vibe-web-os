@@ -34,9 +34,15 @@ window.I18n_EN = {
     close: 'Close'
   },
 
+  // Categories
+  categories: {
+    games: 'Games'
+  },
+
   // Files App
   files: {
     title: 'Files',
+    description: 'Browse and manage your virtual file system. Create folders, files, and organize your documents.',
     up: 'Up',
     newFolder: 'New Folder',
     newFile: 'New File',
@@ -55,6 +61,7 @@ window.I18n_EN = {
   // Notes App
   notes: {
     title: 'Notes',
+    description: 'A simple text editor for taking notes. Your notes are automatically saved to local storage.',
     save: 'Save',
     saved: 'Saved',
     notSaved: 'Not saved',
@@ -65,6 +72,7 @@ window.I18n_EN = {
   // Text Editor App
   editor: {
     title: 'Text Editor',
+    description: 'Create and edit text files. Save your documents to the file system.',
     save: 'Save',
     saveAs: 'Save As...',
     placeholder: 'Start typing...',
@@ -79,6 +87,7 @@ window.I18n_EN = {
   // Settings App
   settings: {
     title: 'Settings',
+    description: 'Configure your Web OS appearance and manage storage. Change themes and reset the file system.',
     appearance: 'Appearance',
     theme: 'Theme',
     themeDark: 'Dark',
@@ -99,6 +108,7 @@ window.I18n_EN = {
   // Browser App
   browser: {
     title: 'PageNotFound Explorer',
+    description: 'The browser that always finds 404 pages! Every URL leads to nowhere. It\'s a feature, not a bug!',
     back: 'Back',
     forward: 'Forward',
     refresh: 'Refresh',
@@ -111,14 +121,17 @@ window.I18n_EN = {
 
   // Date/Time App
   datetime: {
-    title: 'Date and Time'
+    title: 'Date and Time',
+    description: 'View and manage date and time settings. Windows XP style calendar and clock.'
   },
 
   // Games
   games: {
     folder: 'Games',
+    folderDescription: 'Games folder',
     minesweeper: {
       title: 'Minesweeper',
+      description: 'Classic puzzle game. Find all mines without detonating them.',
       newGame: 'New Game',
       beginner: 'Beginner',
       intermediate: 'Intermediate',
