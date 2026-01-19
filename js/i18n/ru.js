@@ -125,6 +125,14 @@ window.I18n_RU = {
     description: 'Просмотр и управление настройками даты и времени. Календарь и часы в стиле Windows XP.'
   },
 
+  // Calculator App
+  calculator: {
+    title: 'Калькулятор',
+    description: 'Простой калькулятор для базовых арифметических операций.',
+    clear: 'Очистить',
+    divisionByZero: 'Деление на ноль'
+  },
+
   // Games
   games: {
     folder: 'Игры',

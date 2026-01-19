@@ -125,6 +125,14 @@ window.I18n_AR = {
     description: 'عرض وإدارة إعدادات التاريخ والوقت. تقويم وساعة على طراز Windows XP.'
   },
 
+  // Calculator App
+  calculator: {
+    title: 'آلة حاسبة',
+    description: 'آلة حاسبة بسيطة للعمليات الحسابية الأساسية.',
+    clear: 'مسح',
+    divisionByZero: 'القسمة على صفر'
+  },
+
   // Games
   games: {
     folder: 'ألعاب',

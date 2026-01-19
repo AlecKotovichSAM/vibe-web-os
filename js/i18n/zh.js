@@ -125,6 +125,14 @@ window.I18n_ZH = {
     description: '查看和管理日期和时间设置。Windows XP风格的日历和时钟。'
   },
 
+  // Calculator App
+  calculator: {
+    title: '计算器',
+    description: '用于基本算术运算的简单计算器。',
+    clear: '清除',
+    divisionByZero: '除以零'
+  },
+
   // Games
   games: {
     folder: '游戏',

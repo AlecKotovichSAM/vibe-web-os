@@ -125,6 +125,14 @@ window.I18n_FR = {
     description: 'Afficher et gérer les paramètres de date et d\'heure. Calendrier et horloge style Windows XP.'
   },
 
+  // Calculator App
+  calculator: {
+    title: 'Calculatrice',
+    description: 'Une calculatrice simple pour les opérations arithmétiques de base.',
+    clear: 'Effacer',
+    divisionByZero: 'Division par zéro'
+  },
+
   // Games
   games: {
     folder: 'Jeux',
