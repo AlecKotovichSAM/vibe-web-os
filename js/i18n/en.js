@@ -125,6 +125,14 @@ window.I18n_EN = {
     description: 'View and manage date and time settings. Windows XP style calendar and clock.'
   },
 
+  // Calculator App
+  calculator: {
+    title: 'Calculator',
+    description: 'A simple calculator for basic arithmetic operations.',
+    clear: 'Clear',
+    divisionByZero: 'Division by zero'
+  },
+
   // Games
   games: {
     folder: 'Games',

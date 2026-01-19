@@ -125,6 +125,14 @@ window.I18n_JA = {
     description: '日付と時刻の設定を表示および管理します。Windows XPスタイルのカレンダーと時計。'
   },
 
+  // Calculator App
+  calculator: {
+    title: '電卓',
+    description: '基本的な算術演算用のシンプルな電卓。',
+    clear: 'クリア',
+    divisionByZero: 'ゼロ除算'
+  },
+
   // Games
   games: {
     folder: 'ゲーム',

@@ -125,6 +125,14 @@ window.I18n_DE = {
     description: 'Anzeigen und Verwalten von Datums- und Zeiteinstellungen. Windows XP-Stil Kalender und Uhr.'
   },
 
+  // Calculator App
+  calculator: {
+    title: 'Taschenrechner',
+    description: 'Ein einfacher Taschenrechner für grundlegende Rechenoperationen.',
+    clear: 'Löschen',
+    divisionByZero: 'Division durch Null'
+  },
+
   // Games
   games: {
     folder: 'Spiele',

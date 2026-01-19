@@ -125,6 +125,14 @@ window.I18n_KO = {
     description: '날짜 및 시간 설정을 보기 및 관리합니다. Windows XP 스타일의 캘린더와 시계.'
   },
 
+  // Calculator App
+  calculator: {
+    title: '계산기',
+    description: '기본 산술 연산을 위한 간단한 계산기.',
+    clear: '지우기',
+    divisionByZero: '영으로 나누기'
+  },
+
   // Games
   games: {
     folder: '게임',

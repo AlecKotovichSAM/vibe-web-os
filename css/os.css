@@ -322,6 +322,54 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
 }
 .start-apps button:hover{ outline:2px solid var(--accent); }
 
+/* Calculator buttons */
+.calc-btn {
+  background:var(--panel-2);
+  border:1px solid rgba(255,255,255,0.1);
+  border-radius:8px;
+  color:var(--text);
+  font-size:1.1rem;
+  font-weight:600;
+  cursor:pointer;
+  transition:all 0.2s;
+  padding:10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.calc-btn:hover {
+  background:var(--panel);
+  border-color:var(--accent);
+  transform:scale(1.02);
+}
+.calc-btn:active {
+  transform:scale(0.98);
+}
+.calc-btn-op {
+  background:var(--accent);
+  color:#fff;
+}
+.calc-btn-op:hover {
+  background:var(--accent);
+  opacity:0.9;
+}
+.calc-btn-equals {
+  background:var(--accent);
+  color:#fff;
+}
+.calc-btn-equals:hover {
+  background:var(--accent);
+  opacity:0.9;
+}
+.calc-btn-clear {
+  background:var(--danger);
+  color:#fff;
+}
+.calc-btn-clear:hover {
+  background:var(--danger);
+  opacity:0.9;
+}
+
 #window-layer { 
   position:absolute; inset:0 0 44px 0;
   pointer-events: none; /* Allow clicks to pass through when no windows */
