@@ -533,7 +533,8 @@ window.Shell = (() => {
       // Group apps by category
       const categories = Apps.getCategories();
       // Special system apps that should always appear in start menu (like Files)
-      const systemApps = ['files'];
+      // sysinfo should be first, then files
+      const systemApps = ['sysinfo', 'files'];
       // Hidden apps that should not appear in start menu or desktop (like datetime)
       const hiddenApps = ['datetime'];
       
@@ -548,7 +549,9 @@ window.Shell = (() => {
       );
       
       // Ensure system apps are always included (add them first)
-      systemApps.forEach(systemAppId => {
+      // Process in reverse order so first item in array appears first in list
+      for (let i = systemApps.length - 1; i >= 0; i--) {
+        const systemAppId = systemApps[i];
         const systemApp = Apps.get(systemAppId);
         if (systemApp) {
           // Add at the beginning (no need to check for duplicates since we filtered them out)
@@ -556,7 +559,7 @@ window.Shell = (() => {
         } else {
           console.warn('System app not found:', systemAppId);
         }
-      });
+      }
       
       // Show uncategorized apps first
       uncategorizedApps.forEach(app => {

@@ -1244,6 +1244,56 @@ html:not([data-theme]) .datetime-calendar-table td.today.selected {
   transition: transform 0.1s linear;
 }
 
+/* System Information App Styles */
+.sysinfo-tab {
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+.sysinfo-tab:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+.sysinfo-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.sysinfo-section {
+  margin-bottom: 24px;
+}
+.sysinfo-section h3 {
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--panel);
+}
+.sysinfo-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--panel-2);
+  font-size: 0.9rem;
+}
+.sysinfo-row span:first-child {
+  color: var(--muted);
+  font-weight: 500;
+}
+.sysinfo-row span:last-child {
+  color: var(--text);
+  text-align: right;
+  word-break: break-word;
+  max-width: 60%;
+}
+
 /* Dark theme - invert digital clock colors */
 html:not([data-theme]) #datetime-digital-clock {
   background: #316ac5 !important;
