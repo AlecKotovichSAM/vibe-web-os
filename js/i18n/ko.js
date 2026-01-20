@@ -22,7 +22,35 @@ window.I18n_KO = {
     minimize: '최소화',
     maximize: '최대화',
     close: '닫기',
-    restore: '복원'
+    restore: '복원',
+    menu: {
+      file: '파일',
+      edit: '편집',
+      view: '보기',
+      help: '도움말',
+      new: '새로 만들기',
+      open: '열기',
+      save: '저장',
+      saveAs: '다른 이름으로 저장...',
+      close: '닫기',
+      exit: '종료',
+      undo: '실행 취소',
+      redo: '다시 실행',
+      cut: '잘라내기',
+      copy: '복사',
+      paste: '붙여넣기',
+      selectAll: '모두 선택',
+      find: '찾기',
+      replace: '바꾸기',
+      zoomIn: '확대',
+      zoomOut: '축소',
+      zoomReset: '확대/축소 재설정',
+      about: '정보',
+      download: '다운로드'
+    },
+    statusBar: {
+      ready: '준비됨'
+    }
   },
 
   // Apps - Common
@@ -181,5 +209,30 @@ window.I18n_KO = {
     loading: '로딩 중...',
     error: '오류',
     success: '성공'
+  },
+
+  // File Save (Generic)
+  filesave: {
+    savedAt: '{time}에 저장됨',
+    modifiedNotSaved: '수정됨 - 저장되지 않음',
+    error: '오류: {message}',
+    errorEmptyFilename: '오류: 파일 이름을 비울 수 없습니다',
+    saveAsPrompt: '파일 이름 입력:',
+    openPrompt: '파일 경로 입력:',
+    opened: '열림: {name}'
+  },
+
+  // Draw App
+  draw: {
+    title: '그리기',
+    description: '그림을 만들고 편집합니다. 가벼운 페인트 애플리케이션.',
+    tool: {
+      pencil: '연필'
+    },
+    color: '색상',
+    lineWidth: '선 두께',
+    confirmNew: '새 그림을 만들겠습니까? 현재 그림이 지워집니다.',
+    newFileNotSaved: '새 파일 - 저장되지 않음',
+    about: '그리기 - 가벼운 페인트 애플리케이션\n\n연필 도구를 사용하여 캔버스에 그립니다.\n필요에 따라 선 두께와 색상을 조정하세요.'
   }
 };

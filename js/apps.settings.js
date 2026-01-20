@@ -127,6 +127,12 @@ Apps.register({
         document.documentElement.setAttribute('data-theme', name);
         document.documentElement.style.setProperty('--panel','#2f3b55');
         document.documentElement.style.setProperty('--panel-2','#3b4766');
+        document.documentElement.style.setProperty('--text','#e6e6e6');
+        // Remove other variables that might have been set by Light theme
+        document.documentElement.style.removeProperty('--bg');
+        document.documentElement.style.removeProperty('--muted');
+        document.documentElement.style.removeProperty('--accent');
+        document.documentElement.style.removeProperty('--shadow');
       } else if (name === 'high-contrast') {
         document.documentElement.setAttribute('data-theme', name);
         document.documentElement.style.setProperty('--bg','#000');

@@ -22,7 +22,35 @@ window.I18n_FR = {
     minimize: 'Réduire',
     maximize: 'Agrandir',
     close: 'Fermer',
-    restore: 'Restaurer'
+    restore: 'Restaurer',
+    menu: {
+      file: 'Fichier',
+      edit: 'Éditer',
+      view: 'Affichage',
+      help: 'Aide',
+      new: 'Nouveau',
+      open: 'Ouvrir',
+      save: 'Enregistrer',
+      saveAs: 'Enregistrer sous...',
+      close: 'Fermer',
+      exit: 'Quitter',
+      undo: 'Annuler',
+      redo: 'Refaire',
+      cut: 'Couper',
+      copy: 'Copier',
+      paste: 'Coller',
+      selectAll: 'Tout sélectionner',
+      find: 'Rechercher',
+      replace: 'Remplacer',
+      zoomIn: 'Zoom avant',
+      zoomOut: 'Zoom arrière',
+      zoomReset: 'Réinitialiser le zoom',
+      about: 'À propos',
+      download: 'Télécharger'
+    },
+    statusBar: {
+      ready: 'Prêt'
+    }
   },
 
   // Apps - Common
@@ -181,5 +209,30 @@ window.I18n_FR = {
     loading: 'Chargement...',
     error: 'Erreur',
     success: 'Succès'
+  },
+
+  // File Save (Generic)
+  filesave: {
+    savedAt: 'Enregistré à {time}',
+    modifiedNotSaved: 'Modifié - non enregistré',
+    error: 'Erreur: {message}',
+    errorEmptyFilename: 'Erreur: Le nom de fichier ne peut pas être vide',
+    saveAsPrompt: 'Entrez le nom de fichier:',
+    openPrompt: 'Entrez le chemin du fichier:',
+    opened: 'Ouvert: {name}'
+  },
+
+  // Draw App
+  draw: {
+    title: 'Dessin',
+    description: 'Créer et modifier des dessins. Une application de peinture légère.',
+    tool: {
+      pencil: 'Crayon'
+    },
+    color: 'Couleur',
+    lineWidth: 'Épaisseur de ligne',
+    confirmNew: 'Créer un nouveau dessin? Le dessin actuel sera effacé.',
+    newFileNotSaved: 'Nouveau fichier - non enregistré',
+    about: 'Dessin - Une application de peinture légère\n\nUtilisez l\'outil crayon pour dessiner sur la toile.\nAjustez l\'épaisseur de ligne et la couleur selon vos besoins.'
   }
 };

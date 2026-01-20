@@ -9,6 +9,7 @@
   --ok:#2ec27e;
   --danger:#ff6b6b;
   --shadow:0 10px 30px rgba(0,0,0,.35);
+  --canvas-bg:#ffffff;
 }
 
 * { box-sizing: border-box; }
@@ -392,7 +393,186 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
 }
 .win-btns .close { background:var(--danger); color:#fff; opacity:0.8; }
 .win-btns .close:hover { opacity:1; }
-.win-content { flex:1; padding:10px; overflow:auto; background:var(--bg); }
+.win-menubar {
+  background:var(--panel);
+  border-bottom:1px solid rgba(255,255,255,0.1);
+  display:flex;
+  align-items:center;
+  padding:0;
+  min-height:28px;
+  font-size:0.85rem;
+}
+.win-menu-item {
+  position:relative;
+  padding:4px 12px;
+  cursor:pointer;
+  color:var(--text);
+  user-select:none;
+  display:flex;
+  align-items:center;
+  transition:background 0.15s;
+}
+.win-menu-item:hover,
+.win-menu-item:focus {
+  background:var(--panel-2);
+  outline:none;
+}
+.win-menu-item[aria-expanded="true"] {
+  background:var(--accent);
+  color:#fff;
+}
+.win-menu-label {
+  font-weight:500;
+}
+.win-menu-dropdown {
+  position:absolute;
+  top:100%;
+  left:0;
+  background:var(--panel);
+  border:1px solid rgba(255,255,255,0.1);
+  border-radius:4px;
+  box-shadow:var(--shadow);
+  min-width:180px;
+  padding:4px 0;
+  display:none;
+  z-index:1000;
+}
+.win-menu-item[aria-expanded="true"] .win-menu-dropdown {
+  display:block;
+}
+.win-menu-dropdown-item {
+  padding:6px 24px 6px 12px;
+  cursor:pointer;
+  color:var(--text);
+  display:flex;
+  align-items:center;
+  gap:8px;
+  transition:background 0.15s;
+  position:relative;
+}
+.win-menu-dropdown-item:hover:not(.win-menu-separator) {
+  background:var(--panel-2);
+}
+.win-menu-dropdown-item[aria-disabled="true"] {
+  opacity:0.5;
+  cursor:not-allowed;
+}
+.win-menu-separator {
+  padding:4px 0;
+  cursor:default;
+}
+.win-menu-separator hr {
+  margin:0;
+  border:none;
+  border-top:1px solid rgba(255,255,255,0.1);
+}
+.win-menu-icon {
+  width:16px;
+  text-align:center;
+  font-size:0.9rem;
+}
+.win-menu-text {
+  flex:1;
+}
+.win-menu-shortcut {
+  color:var(--muted);
+  font-size:0.8rem;
+  margin-left:16px;
+}
+
+.win-toolbar {
+  background:var(--panel-2);
+  border-bottom:1px solid rgba(255,255,255,0.1);
+  display:flex;
+  align-items:center;
+  gap:4px;
+  padding:4px;
+  min-height:36px;
+}
+.win-toolbar-btn {
+  background:transparent;
+  border:none;
+  border-radius:4px;
+  padding:6px 10px;
+  cursor:pointer;
+  color:var(--text);
+  display:flex;
+  align-items:center;
+  gap:6px;
+  transition:background 0.15s;
+  font-size:0.85rem;
+}
+.win-toolbar-btn:hover:not(:disabled) {
+  background:var(--panel);
+}
+.win-toolbar-btn:active:not(:disabled) {
+  background:var(--accent);
+  color:#fff;
+}
+.win-toolbar-btn:disabled {
+  opacity:0.5;
+  cursor:not-allowed;
+}
+.win-toolbar-icon {
+  font-size:1rem;
+}
+.win-toolbar-label {
+  font-weight:500;
+}
+.win-toolbar-separator {
+  padding:0;
+  width:1px;
+  min-width:1px;
+  background:rgba(255,255,255,0.1);
+  cursor:default;
+}
+.win-toolbar-sep {
+  width:1px;
+  height:20px;
+  background:rgba(255,255,255,0.1);
+}
+
+.win-statusbar {
+  background:var(--panel-2);
+  border-top:1px solid rgba(255,255,255,0.1);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:4px 12px;
+  min-height:24px;
+  font-size:0.8rem;
+  color:var(--muted);
+}
+.win-statusbar-left {
+  flex:1;
+}
+.win-statusbar-center {
+  display:flex;
+  gap:16px;
+  align-items:center;
+}
+.win-statusbar-right {
+  text-align:right;
+}
+.win-statusbar-item {
+  padding:0 8px;
+  border-right:1px solid rgba(255,255,255,0.1);
+}
+.win-statusbar-item:last-child {
+  border-right:none;
+}
+
+.win-content { 
+  flex:1; 
+  padding:10px; 
+  overflow:auto; 
+  background:var(--bg);
+  min-height:0; /* Allow content to shrink when menu/toolbar/statusbar are present */
+}
+.win-content h3 {
+  color: var(--text);
+  margin: 0 0 12px 0;
+}
 .win-resize { position:absolute; right:0; bottom:0; width:12px; height:12px; cursor:nwse-resize; }
 
 .app-empty { color:var(--muted); padding:12px; }
@@ -843,6 +1023,10 @@ hr { border:0; border-top:1px solid var(--panel-2); margin:12px 0; }
 
 [data-theme="light"] hr {
   border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="classic"] .win-content h3 {
+  color: var(--text) !important;
 }
 
 /* File list row filename truncation */

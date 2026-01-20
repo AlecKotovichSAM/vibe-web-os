@@ -55,7 +55,7 @@ Apps.register({
     }
 
     const content = createContent();
-    const win = WindowManager.makeWindow({ id, title:'Minesweeper', content, width:450, height:550 });
+    const win = WindowManager.makeWindow({ id, title: I18n.t('games.minesweeper.title'), content, width:450, height:550 });
 
     function getCell(row, col) {
       return grid[row] && grid[row][col];

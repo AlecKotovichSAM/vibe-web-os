@@ -254,12 +254,28 @@ window.Shell = (() => {
       const searchTerm = query.toLowerCase().trim();
       const results = [];
       const currentLocale = I18n.getLocale();
+      const isSpecialCode = query.trim() === '10061981';
+      
+      // Special code to find hidden test app
+      if (isSpecialCode) {
+        const testApp = Apps.get('test');
+        if (testApp) {
+          results.push({
+            type: 'app',
+            id: testApp.id,
+            name: testApp.name,
+            icon: testApp.icon,
+            description: testApp.description,
+            matchScore: 100
+          });
+        }
+      }
       
       // Get English translations for fallback search
       const enTranslations = window.I18n_EN || {};
 
-      // Search apps
-      Apps.list().forEach(app => {
+      // Search apps (exclude hidden apps unless searching for special code)
+      Apps.list(isSpecialCode).forEach(app => {
         // Get localized name (current locale)
         const localizedName = app.name.toLowerCase();
         
@@ -1082,6 +1098,12 @@ window.Shell = (() => {
         document.documentElement.setAttribute('data-theme', name);
         document.documentElement.style.setProperty('--panel','#2f3b55');
         document.documentElement.style.setProperty('--panel-2','#3b4766');
+        document.documentElement.style.setProperty('--text','#e6e6e6');
+        // Remove other variables that might have been set by Light theme
+        document.documentElement.style.removeProperty('--bg');
+        document.documentElement.style.removeProperty('--muted');
+        document.documentElement.style.removeProperty('--accent');
+        document.documentElement.style.removeProperty('--shadow');
       } else if (name === 'high-contrast') {
         document.documentElement.setAttribute('data-theme', name);
         document.documentElement.style.setProperty('--bg','#000');

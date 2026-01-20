@@ -22,7 +22,35 @@ window.I18n_ZH = {
     minimize: '最小化',
     maximize: '最大化',
     close: '关闭',
-    restore: '还原'
+    restore: '还原',
+    menu: {
+      file: '文件',
+      edit: '编辑',
+      view: '查看',
+      help: '帮助',
+      new: '新建',
+      open: '打开',
+      save: '保存',
+      saveAs: '另存为...',
+      close: '关闭',
+      exit: '退出',
+      undo: '撤销',
+      redo: '重做',
+      cut: '剪切',
+      copy: '复制',
+      paste: '粘贴',
+      selectAll: '全选',
+      find: '查找',
+      replace: '替换',
+      zoomIn: '放大',
+      zoomOut: '缩小',
+      zoomReset: '重置缩放',
+      about: '关于',
+      download: '下载'
+    },
+    statusBar: {
+      ready: '就绪'
+    }
   },
 
   // Apps - Common
@@ -181,5 +209,30 @@ window.I18n_ZH = {
     loading: '加载中...',
     error: '错误',
     success: '成功'
+  },
+
+  // File Save (Generic)
+  filesave: {
+    savedAt: '保存于 {time}',
+    modifiedNotSaved: '已修改 - 未保存',
+    error: '错误: {message}',
+    errorEmptyFilename: '错误: 文件名不能为空',
+    saveAsPrompt: '输入文件名:',
+    openPrompt: '输入文件路径:',
+    opened: '已打开: {name}'
+  },
+
+  // Draw App
+  draw: {
+    title: '绘图',
+    description: '创建和编辑绘图。轻量级绘画应用程序。',
+    tool: {
+      pencil: '铅笔'
+    },
+    color: '颜色',
+    lineWidth: '线宽',
+    confirmNew: '创建新绘图？当前绘图将被清除。',
+    newFileNotSaved: '新文件 - 未保存',
+    about: '绘图 - 轻量级绘画应用程序\n\n使用铅笔工具在画布上绘图。\n根据需要调整线宽和颜色。'
   }
 };

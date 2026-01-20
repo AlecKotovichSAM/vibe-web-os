@@ -12,7 +12,28 @@ window.FS = (() => {
     ]
   };
 
-  const save = (tree) => localStorage.setItem(KEY, JSON.stringify(tree));
+  const save = (tree) => {
+    try {
+      const serialized = JSON.stringify(tree);
+      localStorage.setItem(KEY, serialized);
+    } catch (e) {
+      if (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014) {
+        // Calculate approximate size
+        const serialized = JSON.stringify(tree);
+        const sizeMB = (serialized.length / (1024 * 1024)).toFixed(2);
+        const sizeKB = (serialized.length / 1024).toFixed(2);
+        // Count files to help debug
+        let fileCount = 0;
+        function countFiles(node) {
+          if (node.type === 'file') fileCount++;
+          if (node.children) node.children.forEach(countFiles);
+        }
+        countFiles(tree);
+        throw new Error(`Storage quota exceeded. File system is ${sizeMB} MB (${sizeKB} KB) with ${fileCount} files. Please delete some files to free up space.`);
+      }
+      throw e;
+    }
+  };
   const load = () => JSON.parse(localStorage.getItem(KEY) || 'null') || defaultFS;
 
   let tree = load();

@@ -2,8 +2,8 @@
 window.Apps = (() => {
   const registry = new Map();
 
-  function register({ id, name, nameKey, icon, description = '', descriptionKey, category = '', singleton = true, launch }) {
-    registry.set(id, { id, name, nameKey, icon, description, descriptionKey, category, singleton, launch });
+  function register({ id, name, nameKey, icon, description = '', descriptionKey, category = '', singleton = true, hidden = false, launch }) {
+    registry.set(id, { id, name, nameKey, icon, description, descriptionKey, category, singleton, hidden, launch });
   }
 
   // Get localized name for an app
@@ -22,12 +22,14 @@ window.Apps = (() => {
     return app.description || '';
   }
 
-  function list() {
-    return Array.from(registry.values()).map(app => ({
-      ...app,
-      name: getLocalizedName(app),
-      description: getLocalizedDescription(app)
-    }));
+  function list(includeHidden = false) {
+    return Array.from(registry.values())
+      .filter(app => includeHidden || !app.hidden)
+      .map(app => ({
+        ...app,
+        name: getLocalizedName(app),
+        description: getLocalizedDescription(app)
+      }));
   }
 
   function listByCategory(category) {
