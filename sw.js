@@ -1,5 +1,5 @@
 
-const CACHE = 'webos-cache-v1';
+const CACHE = 'webos-cache-v2'; // Increment version to force cache update
 const ASSETS = [
   './',
   './index.html',
@@ -20,11 +20,47 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', e=>{
-  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));
+  e.waitUntil(
+    caches.open(CACHE).then(cache => {
+      return cache.addAll(ASSETS);
+    })
+  );
+  // Force the waiting service worker to become the active service worker
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', e=>{
+  e.waitUntil(
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(cacheName => {
+          // Delete old cache versions
+          if (cacheName !== CACHE) {
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
+  // Take control of all pages immediately
+  return self.clients.claim();
 });
 
 self.addEventListener('fetch', e=>{
+  // Network-first strategy: try network first, fallback to cache
   e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request))
+    fetch(e.request)
+      .then(response => {
+        // If network request succeeds, cache it and return
+        const responseToCache = response.clone();
+        caches.open(CACHE).then(cache => {
+          cache.put(e.request, responseToCache);
+        });
+        return response;
+      })
+      .catch(() => {
+        // If network fails, try cache
+        return caches.match(e.request);
+      })
   );
 });
