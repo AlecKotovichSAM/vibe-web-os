@@ -22,7 +22,35 @@ window.I18n_ES = {
     minimize: 'Minimizar',
     maximize: 'Maximizar',
     close: 'Cerrar',
-    restore: 'Restaurar'
+    restore: 'Restaurar',
+    menu: {
+      file: 'Archivo',
+      edit: 'Editar',
+      view: 'Ver',
+      help: 'Ayuda',
+      new: 'Nuevo',
+      open: 'Abrir',
+      save: 'Guardar',
+      saveAs: 'Guardar como...',
+      close: 'Cerrar',
+      exit: 'Salir',
+      undo: 'Deshacer',
+      redo: 'Rehacer',
+      cut: 'Cortar',
+      copy: 'Copiar',
+      paste: 'Pegar',
+      selectAll: 'Seleccionar todo',
+      find: 'Buscar',
+      replace: 'Reemplazar',
+      zoomIn: 'Acercar',
+      zoomOut: 'Alejar',
+      zoomReset: 'Restablecer zoom',
+      about: 'Acerca de',
+      download: 'Descargar'
+    },
+    statusBar: {
+      ready: 'Listo'
+    }
   },
 
   // Apps - Common
@@ -181,5 +209,30 @@ window.I18n_ES = {
     loading: 'Cargando...',
     error: 'Error',
     success: 'Éxito'
+  },
+
+  // File Save (Generic)
+  filesave: {
+    savedAt: 'Guardado a las {time}',
+    modifiedNotSaved: 'Modificado - no guardado',
+    error: 'Error: {message}',
+    errorEmptyFilename: 'Error: El nombre del archivo no puede estar vacío',
+    saveAsPrompt: 'Ingrese el nombre del archivo:',
+    openPrompt: 'Ingrese la ruta del archivo:',
+    opened: 'Abierto: {name}'
+  },
+
+  // Draw App
+  draw: {
+    title: 'Dibujar',
+    description: 'Crear y editar dibujos. Una aplicación de pintura ligera.',
+    tool: {
+      pencil: 'Lápiz'
+    },
+    color: 'Color',
+    lineWidth: 'Grosor de línea',
+    confirmNew: '¿Crear un nuevo dibujo? El dibujo actual se borrará.',
+    newFileNotSaved: 'Nuevo archivo - no guardado',
+    about: 'Dibujar - Una aplicación de pintura ligera\n\nUse la herramienta lápiz para dibujar en el lienzo.\nAjuste el grosor de línea y el color según sea necesario.'
   }
 };

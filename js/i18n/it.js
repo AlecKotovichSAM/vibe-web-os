@@ -22,7 +22,35 @@ window.I18n_IT = {
     minimize: 'Riduci',
     maximize: 'Ingrandisci',
     close: 'Chiudi',
-    restore: 'Ripristina'
+    restore: 'Ripristina',
+    menu: {
+      file: 'File',
+      edit: 'Modifica',
+      view: 'Visualizza',
+      help: 'Aiuto',
+      new: 'Nuovo',
+      open: 'Apri',
+      save: 'Salva',
+      saveAs: 'Salva con nome...',
+      close: 'Chiudi',
+      exit: 'Esci',
+      undo: 'Annulla',
+      redo: 'Ripeti',
+      cut: 'Taglia',
+      copy: 'Copia',
+      paste: 'Incolla',
+      selectAll: 'Seleziona tutto',
+      find: 'Trova',
+      replace: 'Sostituisci',
+      zoomIn: 'Ingrandisci',
+      zoomOut: 'Riduci',
+      zoomReset: 'Reimposta zoom',
+      about: 'Informazioni',
+      download: 'Scarica'
+    },
+    statusBar: {
+      ready: 'Pronto'
+    }
   },
 
   // Apps - Common
@@ -181,5 +209,30 @@ window.I18n_IT = {
     loading: 'Caricamento...',
     error: 'Errore',
     success: 'Successo'
+  },
+
+  // File Save (Generic)
+  filesave: {
+    savedAt: 'Salvato alle {time}',
+    modifiedNotSaved: 'Modificato - non salvato',
+    error: 'Errore: {message}',
+    errorEmptyFilename: 'Errore: Il nome del file non può essere vuoto',
+    saveAsPrompt: 'Inserisci il nome del file:',
+    openPrompt: 'Inserisci il percorso del file:',
+    opened: 'Aperto: {name}'
+  },
+
+  // Draw App
+  draw: {
+    title: 'Disegna',
+    description: 'Crea e modifica disegni. Un\'applicazione di pittura leggera.',
+    tool: {
+      pencil: 'Matita'
+    },
+    color: 'Colore',
+    lineWidth: 'Spessore linea',
+    confirmNew: 'Creare un nuovo disegno? Il disegno corrente verrà cancellato.',
+    newFileNotSaved: 'Nuovo file - non salvato',
+    about: 'Disegna - Un\'applicazione di pittura leggera\n\nUsa lo strumento matita per disegnare sulla tela.\nRegola lo spessore della linea e il colore secondo necessità.'
   }
 };

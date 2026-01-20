@@ -129,7 +129,40 @@ Apps.register({
             }).join('');
           } else {
             listDiv.className = 'file-list';
-            rows = items.map(i => {
+            // Calculate file sizes and sort by size (largest first)
+            const itemsWithSize = items.map(i => {
+              let size = 0;
+              if (i.type === 'file') {
+                try {
+                  const content = FS.read(i.path);
+                  size = content ? content.length : 0;
+                } catch (e) {
+                  size = 0;
+                }
+              }
+              return { ...i, size };
+            });
+            
+            // Sort by size (largest first), then by name
+            itemsWithSize.sort((a, b) => {
+              if (a.type !== b.type) {
+                return a.type === 'dir' ? -1 : 1; // Directories first
+              }
+              return b.size - a.size; // Largest files first
+            });
+            
+            // Add header row
+            rows = `
+              <div style="display:flex; gap:10px; align-items:center; padding:8px; border-bottom:2px solid var(--accent); font-weight:bold; color:var(--text); background:var(--panel-2);">
+                <div style="flex-shrink:0; width:32px;"></div>
+                <div style="flex:1; min-width:0;">Name</div>
+                <div style="color:var(--muted); font-size:.85rem; flex-shrink:0; white-space:nowrap; width:80px; text-align:right;">Size</div>
+                <div style="color:var(--muted); font-size:.85rem; flex-shrink:0; white-space:nowrap; width:140px;">Modified</div>
+                <div style="flex-shrink:0; width:80px;"></div>
+              </div>
+            `;
+            
+            rows += itemsWithSize.map(i => {
               const icon = i.type === 'dir' ? '📁' : getFileIcon(i.name);
               let iconContent = `<div style="flex-shrink:0">${icon}</div>`;
 
@@ -143,12 +176,25 @@ Apps.register({
                   console.error('Failed to load image preview:', e);
                 }
               }
+              
+              // Format file size
+              let sizeStr = '';
+              if (i.type === 'file') {
+                if (i.size >= 1024 * 1024) {
+                  sizeStr = (i.size / (1024 * 1024)).toFixed(2) + ' MB';
+                } else if (i.size >= 1024) {
+                  sizeStr = (i.size / 1024).toFixed(2) + ' KB';
+                } else {
+                  sizeStr = i.size + ' B';
+                }
+              }
 
               return `
               <div class="row" data-path="${i.path}" data-type="${i.type}" style="display:flex; gap:10px; align-items:center; padding:6px; border-bottom:1px solid var(--panel-2); cursor:pointer;">
-                ${iconContent}
+                <div style="flex-shrink:0; width:32px; display:flex; align-items:center; justify-content:center;">${iconContent}</div>
                 <div style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${i.name}">${i.name}</div>
-                <div style="color:var(--muted); font-size:.85rem; flex-shrink:0; white-space:nowrap;">${i.mtime.slice(0,19).replace('T',' ')}</div>
+                <div style="color:var(--muted); font-size:.85rem; flex-shrink:0; white-space:nowrap; width:80px; text-align:right;">${sizeStr}</div>
+                <div style="color:var(--muted); font-size:.85rem; flex-shrink:0; white-space:nowrap; width:140px;">${i.mtime.slice(0,19).replace('T',' ')}</div>
                 <button class="del" title="${I18n.t('files.deleteFile')}" style="background:var(--panel-2); color:var(--danger); border:none; border-radius:6px; padding:4px 8px; flex-shrink:0;">${I18n.t('files.deleteFile')}</button>
               </div>
             `;

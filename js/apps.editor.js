@@ -124,7 +124,7 @@ Apps.register({
       textarea.addEventListener('input', ()=>{
         if (isSaved) {
           status.textContent = I18n.t('editor.modifiedNotSaved');
-          status.style.color = '#ffa500'; // Keep orange for warning
+          status.style.color = 'var(--accent)'; // Warning color using accent
           isSaved = false;
         }
       });

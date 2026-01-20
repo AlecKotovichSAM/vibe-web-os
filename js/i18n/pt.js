@@ -22,7 +22,35 @@ window.I18n_PT = {
     minimize: 'Minimizar',
     maximize: 'Maximizar',
     close: 'Fechar',
-    restore: 'Restaurar'
+    restore: 'Restaurar',
+    menu: {
+      file: 'Arquivo',
+      edit: 'Editar',
+      view: 'Visualizar',
+      help: 'Ajuda',
+      new: 'Novo',
+      open: 'Abrir',
+      save: 'Salvar',
+      saveAs: 'Salvar como...',
+      close: 'Fechar',
+      exit: 'Sair',
+      undo: 'Desfazer',
+      redo: 'Refazer',
+      cut: 'Cortar',
+      copy: 'Copiar',
+      paste: 'Colar',
+      selectAll: 'Selecionar tudo',
+      find: 'Localizar',
+      replace: 'Substituir',
+      zoomIn: 'Ampliar',
+      zoomOut: 'Reduzir',
+      zoomReset: 'Redefinir zoom',
+      about: 'Sobre',
+      download: 'Baixar'
+    },
+    statusBar: {
+      ready: 'Pronto'
+    }
   },
 
   // Apps - Common
@@ -181,5 +209,30 @@ window.I18n_PT = {
     loading: 'Carregando...',
     error: 'Erro',
     success: 'Sucesso'
+  },
+
+  // File Save (Generic)
+  filesave: {
+    savedAt: 'Salvo às {time}',
+    modifiedNotSaved: 'Modificado - não salvo',
+    error: 'Erro: {message}',
+    errorEmptyFilename: 'Erro: O nome do arquivo não pode estar vazio',
+    saveAsPrompt: 'Digite o nome do arquivo:',
+    openPrompt: 'Digite o caminho do arquivo:',
+    opened: 'Aberto: {name}'
+  },
+
+  // Draw App
+  draw: {
+    title: 'Desenhar',
+    description: 'Criar e editar desenhos. Um aplicativo de pintura leve.',
+    tool: {
+      pencil: 'Lápis'
+    },
+    color: 'Cor',
+    lineWidth: 'Espessura da linha',
+    confirmNew: 'Criar um novo desenho? O desenho atual será apagado.',
+    newFileNotSaved: 'Novo arquivo - não salvo',
+    about: 'Desenhar - Um aplicativo de pintura leve\n\nUse a ferramenta lápis para desenhar na tela.\nAjuste a espessura da linha e a cor conforme necessário.'
   }
 };

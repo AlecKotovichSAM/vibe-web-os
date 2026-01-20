@@ -23,8 +23,6 @@ Apps.register({
       }
       return;
     }
-    
-    const games = Apps.listByCategory('games');
 
     const content = `
       <div style="display:flex; flex-direction:column; height:100%; gap:12px; padding:12px;">
@@ -84,6 +82,9 @@ Apps.register({
     function render() {
       viewMode = getViewModeStorage();
       updateViewToggleButton();
+
+      // Refresh games list to get updated localized names
+      const games = Apps.listByCategory('games');
 
       const listDiv = win.querySelector('#games-list');
 

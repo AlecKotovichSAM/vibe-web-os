@@ -22,7 +22,35 @@ window.I18n_AR = {
     minimize: 'تصغير',
     maximize: 'تكبير',
     close: 'إغلاق',
-    restore: 'استعادة'
+    restore: 'استعادة',
+    menu: {
+      file: 'ملف',
+      edit: 'تحرير',
+      view: 'عرض',
+      help: 'مساعدة',
+      new: 'جديد',
+      open: 'فتح',
+      save: 'حفظ',
+      saveAs: 'حفظ باسم...',
+      close: 'إغلاق',
+      exit: 'خروج',
+      undo: 'تراجع',
+      redo: 'إعادة',
+      cut: 'قص',
+      copy: 'نسخ',
+      paste: 'لصق',
+      selectAll: 'تحديد الكل',
+      find: 'بحث',
+      replace: 'استبدال',
+      zoomIn: 'تكبير',
+      zoomOut: 'تصغير',
+      zoomReset: 'إعادة تعيين التكبير',
+      about: 'حول',
+      download: 'تحميل'
+    },
+    statusBar: {
+      ready: 'جاهز'
+    }
   },
 
   // Apps - Common
@@ -181,5 +209,30 @@ window.I18n_AR = {
     loading: 'جاري التحميل...',
     error: 'خطأ',
     success: 'نجاح'
+  },
+
+  // File Save (Generic)
+  filesave: {
+    savedAt: 'تم الحفظ في {time}',
+    modifiedNotSaved: 'معدل - غير محفوظ',
+    error: 'خطأ: {message}',
+    errorEmptyFilename: 'خطأ: لا يمكن أن يكون اسم الملف فارغًا',
+    saveAsPrompt: 'أدخل اسم الملف:',
+    openPrompt: 'أدخل مسار الملف:',
+    opened: 'تم الفتح: {name}'
+  },
+
+  // Draw App
+  draw: {
+    title: 'رسم',
+    description: 'إنشاء وتحرير الرسومات. تطبيق رسم خفيف الوزن.',
+    tool: {
+      pencil: 'قلم رصاص'
+    },
+    color: 'اللون',
+    lineWidth: 'سمك الخط',
+    confirmNew: 'إنشاء رسم جديد؟ سيتم مسح الرسم الحالي.',
+    newFileNotSaved: 'ملف جديد - غير محفوظ',
+    about: 'رسم - تطبيق رسم خفيف الوزن\n\nاستخدم أداة القلم الرصاص للرسم على اللوحة.\nاضبط سمك الخط واللون حسب الحاجة.'
   }
 };

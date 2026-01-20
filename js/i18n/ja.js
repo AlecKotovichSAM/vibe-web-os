@@ -22,7 +22,35 @@ window.I18n_JA = {
     minimize: '最小化',
     maximize: '最大化',
     close: '閉じる',
-    restore: '復元'
+    restore: '復元',
+    menu: {
+      file: 'ファイル',
+      edit: '編集',
+      view: '表示',
+      help: 'ヘルプ',
+      new: '新規',
+      open: '開く',
+      save: '保存',
+      saveAs: '名前を付けて保存...',
+      close: '閉じる',
+      exit: '終了',
+      undo: '元に戻す',
+      redo: 'やり直す',
+      cut: '切り取り',
+      copy: 'コピー',
+      paste: '貼り付け',
+      selectAll: 'すべて選択',
+      find: '検索',
+      replace: '置換',
+      zoomIn: '拡大',
+      zoomOut: '縮小',
+      zoomReset: 'ズームをリセット',
+      about: 'について',
+      download: 'ダウンロード'
+    },
+    statusBar: {
+      ready: '準備完了'
+    }
   },
 
   // Apps - Common
@@ -181,5 +209,30 @@ window.I18n_JA = {
     loading: '読み込み中...',
     error: 'エラー',
     success: '成功'
+  },
+
+  // File Save (Generic)
+  filesave: {
+    savedAt: '{time}に保存しました',
+    modifiedNotSaved: '変更済み - 未保存',
+    error: 'エラー: {message}',
+    errorEmptyFilename: 'エラー: ファイル名を空にすることはできません',
+    saveAsPrompt: 'ファイル名を入力:',
+    openPrompt: 'ファイルパスを入力:',
+    opened: '開きました: {name}'
+  },
+
+  // Draw App
+  draw: {
+    title: '描画',
+    description: '図面を作成および編集します。軽量なペイントアプリケーション。',
+    tool: {
+      pencil: '鉛筆'
+    },
+    color: '色',
+    lineWidth: '線の太さ',
+    confirmNew: '新しい図面を作成しますか？現在の図面は消去されます。',
+    newFileNotSaved: '新しいファイル - 未保存',
+    about: '描画 - 軽量なペイントアプリケーション\n\n鉛筆ツールを使用してキャンバスに描画します。\n必要に応じて線の太さと色を調整してください。'
   }
 };

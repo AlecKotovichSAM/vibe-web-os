@@ -13,7 +13,7 @@ Apps.register({
     const content = `
       <div style="display:flex; gap:10px; align-items:center; margin-bottom:8px">
         <button id="notes-save" title="${I18n.t('notes.save')}">💾 ${I18n.t('notes.save')}</button>
-        <span id="notes-status" style="color:#a7a7a7">${I18n.t('notes.notSaved')}</span>
+        <span id="notes-status" style="color:var(--muted)">${I18n.t('notes.notSaved')}</span>
       </div>
       <textarea id="notes-text" rows="12" placeholder="${I18n.t('notes.placeholder')}"></textarea>
     `;
@@ -36,14 +36,14 @@ Apps.register({
         isSaved = true;
         if (savedContent) {
           status.textContent = I18n.t('notes.saved');
-          status.style.color = '#9be0b5';
+          status.style.color = 'var(--ok)';
         } else {
           status.textContent = '';
         }
       } else {
         isSaved = false;
         status.textContent = I18n.t('notes.notSaved');
-        status.style.color = '#a7a7a7';
+        status.style.color = 'var(--muted)';
       }
     }
     

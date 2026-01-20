@@ -22,7 +22,35 @@ window.I18n_DE = {
     minimize: 'Minimieren',
     maximize: 'Maximieren',
     close: 'Schließen',
-    restore: 'Wiederherstellen'
+    restore: 'Wiederherstellen',
+    menu: {
+      file: 'Datei',
+      edit: 'Bearbeiten',
+      view: 'Ansicht',
+      help: 'Hilfe',
+      new: 'Neu',
+      open: 'Öffnen',
+      save: 'Speichern',
+      saveAs: 'Speichern unter...',
+      close: 'Schließen',
+      exit: 'Beenden',
+      undo: 'Rückgängig',
+      redo: 'Wiederholen',
+      cut: 'Ausschneiden',
+      copy: 'Kopieren',
+      paste: 'Einfügen',
+      selectAll: 'Alles auswählen',
+      find: 'Suchen',
+      replace: 'Ersetzen',
+      zoomIn: 'Vergrößern',
+      zoomOut: 'Verkleinern',
+      zoomReset: 'Zoom zurücksetzen',
+      about: 'Über',
+      download: 'Herunterladen'
+    },
+    statusBar: {
+      ready: 'Bereit'
+    }
   },
 
   // Apps - Common
@@ -138,7 +166,7 @@ window.I18n_DE = {
     folder: 'Spiele',
     folderDescription: 'Spieleordner',
     minesweeper: {
-      title: 'Minesweeper',
+      title: 'Minenräumer',
       description: 'Klassisches Puzzlespiel. Finden Sie alle Minen, ohne sie zu detonieren.',
       newGame: 'Neues Spiel',
       beginner: 'Anfänger',
@@ -181,5 +209,29 @@ window.I18n_DE = {
     loading: 'Lädt...',
     error: 'Fehler',
     success: 'Erfolg'
+  },
+
+  // File Save (Generic)
+  filesave: {
+    savedAt: 'Gespeichert um {time}',
+    modifiedNotSaved: 'Geändert - nicht gespeichert',
+    error: 'Fehler: {message}',
+    errorEmptyFilename: 'Fehler: Dateiname darf nicht leer sein',
+    saveAsPrompt: 'Dateiname eingeben:',
+    openPrompt: 'Dateipfad eingeben:',
+    opened: 'Geöffnet: {name}'
+  },
+
+  // Draw App
+  draw: {
+    title: 'Zeichnen',
+    description: 'Erstellen und bearbeiten Sie Zeichnungen. Eine einfache Malanwendung.',
+    tool: {
+      pencil: 'Stift'
+    },
+    color: 'Farbe',
+    lineWidth: 'Linienbreite',
+    confirmNew: 'Neue Zeichnung erstellen? Die aktuelle Zeichnung wird gelöscht.',
+    about: 'Zeichnen - Eine einfache Malanwendung\n\nVerwenden Sie das Stiftwerkzeug, um auf der Leinwand zu zeichnen.\nPassen Sie Linienbreite und Farbe nach Bedarf an.'
   }
 };

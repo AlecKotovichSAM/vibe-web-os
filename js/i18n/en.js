@@ -22,7 +22,37 @@ window.I18n_EN = {
     minimize: 'Minimize',
     maximize: 'Maximize',
     close: 'Close',
-    restore: 'Restore'
+    restore: 'Restore',
+    // Common menu items - reusable across apps
+    // Apps should define their own menu items under their own namespace (e.g., editor.menu.format)
+    menu: {
+      file: 'File',
+      edit: 'Edit',
+      view: 'View',
+      help: 'Help',
+      new: 'New',
+      open: 'Open',
+      save: 'Save',
+      saveAs: 'Save As...',
+      close: 'Close',
+      exit: 'Exit',
+      undo: 'Undo',
+      redo: 'Redo',
+      cut: 'Cut',
+      copy: 'Copy',
+      paste: 'Paste',
+      selectAll: 'Select All',
+      find: 'Find',
+      replace: 'Replace',
+      zoomIn: 'Zoom In',
+      zoomOut: 'Zoom Out',
+      zoomReset: 'Reset Zoom',
+      about: 'About',
+      download: 'Download'
+    },
+    statusBar: {
+      ready: 'Ready'
+    }
   },
 
   // Apps - Common
@@ -125,6 +155,29 @@ window.I18n_EN = {
     description: 'View and manage date and time settings. Windows XP style calendar and clock.'
   },
 
+  // Test App (Hidden)
+  test: {
+    title: 'Test App',
+    description: 'Test application demonstrating Menu, Toolbar, and Status Bar features.',
+    status: {
+      items: 'Items: 0'
+    }
+  },
+
+  // Draw App
+  draw: {
+    title: 'Draw',
+    description: 'Create and edit drawings. A lightweight paint application.',
+    tool: {
+      pencil: 'Pencil'
+    },
+    color: 'Color',
+    lineWidth: 'Line Width',
+    confirmNew: 'Create a new drawing? Current drawing will be cleared.',
+    newFileNotSaved: 'New file - not saved',
+    about: 'Draw - A lightweight paint application\n\nUse the pencil tool to draw on the canvas.\nAdjust line width and color as needed.'
+  },
+
   // Calculator App
   calculator: {
     title: 'Calculator',
@@ -165,6 +218,17 @@ window.I18n_EN = {
   desktop: {
     new: 'New',
     newTextDocument: 'New text document'
+  },
+
+  // File Save (Generic)
+  filesave: {
+    savedAt: 'Saved at {time}',
+    modifiedNotSaved: 'Modified - not saved',
+    error: 'Error: {message}',
+    errorEmptyFilename: 'Error: Filename cannot be empty',
+    saveAsPrompt: 'Enter filename:',
+    openPrompt: 'Enter file path:',
+    opened: 'Opened: {name}'
   },
 
   // Common
