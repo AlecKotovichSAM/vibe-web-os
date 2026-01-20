@@ -234,5 +234,53 @@ window.I18n_AR = {
     confirmNew: 'إنشاء رسم جديد؟ سيتم مسح الرسم الحالي.',
     newFileNotSaved: 'ملف جديد - غير محفوظ',
     about: 'رسم - تطبيق رسم خفيف الوزن\n\nاستخدم أداة القلم الرصاص للرسم على اللوحة.\nاضبط سمك الخط واللون حسب الحاجة.'
+  },
+
+  // Terminal App
+  terminal: {
+    title: 'الطرفية',
+    description: 'واجهة سطر الأوامر لتنفيذ الأوامر.',
+    welcome: 'مرحباً بك في طرفية Web OS',
+    typeHelp: 'اكتب "help" لعرض الأوامر المتاحة.',
+    emptyDirectory: 'المجلد فارغ',
+    directory: 'مجلد',
+    file: 'ملف',
+    alreadyAtRoot: 'أنت بالفعل في المجلد الجذري',
+    pathNotFound: 'المسار غير موجود: {path}',
+    notADirectory: 'ليس مجلداً: {path}',
+    fileNotFound: 'الملف غير موجود: {path}',
+    notAFile: 'ليس ملفاً: {path}',
+    directoryCreated: 'تم إنشاء المجلد: {name}',
+    fileCreated: 'تم إنشاء الملف: {name}',
+    deleted: 'تم الحذف: {path}',
+    noApps: 'لا توجد تطبيقات متاحة',
+    commandNotFound: 'الأمر غير موجود: {cmd}',
+    error: 'خطأ',
+    usage: 'الاستخدام: {cmd} {example}',
+    help: {
+      title: 'الأوامر المتاحة:',
+      help: 'help, ?',
+      helpDesc: 'عرض رسالة المساعدة هذه',
+      clear: 'clear, cls',
+      clearDesc: 'مسح شاشة الطرفية',
+      ls: 'ls, dir',
+      lsDesc: 'عرض محتويات المجلد',
+      cd: 'cd [مسار]',
+      cdDesc: 'تغيير المجلد (استخدم ".." للمجلد الأب)',
+      pwd: 'pwd',
+      pwdDesc: 'عرض مجلد العمل الحالي',
+      cat: 'cat [ملف]',
+      catDesc: 'عرض محتويات الملف',
+      echo: 'echo [نص]',
+      echoDesc: 'طباعة نص في الطرفية',
+      mkdir: 'mkdir [اسم]',
+      mkdirDesc: 'إنشاء مجلد جديد',
+      touch: 'touch [اسم]',
+      touchDesc: 'إنشاء ملف جديد',
+      rm: 'rm [مسار]',
+      rmDesc: 'حذف ملف أو مجلد',
+      apps: 'apps, applist',
+      appsDesc: 'عرض جميع التطبيقات المتاحة'
+    }
   }
 };

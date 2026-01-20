@@ -234,5 +234,53 @@ window.I18n_KO = {
     confirmNew: '새 그림을 만들겠습니까? 현재 그림이 지워집니다.',
     newFileNotSaved: '새 파일 - 저장되지 않음',
     about: '그리기 - 가벼운 페인트 애플리케이션\n\n연필 도구를 사용하여 캔버스에 그립니다.\n필요에 따라 선 두께와 색상을 조정하세요.'
+  },
+
+  // Terminal App
+  terminal: {
+    title: '터미널',
+    description: '명령을 실행하기 위한 명령줄 인터페이스.',
+    welcome: 'Web OS 터미널에 오신 것을 환영합니다',
+    typeHelp: '사용 가능한 명령을 보려면 "help"를 입력하세요.',
+    emptyDirectory: '디렉토리가 비어 있습니다',
+    directory: '디렉토리',
+    file: '파일',
+    alreadyAtRoot: '이미 루트 디렉토리에 있습니다',
+    pathNotFound: '경로를 찾을 수 없습니다: {path}',
+    notADirectory: '디렉토리가 아닙니다: {path}',
+    fileNotFound: '파일을 찾을 수 없습니다: {path}',
+    notAFile: '파일이 아닙니다: {path}',
+    directoryCreated: '디렉토리 생성됨: {name}',
+    fileCreated: '파일 생성됨: {name}',
+    deleted: '삭제됨: {path}',
+    noApps: '사용 가능한 앱이 없습니다',
+    commandNotFound: '명령을 찾을 수 없습니다: {cmd}',
+    error: '오류',
+    usage: '사용법: {cmd} {example}',
+    help: {
+      title: '사용 가능한 명령:',
+      help: 'help, ?',
+      helpDesc: '이 도움말 메시지 표시',
+      clear: 'clear, cls',
+      clearDesc: '터미널 화면 지우기',
+      ls: 'ls, dir',
+      lsDesc: '디렉토리 내용 나열',
+      cd: 'cd [경로]',
+      cdDesc: '디렉토리 변경 (".."로 상위 디렉토리로 이동)',
+      pwd: 'pwd',
+      pwdDesc: '현재 작업 디렉토리 표시',
+      cat: 'cat [파일]',
+      catDesc: '파일 내용 표시',
+      echo: 'echo [텍스트]',
+      echoDesc: '터미널에 텍스트 출력',
+      mkdir: 'mkdir [이름]',
+      mkdirDesc: '새 디렉토리 만들기',
+      touch: 'touch [이름]',
+      touchDesc: '새 파일 만들기',
+      rm: 'rm [경로]',
+      rmDesc: '파일 또는 디렉토리 삭제',
+      apps: 'apps, applist',
+      appsDesc: '사용 가능한 모든 앱 나열'
+    }
   }
 };

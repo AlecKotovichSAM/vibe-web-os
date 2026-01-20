@@ -234,5 +234,53 @@ window.I18n_IT = {
     confirmNew: 'Creare un nuovo disegno? Il disegno corrente verrà cancellato.',
     newFileNotSaved: 'Nuovo file - non salvato',
     about: 'Disegna - Un\'applicazione di pittura leggera\n\nUsa lo strumento matita per disegnare sulla tela.\nRegola lo spessore della linea e il colore secondo necessità.'
+  },
+
+  // Terminal App
+  terminal: {
+    title: 'Terminale',
+    description: 'Interfaccia a riga di comando per eseguire comandi.',
+    welcome: 'Benvenuto nel Terminale Web OS',
+    typeHelp: 'Digita "help" per vedere i comandi disponibili.',
+    emptyDirectory: 'La directory è vuota',
+    directory: 'DIR',
+    file: 'FILE',
+    alreadyAtRoot: 'Già nella directory radice',
+    pathNotFound: 'Percorso non trovato: {path}',
+    notADirectory: 'Non è una directory: {path}',
+    fileNotFound: 'File non trovato: {path}',
+    notAFile: 'Non è un file: {path}',
+    directoryCreated: 'Directory creata: {name}',
+    fileCreated: 'File creato: {name}',
+    deleted: 'Eliminato: {path}',
+    noApps: 'Nessuna applicazione disponibile',
+    commandNotFound: 'Comando non trovato: {cmd}',
+    error: 'Errore',
+    usage: 'Utilizzo: {cmd} {example}',
+    help: {
+      title: 'Comandi disponibili:',
+      help: 'help, ?',
+      helpDesc: 'Mostra questo messaggio di aiuto',
+      clear: 'clear, cls',
+      clearDesc: 'Pulisci lo schermo del terminale',
+      ls: 'ls, dir',
+      lsDesc: 'Elenca il contenuto della directory',
+      cd: 'cd [percorso]',
+      cdDesc: 'Cambia directory (usa ".." per la parent)',
+      pwd: 'pwd',
+      pwdDesc: 'Mostra la directory di lavoro corrente',
+      cat: 'cat [file]',
+      catDesc: 'Mostra il contenuto del file',
+      echo: 'echo [testo]',
+      echoDesc: 'Stampa testo nel terminale',
+      mkdir: 'mkdir [nome]',
+      mkdirDesc: 'Crea una nuova directory',
+      touch: 'touch [nome]',
+      touchDesc: 'Crea un nuovo file',
+      rm: 'rm [percorso]',
+      rmDesc: 'Elimina un file o directory',
+      apps: 'apps, applist',
+      appsDesc: 'Elenca tutte le applicazioni disponibili'
+    }
   }
 };

@@ -234,5 +234,53 @@ window.I18n_FR = {
     confirmNew: 'Créer un nouveau dessin? Le dessin actuel sera effacé.',
     newFileNotSaved: 'Nouveau fichier - non enregistré',
     about: 'Dessin - Une application de peinture légère\n\nUtilisez l\'outil crayon pour dessiner sur la toile.\nAjustez l\'épaisseur de ligne et la couleur selon vos besoins.'
+  },
+
+  // Terminal App
+  terminal: {
+    title: 'Terminal',
+    description: 'Interface en ligne de commande pour exécuter des commandes.',
+    welcome: 'Bienvenue dans le Terminal Web OS',
+    typeHelp: 'Tapez "help" pour voir les commandes disponibles.',
+    emptyDirectory: 'Le répertoire est vide',
+    directory: 'REP',
+    file: 'FICHIER',
+    alreadyAtRoot: 'Déjà à la racine',
+    pathNotFound: 'Chemin introuvable: {path}',
+    notADirectory: 'N\'est pas un répertoire: {path}',
+    fileNotFound: 'Fichier introuvable: {path}',
+    notAFile: 'N\'est pas un fichier: {path}',
+    directoryCreated: 'Répertoire créé: {name}',
+    fileCreated: 'Fichier créé: {name}',
+    deleted: 'Supprimé: {path}',
+    noApps: 'Aucune application disponible',
+    commandNotFound: 'Commande introuvable: {cmd}',
+    error: 'Erreur',
+    usage: 'Utilisation: {cmd} {example}',
+    help: {
+      title: 'Commandes disponibles:',
+      help: 'help, ?',
+      helpDesc: 'Afficher ce message d\'aide',
+      clear: 'clear, cls',
+      clearDesc: 'Effacer l\'écran du terminal',
+      ls: 'ls, dir',
+      lsDesc: 'Lister le contenu du répertoire',
+      cd: 'cd [chemin]',
+      cdDesc: 'Changer de répertoire (utilisez ".." pour le parent)',
+      pwd: 'pwd',
+      pwdDesc: 'Afficher le répertoire de travail actuel',
+      cat: 'cat [fichier]',
+      catDesc: 'Afficher le contenu du fichier',
+      echo: 'echo [texte]',
+      echoDesc: 'Afficher du texte dans le terminal',
+      mkdir: 'mkdir [nom]',
+      mkdirDesc: 'Créer un nouveau répertoire',
+      touch: 'touch [nom]',
+      touchDesc: 'Créer un nouveau fichier',
+      rm: 'rm [chemin]',
+      rmDesc: 'Supprimer un fichier ou un répertoire',
+      apps: 'apps, applist',
+      appsDesc: 'Lister toutes les applications disponibles'
+    }
   }
 };

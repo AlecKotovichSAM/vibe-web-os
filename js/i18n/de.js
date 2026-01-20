@@ -195,6 +195,54 @@ window.I18n_DE = {
     newTextDocument: 'Neues Textdokument'
   },
 
+  // Terminal App
+  terminal: {
+    title: 'Terminal',
+    description: 'Befehlszeilenschnittstelle zum Ausführen von Befehlen.',
+    welcome: 'Willkommen im Web OS Terminal',
+    typeHelp: 'Geben Sie "help" ein, um verfügbare Befehle anzuzeigen.',
+    emptyDirectory: 'Verzeichnis ist leer',
+    directory: 'VERZ',
+    file: 'DATEI',
+    alreadyAtRoot: 'Bereits im Stammverzeichnis',
+    pathNotFound: 'Pfad nicht gefunden: {path}',
+    notADirectory: 'Kein Verzeichnis: {path}',
+    fileNotFound: 'Datei nicht gefunden: {path}',
+    notAFile: 'Keine Datei: {path}',
+    directoryCreated: 'Verzeichnis erstellt: {name}',
+    fileCreated: 'Datei erstellt: {name}',
+    deleted: 'Gelöscht: {path}',
+    noApps: 'Keine Apps verfügbar',
+    commandNotFound: 'Befehl nicht gefunden: {cmd}',
+    error: 'Fehler',
+    usage: 'Verwendung: {cmd} {example}',
+    help: {
+      title: 'Verfügbare Befehle:',
+      help: 'help, ?',
+      helpDesc: 'Diese Hilfemeldung anzeigen',
+      clear: 'clear, cls',
+      clearDesc: 'Terminalbildschirm löschen',
+      ls: 'ls, dir',
+      lsDesc: 'Verzeichnisinhalt auflisten',
+      cd: 'cd [pfad]',
+      cdDesc: 'Verzeichnis wechseln (verwenden Sie ".." für übergeordnetes Verzeichnis)',
+      pwd: 'pwd',
+      pwdDesc: 'Aktuelles Arbeitsverzeichnis anzeigen',
+      cat: 'cat [datei]',
+      catDesc: 'Dateiinhalt anzeigen',
+      echo: 'echo [text]',
+      echoDesc: 'Text im Terminal ausgeben',
+      mkdir: 'mkdir [name]',
+      mkdirDesc: 'Neues Verzeichnis erstellen',
+      touch: 'touch [name]',
+      touchDesc: 'Neue Datei erstellen',
+      rm: 'rm [pfad]',
+      rmDesc: 'Datei oder Verzeichnis löschen',
+      apps: 'apps, applist',
+      appsDesc: 'Alle verfügbaren Apps auflisten'
+    }
+  },
+
   // Common
   common: {
     yes: 'Ja',

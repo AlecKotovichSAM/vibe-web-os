@@ -863,10 +863,11 @@ window.Shell = (() => {
     
     // Desktop right-click to show context menu
     desktop.addEventListener('contextmenu', (e)=>{
-      // Don't show context menu if clicking on icons, taskbar, or windows
+      // Don't show context menu if clicking on icons, taskbar, start menu, or windows
       // Icon buttons have their own handlers that will handle the event
       if (e.target.closest('#desktop-icons') || 
           e.target.closest('#taskbar') || 
+          e.target.closest('#start-menu') ||
           e.target.closest('.window') ||
           e.target.closest('button.icon')) {
         return; // Let the icon's own handler take care of it

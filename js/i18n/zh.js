@@ -234,5 +234,53 @@ window.I18n_ZH = {
     confirmNew: '创建新绘图？当前绘图将被清除。',
     newFileNotSaved: '新文件 - 未保存',
     about: '绘图 - 轻量级绘画应用程序\n\n使用铅笔工具在画布上绘图。\n根据需要调整线宽和颜色。'
+  },
+
+  // Terminal App
+  terminal: {
+    title: '终端',
+    description: '用于执行命令的命令行界面。',
+    welcome: '欢迎使用 Web OS 终端',
+    typeHelp: '输入 "help" 查看可用命令。',
+    emptyDirectory: '目录为空',
+    directory: '目录',
+    file: '文件',
+    alreadyAtRoot: '已在根目录',
+    pathNotFound: '路径未找到: {path}',
+    notADirectory: '不是目录: {path}',
+    fileNotFound: '文件未找到: {path}',
+    notAFile: '不是文件: {path}',
+    directoryCreated: '目录已创建: {name}',
+    fileCreated: '文件已创建: {name}',
+    deleted: '已删除: {path}',
+    noApps: '没有可用应用',
+    commandNotFound: '命令未找到: {cmd}',
+    error: '错误',
+    usage: '用法: {cmd} {example}',
+    help: {
+      title: '可用命令:',
+      help: 'help, ?',
+      helpDesc: '显示此帮助信息',
+      clear: 'clear, cls',
+      clearDesc: '清空终端屏幕',
+      ls: 'ls, dir',
+      lsDesc: '列出目录内容',
+      cd: 'cd [路径]',
+      cdDesc: '更改目录（使用 ".." 返回上级）',
+      pwd: 'pwd',
+      pwdDesc: '显示当前工作目录',
+      cat: 'cat [文件]',
+      catDesc: '显示文件内容',
+      echo: 'echo [文本]',
+      echoDesc: '在终端中打印文本',
+      mkdir: 'mkdir [名称]',
+      mkdirDesc: '创建新目录',
+      touch: 'touch [名称]',
+      touchDesc: '创建新文件',
+      rm: 'rm [路径]',
+      rmDesc: '删除文件或目录',
+      apps: 'apps, applist',
+      appsDesc: '列出所有可用应用'
+    }
   }
 };
