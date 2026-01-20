@@ -1,5 +1,5 @@
-// Generic file save mechanism for apps
-// Provides reusable Save and Save As functionality
+// Generic file menu utility for apps
+// Provides reusable Save, Save As, Open, and Download functionality
 window.FileMenuUtility = (() => {
   
   /**
