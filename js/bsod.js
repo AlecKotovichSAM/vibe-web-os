@@ -112,7 +112,7 @@ window.BSOD = (() => {
 
   let randomTimer = null;
 
-  function startRandomSchedule(minSeconds = 30, maxSeconds = 600) {
+  function startRandomSchedule(minSeconds = 600, maxSeconds = 12000) {
     stopRandomSchedule();
 
     function scheduleNext() {
