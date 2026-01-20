@@ -234,5 +234,53 @@ window.I18n_JA = {
     confirmNew: '新しい図面を作成しますか？現在の図面は消去されます。',
     newFileNotSaved: '新しいファイル - 未保存',
     about: '描画 - 軽量なペイントアプリケーション\n\n鉛筆ツールを使用してキャンバスに描画します。\n必要に応じて線の太さと色を調整してください。'
+  },
+
+  // Terminal App
+  terminal: {
+    title: 'ターミナル',
+    description: 'コマンドを実行するためのコマンドラインインターフェース。',
+    welcome: 'Web OSターミナルへようこそ',
+    typeHelp: '利用可能なコマンドを表示するには「help」と入力してください。',
+    emptyDirectory: 'ディレクトリは空です',
+    directory: 'ディレクトリ',
+    file: 'ファイル',
+    alreadyAtRoot: '既にルートディレクトリにいます',
+    pathNotFound: 'パスが見つかりません: {path}',
+    notADirectory: 'ディレクトリではありません: {path}',
+    fileNotFound: 'ファイルが見つかりません: {path}',
+    notAFile: 'ファイルではありません: {path}',
+    directoryCreated: 'ディレクトリを作成しました: {name}',
+    fileCreated: 'ファイルを作成しました: {name}',
+    deleted: '削除しました: {path}',
+    noApps: '利用可能なアプリはありません',
+    commandNotFound: 'コマンドが見つかりません: {cmd}',
+    error: 'エラー',
+    usage: '使用方法: {cmd} {example}',
+    help: {
+      title: '利用可能なコマンド:',
+      help: 'help, ?',
+      helpDesc: 'このヘルプメッセージを表示',
+      clear: 'clear, cls',
+      clearDesc: 'ターミナル画面をクリア',
+      ls: 'ls, dir',
+      lsDesc: 'ディレクトリの内容を一覧表示',
+      cd: 'cd [パス]',
+      cdDesc: 'ディレクトリを変更（親ディレクトリには「..」を使用）',
+      pwd: 'pwd',
+      pwdDesc: '現在の作業ディレクトリを表示',
+      cat: 'cat [ファイル]',
+      catDesc: 'ファイルの内容を表示',
+      echo: 'echo [テキスト]',
+      echoDesc: 'ターミナルにテキストを出力',
+      mkdir: 'mkdir [名前]',
+      mkdirDesc: '新しいディレクトリを作成',
+      touch: 'touch [名前]',
+      touchDesc: '新しいファイルを作成',
+      rm: 'rm [パス]',
+      rmDesc: 'ファイルまたはディレクトリを削除',
+      apps: 'apps, applist',
+      appsDesc: '利用可能なすべてのアプリを一覧表示'
+    }
   }
 };

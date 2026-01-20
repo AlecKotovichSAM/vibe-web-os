@@ -234,5 +234,53 @@ window.I18n_PT = {
     confirmNew: 'Criar um novo desenho? O desenho atual será apagado.',
     newFileNotSaved: 'Novo arquivo - não salvo',
     about: 'Desenhar - Um aplicativo de pintura leve\n\nUse a ferramenta lápis para desenhar na tela.\nAjuste a espessura da linha e a cor conforme necessário.'
+  },
+
+  // Terminal App
+  terminal: {
+    title: 'Terminal',
+    description: 'Interface de linha de comando para executar comandos.',
+    welcome: 'Bem-vindo ao Terminal Web OS',
+    typeHelp: 'Digite "help" para ver os comandos disponíveis.',
+    emptyDirectory: 'O diretório está vazio',
+    directory: 'DIR',
+    file: 'ARQUIVO',
+    alreadyAtRoot: 'Já está no diretório raiz',
+    pathNotFound: 'Caminho não encontrado: {path}',
+    notADirectory: 'Não é um diretório: {path}',
+    fileNotFound: 'Arquivo não encontrado: {path}',
+    notAFile: 'Não é um arquivo: {path}',
+    directoryCreated: 'Diretório criado: {name}',
+    fileCreated: 'Arquivo criado: {name}',
+    deleted: 'Excluído: {path}',
+    noApps: 'Nenhum aplicativo disponível',
+    commandNotFound: 'Comando não encontrado: {cmd}',
+    error: 'Erro',
+    usage: 'Uso: {cmd} {example}',
+    help: {
+      title: 'Comandos disponíveis:',
+      help: 'help, ?',
+      helpDesc: 'Mostrar esta mensagem de ajuda',
+      clear: 'clear, cls',
+      clearDesc: 'Limpar a tela do terminal',
+      ls: 'ls, dir',
+      lsDesc: 'Listar conteúdo do diretório',
+      cd: 'cd [caminho]',
+      cdDesc: 'Mudar de diretório (use ".." para o pai)',
+      pwd: 'pwd',
+      pwdDesc: 'Mostrar diretório de trabalho atual',
+      cat: 'cat [arquivo]',
+      catDesc: 'Exibir conteúdo do arquivo',
+      echo: 'echo [texto]',
+      echoDesc: 'Imprimir texto no terminal',
+      mkdir: 'mkdir [nome]',
+      mkdirDesc: 'Criar um novo diretório',
+      touch: 'touch [nome]',
+      touchDesc: 'Criar um novo arquivo',
+      rm: 'rm [caminho]',
+      rmDesc: 'Excluir um arquivo ou diretório',
+      apps: 'apps, applist',
+      appsDesc: 'Listar todos os aplicativos disponíveis'
+    }
   }
 };

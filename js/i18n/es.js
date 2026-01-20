@@ -234,5 +234,53 @@ window.I18n_ES = {
     confirmNew: '¿Crear un nuevo dibujo? El dibujo actual se borrará.',
     newFileNotSaved: 'Nuevo archivo - no guardado',
     about: 'Dibujar - Una aplicación de pintura ligera\n\nUse la herramienta lápiz para dibujar en el lienzo.\nAjuste el grosor de línea y el color según sea necesario.'
+  },
+
+  // Terminal App
+  terminal: {
+    title: 'Terminal',
+    description: 'Interfaz de línea de comandos para ejecutar comandos.',
+    welcome: 'Bienvenido al Terminal Web OS',
+    typeHelp: 'Escriba "help" para ver los comandos disponibles.',
+    emptyDirectory: 'El directorio está vacío',
+    directory: 'DIR',
+    file: 'ARCHIVO',
+    alreadyAtRoot: 'Ya está en el directorio raíz',
+    pathNotFound: 'Ruta no encontrada: {path}',
+    notADirectory: 'No es un directorio: {path}',
+    fileNotFound: 'Archivo no encontrado: {path}',
+    notAFile: 'No es un archivo: {path}',
+    directoryCreated: 'Directorio creado: {name}',
+    fileCreated: 'Archivo creado: {name}',
+    deleted: 'Eliminado: {path}',
+    noApps: 'No hay aplicaciones disponibles',
+    commandNotFound: 'Comando no encontrado: {cmd}',
+    error: 'Error',
+    usage: 'Uso: {cmd} {example}',
+    help: {
+      title: 'Comandos disponibles:',
+      help: 'help, ?',
+      helpDesc: 'Mostrar este mensaje de ayuda',
+      clear: 'clear, cls',
+      clearDesc: 'Limpiar la pantalla del terminal',
+      ls: 'ls, dir',
+      lsDesc: 'Listar contenido del directorio',
+      cd: 'cd [ruta]',
+      cdDesc: 'Cambiar de directorio (use ".." para el padre)',
+      pwd: 'pwd',
+      pwdDesc: 'Mostrar directorio de trabajo actual',
+      cat: 'cat [archivo]',
+      catDesc: 'Mostrar contenido del archivo',
+      echo: 'echo [texto]',
+      echoDesc: 'Imprimir texto en el terminal',
+      mkdir: 'mkdir [nombre]',
+      mkdirDesc: 'Crear un nuevo directorio',
+      touch: 'touch [nombre]',
+      touchDesc: 'Crear un nuevo archivo',
+      rm: 'rm [ruta]',
+      rmDesc: 'Eliminar un archivo o directorio',
+      apps: 'apps, applist',
+      appsDesc: 'Listar todas las aplicaciones disponibles'
+    }
   }
 };
