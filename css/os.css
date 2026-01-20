@@ -227,6 +227,27 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
 #task-clock-container:hover {
   opacity: 0.8;
 }
+#task-network {
+  min-width: 24px;
+  text-align: center;
+  cursor: default;
+  padding: 4px 8px;
+  user-select: none;
+  font-size: 1rem;
+  transition: all 0.2s;
+  border-radius: 6px;
+  background: rgba(46, 194, 126, 0.2); /* Green background for online (default) */
+  border: 1px solid #2ec27e; /* Green border for online */
+  color: #2ec27e; /* Green text/emoji for online */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#task-network.offline {
+  background: rgba(255, 107, 107, 0.2); /* Red background for offline */
+  border: 1px solid #ff6b6b; /* Red border for offline */
+  color: #ff6b6b; /* Red text/emoji for offline */
+}
 #task-locale {
   min-width: 40px;
   text-align: center;

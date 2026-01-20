@@ -9,6 +9,8 @@ window.I18n_RU = {
     openWindowsAriaLabel: 'Открытые окна',
     taskbarAriaLabel: 'Панель задач',
     clockTooltip: 'Двойной щелчок, чтобы открыть Дата и время',
+    networkOnline: 'В сети',
+    networkOffline: 'Не в сети',
     searchResultsFound: 'Найдено {count} результат{plural}',
     searchNoResults: 'Результатов не найдено для "{query}"',
     searchClickToVisit: 'Нажмите, чтобы посетить (и получить 404!)',

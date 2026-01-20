@@ -197,6 +197,75 @@ window.Shell = (() => {
     setInterval(updateClock, 1000);
     updateClock();
     
+    // Network status indicator
+    const networkIndicator = document.getElementById('task-network');
+    if (networkIndicator) {
+      let isOnline = navigator.onLine;
+      
+      // Test actual connectivity by trying to fetch a small resource
+      const testConnectivity = async () => {
+        // Use a small, fast-loading resource with cache-busting
+        const testUrl = 'https://www.google.com/favicon.ico?t=' + Date.now();
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+          await fetch(testUrl, { 
+            method: 'HEAD',
+            mode: 'no-cors',
+            signal: controller.signal,
+            cache: 'no-cache'
+          });
+          clearTimeout(timeoutId);
+          return true;
+        } catch (e) {
+          return false;
+        }
+      };
+      
+      const updateNetworkStatus = async (forceCheck = false) => {
+        // If navigator.onLine says offline, trust it immediately
+        if (!navigator.onLine) {
+          isOnline = false;
+        } else if (forceCheck) {
+          // If navigator.onLine says online but we want to verify, test connectivity
+          isOnline = await testConnectivity();
+        }
+        
+        networkIndicator.textContent = '📡';
+        networkIndicator.classList.toggle('offline', !isOnline);
+        networkIndicator.setAttribute('title', isOnline ? I18n.t('shell.networkOnline') : I18n.t('shell.networkOffline'));
+        networkIndicator.setAttribute('aria-label', isOnline ? I18n.t('shell.networkOnline') : I18n.t('shell.networkOffline'));
+      };
+      
+      // Initial status check
+      updateNetworkStatus(true);
+      
+      // Listen for online/offline events
+      window.addEventListener('online', () => {
+        // When browser thinks it's back online, verify with connectivity test
+        setTimeout(() => updateNetworkStatus(true), 500);
+      });
+      window.addEventListener('offline', () => {
+        // When browser detects offline, trust it immediately
+        isOnline = false;
+        updateNetworkStatus();
+      });
+      
+      // Periodic connectivity check (every 10 seconds) to catch cases where
+      // navigator.onLine is wrong (e.g., WiFi off but browser doesn't know)
+      setInterval(() => {
+        if (navigator.onLine) {
+          // Only check if navigator thinks we're online (to avoid unnecessary requests)
+          updateNetworkStatus(true);
+        }
+      }, 10000);
+      
+      // Update on locale change
+      Bus.on('locale:changed', () => {
+        updateNetworkStatus();
+      });
+    }
+    
     // Initialize desktop icons with localized names
     updateDesktopIcons();
 

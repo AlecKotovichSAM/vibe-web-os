@@ -9,6 +9,8 @@ window.I18n_PT = {
     openWindowsAriaLabel: 'Janelas abertas',
     taskbarAriaLabel: 'Barra de tarefas',
     clockTooltip: 'Clique duas vezes para abrir Data e Hora',
+    networkOnline: 'Online',
+    networkOffline: 'Offline',
     searchResultsFound: '{count} resultado{plural} encontrado',
     searchNoResults: 'Nenhum resultado encontrado para "{query}"',
     searchClickToVisit: 'Clique para visitar (e obter 404!)',

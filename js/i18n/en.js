@@ -9,6 +9,8 @@ window.I18n_EN = {
     openWindowsAriaLabel: 'Open Windows',
     taskbarAriaLabel: 'Taskbar',
     clockTooltip: 'Double-click to open Date and Time',
+    networkOnline: 'Online',
+    networkOffline: 'Offline',
     searchResultsFound: '{count} result{plural} found',
     searchNoResults: 'No results found for "{query}"',
     searchClickToVisit: 'Click to visit (and get 404!)',

@@ -9,6 +9,8 @@ window.I18n_KO = {
     openWindowsAriaLabel: '열린 창',
     taskbarAriaLabel: '작업 표시줄',
     clockTooltip: '날짜 및 시간을 열려면 두 번 클릭',
+    networkOnline: '온라인',
+    networkOffline: '오프라인',
     searchResultsFound: '{count}개 결과{plural} 찾음',
     searchNoResults: '"{query}"에 대한 결과를 찾을 수 없습니다',
     searchClickToVisit: '방문하려면 클릭 (404를 받으세요!)',

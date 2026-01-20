@@ -9,6 +9,8 @@ window.I18n_ZH = {
     openWindowsAriaLabel: '打开的窗口',
     taskbarAriaLabel: '任务栏',
     clockTooltip: '双击打开日期和时间',
+    networkOnline: '在线',
+    networkOffline: '离线',
     searchResultsFound: '找到 {count} 个结果{plural}',
     searchNoResults: '未找到 "{query}" 的结果',
     searchClickToVisit: '点击访问（并获得404！）',

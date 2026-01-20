@@ -9,6 +9,8 @@ window.I18n_JA = {
     openWindowsAriaLabel: '開いているウィンドウ',
     taskbarAriaLabel: 'タスクバー',
     clockTooltip: 'ダブルクリックで日付と時刻を開く',
+    networkOnline: 'オンライン',
+    networkOffline: 'オフライン',
     searchResultsFound: '{count}件の結果{plural}が見つかりました',
     searchNoResults: '"{query}"の結果が見つかりませんでした',
     searchClickToVisit: 'クリックして訪問（404を取得！）',

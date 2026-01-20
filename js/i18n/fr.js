@@ -9,6 +9,8 @@ window.I18n_FR = {
     openWindowsAriaLabel: 'Fenêtres ouvertes',
     taskbarAriaLabel: 'Barre des tâches',
     clockTooltip: 'Double-cliquez pour ouvrir Date et Heure',
+    networkOnline: 'En ligne',
+    networkOffline: 'Hors ligne',
     searchResultsFound: '{count} résultat{plural} trouvé',
     searchNoResults: 'Aucun résultat trouvé pour "{query}"',
     searchClickToVisit: 'Cliquez pour visiter (et obtenir 404 !)',

@@ -9,6 +9,8 @@ window.I18n_AR = {
     openWindowsAriaLabel: 'النوافذ المفتوحة',
     taskbarAriaLabel: 'شريط المهام',
     clockTooltip: 'انقر نقرًا مزدوجًا لفتح التاريخ والوقت',
+    networkOnline: 'متصل',
+    networkOffline: 'غير متصل',
     searchResultsFound: 'تم العثور على {count} نتيجة{plural}',
     searchNoResults: 'لم يتم العثور على نتائج لـ "{query}"',
     searchClickToVisit: 'انقر للزيارة (والحصول على 404!)',
