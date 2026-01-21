@@ -1,0 +1,181 @@
+# Translations TODO
+
+This file documents all hardcoded strings and missing translations found in the codebase.
+These should be translated and added to all locale files later.
+
+## Core File System (js/core.fs.js)
+
+### Error Messages
+- `"Not a directory: " + path` (line 79)
+  - Should use: `fs.notADirectory` or similar
+  - Context: When trying to list a non-directory path
+
+- `"Parent is not a directory"` (lines 85, 102, 124)
+  - Should use: `fs.parentNotADirectory` or similar
+  - Context: When parent path is not a directory
+
+- `"A folder named \"${name}\" already exists in this location"` (line 90)
+  - Should use: `files.folderAlreadyExists` (already exists but FS throws this)
+  - Context: When creating a folder that already exists
+
+- `"Parent directory not found"` (line 152)
+  - Should use: `fs.parentDirectoryNotFound` or similar
+  - Context: When parent directory doesn't exist
+
+- `"File not found: " + path` (lines 154, 157)
+  - Should use: `terminal.fileNotFound` (already exists)
+  - Context: When file doesn't exist
+
+- `"Not a file: " + path` (line 159)
+  - Should use: `terminal.notAFile` (already exists)
+  - Context: When path is not a file
+
+- `"Parent directory not found or not a directory"` (line 193)
+  - Should use: `fs.parentDirectoryNotFoundOrNotDirectory` or similar
+  - Context: When parent doesn't exist or isn't a directory
+
+- `"Path not found or type mismatch"` (line 198)
+  - Should use: `fs.pathNotFoundOrTypeMismatch` or similar
+  - Context: When path doesn't exist or type doesn't match
+
+- `"Path not found"` (line 206)
+  - Should use: `terminal.pathNotFound` (already exists)
+  - Context: When path doesn't exist
+
+- `"A ${itemType} named \"${newName}\" already exists in this location."` (line 222)
+  - Should use: `files.nameAlreadyExists` (already exists but FS throws this)
+  - Context: When renaming to a name that already exists
+
+### Storage Quota Error
+- `"Storage quota exceeded. File system is ${sizeMB} MB (${sizeKB} KB) with ${fileCount} files. Please delete some files to free up space."` (line 35)
+  - Should use: `fs.storageQuotaExceeded` with placeholders
+  - Context: When localStorage quota is exceeded
+  - Placeholders: {sizeMB}, {sizeKB}, {fileCount}
+
+## Terminal App (js/apps/terminal.js)
+
+### Fallback Messages (when I18n.t() returns undefined)
+- `"Both a file and folder named \"${targetName}\" exist. Please specify type: use \"rm file ${targetName}\" for file or \"rm dir ${targetName}\" for folder."` (line 474)
+  - Key: `terminal.ambiguousPathRm` (already exists, but fallback is hardcoded)
+  - Context: When both file and folder exist for rm command
+
+- `"Both a file and folder named \"${srcName}\" exist. Please specify type: use \"cp file ${srcName} ${destName}\" for file or \"cp dir ${srcName} ${destName}\" for folder."` (line 523)
+  - Key: `terminal.ambiguousPath` (already exists, but fallback is hardcoded)
+  - Context: When both file and folder exist for cp command
+
+- `"Both a file and folder named \"${srcName}\" exist. Please specify type: use \"mv file ${srcName} ${destName}\" for file or \"mv dir ${srcName} ${destName}\" for folder."` (line 620)
+  - Key: `terminal.ambiguousPath` (already exists, but fallback is hardcoded)
+  - Context: When both file and folder exist for mv command
+
+### Hardcoded Text
+- `"destination"` (lines 521, 618)
+  - Should use: `terminal.destination` or similar
+  - Context: Default destination name in error messages
+
+- `"🟦"` (line 699)
+  - This is an emoji fallback, probably fine to keep as-is
+  - Context: Default app icon when none is provided
+
+## Settings App (js/apps/settings.js)
+
+### Error Messages
+- `"Failed to load wallpaper from ${pathOrUrl}: ${error.message}"` (line 292)
+  - Should use: `settings.failedToLoadWallpaper` with placeholders
+  - Context: When wallpaper fails to load
+  - Placeholders: {pathOrUrl}, {error}
+
+### Console Errors (may not need translation)
+- `"Failed to load saved wallpaper preview:"` (line 63)
+- `"Failed to load preview from file system:"` (line 198)
+  - These are console.error messages, may not need translation
+
+## Core Shell (js/core.shell.js)
+
+### Console Errors (may not need translation)
+- `"Failed to load saved wallpaper from file system:"` (line 1312)
+  - Console error, may not need translation
+
+### Hardcoded Text
+- `"🟦"` (multiple lines: 440, 567, 666, 718, 1092)
+  - Default app icon emoji, probably fine to keep as-is
+
+## Files App (js/apps/files.js)
+
+### Console Errors (may not need translation)
+- `"Failed to load image preview:"` (lines 140, 206)
+  - Console errors, may not need translation
+
+## Draw App (js/apps/draw.js)
+
+### Error Messages
+- `"Failed to load image"` (line 145)
+  - Currently used in: `I18n.t('filesave.error', { message: 'Failed to load image' })`
+  - Should use: `draw.failedToLoadImage` or `filesave.failedToLoadImage`
+  - Context: When image fails to load
+
+## Core FileSave Utility (js/core.filesave.js)
+
+### Error Messages
+- `"No content to save"` (line 44)
+  - Should use: `filesave.noContentToSave` or similar
+  - Context: When trying to save with no content
+
+## Games Folder (js/games/folder.js)
+
+### Hardcoded Text
+- `"🟦"` (multiple lines: 107, 127, 167, 219)
+  - Default game icon emoji, probably fine to keep as-is
+
+## Core Folders (js/core.folders.js)
+
+### Hardcoded Text
+- `"🟦"` (multiple lines: 174, 229, 281)
+  - Default app icon emoji, probably fine to keep as-is
+
+## Notes
+
+1. **Error messages from FS module**: Many error messages are thrown from `core.fs.js` and caught in other modules. These should be localized in the FS module itself, or we should create a `fs` namespace in i18n files.
+
+2. **Fallback messages**: Some code has fallback English strings when `I18n.t()` might return undefined. These should be removed once all translations are complete, or the fallbacks should also be localized.
+
+3. **Console errors**: Some strings are only used in `console.error()` calls. These may not need translation, but could be useful for debugging in other languages.
+
+4. **Emoji fallbacks**: The `"🟦"` emoji is used as a default icon. This is probably fine to keep as-is since it's a visual element, not text.
+
+5. **Error message checking**: Some code checks for specific error message strings (e.g., `e.message.includes('already exists in this location')`). This is fragile and should be replaced with error codes or types.
+
+## Suggested Translation Keys Structure
+
+### New namespace: `fs` (for core.fs.js errors)
+```javascript
+fs: {
+  notADirectory: 'Not a directory: {path}',
+  parentNotADirectory: 'Parent is not a directory',
+  parentDirectoryNotFound: 'Parent directory not found',
+  parentDirectoryNotFoundOrNotDirectory: 'Parent directory not found or not a directory',
+  pathNotFoundOrTypeMismatch: 'Path not found or type mismatch',
+  storageQuotaExceeded: 'Storage quota exceeded. File system is {sizeMB} MB ({sizeKB} KB) with {fileCount} files. Please delete some files to free up space.'
+}
+```
+
+### Update `settings` namespace
+```javascript
+settings: {
+  failedToLoadWallpaper: 'Failed to load wallpaper from {pathOrUrl}: {error}'
+}
+```
+
+### Update `filesave` namespace
+```javascript
+filesave: {
+  noContentToSave: 'No content to save',
+  failedToLoadImage: 'Failed to load image'
+}
+```
+
+### Update `terminal` namespace
+```javascript
+terminal: {
+  destination: 'destination'
+}
+```
