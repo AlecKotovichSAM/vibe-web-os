@@ -231,10 +231,26 @@ Apps.register({
             
           case 'ls':
           case 'dir':
-            const items = FS.ls(currentPath);
-            if (items.length === 0) {
-              addOutput(I18n.t('terminal.emptyDirectory'), 'var(--muted)');
-            } else {
+            try {
+              let targetPath = currentPath;
+              if (args.length > 0) {
+                targetPath = normalizePath(args[0], currentPath);
+                // Verify the path exists and is a directory
+                const target = FS.find(targetPath);
+                if (!target) {
+                  addOutput(I18n.t('terminal.pathNotFound', { path: targetPath }), 'var(--danger)');
+                  break;
+                }
+                if (target.type !== 'dir') {
+                  addOutput(I18n.t('terminal.notADirectory', { path: targetPath }), 'var(--danger)');
+                  break;
+                }
+              }
+              
+              const items = FS.ls(targetPath);
+              if (items.length === 0) {
+                addOutput(I18n.t('terminal.emptyDirectory'), 'var(--muted)');
+              } else {
               // Calculate max name length for alignment (cap at reasonable limit)
               const MAX_NAME_DISPLAY = 45; // Maximum characters to display/consider for alignment
               const MIN_NAME_WIDTH = 20; // Minimum width for alignment
@@ -261,6 +277,9 @@ Apps.register({
                 const sizePadded = sizeStr.padStart(10);
                 addOutput(`${icon} ${namePadded}  ${sizePadded}  (${type})`);
               });
+              }
+            } catch (e) {
+              addOutput(e.message, 'var(--danger)');
             }
             break;
             
@@ -458,8 +477,12 @@ Apps.register({
               }
               
               // Delete with type awareness
-              FS.rm(targetPath, targetType);
-              addOutput(I18n.t('terminal.deleted', { path: targetPath }), 'var(--ok)');
+              const deleted = FS.rm(targetPath, targetType);
+              if (deleted) {
+                addOutput(I18n.t('terminal.deleted', { path: targetPath }), 'var(--ok)');
+              } else {
+                addOutput(I18n.t('terminal.fileNotFound', { path: targetPath }), 'var(--danger)');
+              }
             } catch (e) {
               addOutput(e.message, 'var(--danger)');
             }
