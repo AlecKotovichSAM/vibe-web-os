@@ -35,7 +35,26 @@ vibe-web-os/
 │   ├── core.apps.js    # App registration system
 │   ├── core.shell.js   # Desktop UI (taskbar, start menu, icons)
 │   ├── boot.js         # Boot sequence
-│   └── apps.*.js       # Individual app modules
+│   ├── apps/           # Individual app modules
+│   │   ├── browser.js
+│   │   ├── calculator.js
+│   │   ├── datetime.js
+│   │   ├── draw.js
+│   │   ├── editor.js
+│   │   ├── files.js
+│   │   ├── notes.js
+│   │   ├── settings.js
+│   │   ├── sysinfo.js
+│   │   ├── terminal.js
+│   │   └── test.js
+│   ├── games/          # Game modules
+│   │   ├── folder.js
+│   │   └── minesweeper.js
+│   └── i18n/           # Internationalization
+│       ├── core.js     # I18n system
+│       ├── en.js       # English (primary development locale)
+│       ├── *.js        # Other locale files (de, fr, es, etc.)
+│       └── translations.todo  # Missing translations documentation
 └── sw.js               # Service Worker for offline caching
 ```
 
@@ -188,10 +207,10 @@ All scripts loaded via `<script>` tags in `index.html` in dependency order:
 
 ### Adding New Apps
 
-1. Create `js/apps.yourapp.js`
+1. Create `js/apps/yourapp.js`
 2. Use `Apps.register({ id, name, icon, description, launch })`
 3. Add icon to `index.html` in `#desktop-icons`
-4. Add script tag in `index.html` before `boot.js`
+4. Add script tag in `index.html` before `boot.js`: `<script src="js/apps/yourapp.js"></script>`
 
 ### BSOD (Blue Screen of Death)
 
@@ -242,6 +261,30 @@ BSOD.startRandomSchedule(60, 300); // 1-5 minutes
 - Comment non-obvious logic briefly
 - Console logging is present for debugging (clean up before production)
 - No external dependencies - pure vanilla JS
+
+### Internationalization (i18n) Workflow
+
+**Important:** During development, we only work with `js/i18n/en.js` (English locale).
+
+**When adding new user-facing strings:**
+1. Add the translation key and English text to `js/i18n/en.js` only
+2. Document missing translations in `js/i18n/translations.todo` with:
+   - File location and line number
+   - Context of where it's used
+   - Suggested translation key name
+   - Placeholder information if needed
+3. Do NOT translate to other locale files during development
+4. Translations to other languages happen later using `translations.todo` as reference
+
+**When finding hardcoded strings:**
+- Add them to `en.js` with appropriate keys
+- Document them in `translations.todo` with full context
+- Do not translate immediately
+
+**Translation keys structure:**
+- Use namespaces: `terminal.*`, `files.*`, `settings.*`, etc.
+- Use placeholders: `{name}`, `{path}`, `{count}` for dynamic values
+- Use `I18n.t('namespace.key', { placeholder: value })` in code
 
 ### .continue Rules Summary
 
