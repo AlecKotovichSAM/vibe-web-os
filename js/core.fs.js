@@ -119,6 +119,30 @@ window.FS = (() => {
     return node;
   }
   
+  function append(parentPath, name, content='') {
+    const p = find(parentPath);
+    if (!p || p.type !== 'dir') throw new Error('Parent is not a directory');
+    
+    // Find existing file
+    const existing = p.children.find(c => c.name === name && c.type === 'file');
+    if (existing) {
+      // Append to existing content (no automatic newline - user controls it)
+      existing.content = existing.content + content;
+      existing.mtime = now();
+      save(tree);
+      if (typeof Bus !== 'undefined') Bus.emit('fs:changed');
+      return { node: existing, wasCreated: false };
+    }
+    
+    // File doesn't exist, create new one
+    const node = { type:'file', name, path: `${parentPath}/${name}`, mtime: now(), content };
+    p.children.push(node); 
+    p.mtime = now(); 
+    save(tree); 
+    if (typeof Bus !== 'undefined') Bus.emit('fs:changed');
+    return { node, wasCreated: true };
+  }
+  
   function read(path, type = null) {
     let f;
     if (type !== null) {
@@ -213,5 +237,5 @@ window.FS = (() => {
 
   function reset() { tree = defaultFS; save(tree); }
 
-  return { ls, mkdir, write, read, rm, rename, find, reset, root: '/root' };
+  return { ls, mkdir, write, append, read, rm, rename, find, reset, root: '/root' };
 })();
