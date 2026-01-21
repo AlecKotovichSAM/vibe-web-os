@@ -294,6 +294,10 @@ window.I18n_ZH = {
       touchDesc: '创建新文件',
       rm: 'rm [路径]',
       rmDesc: '删除文件或目录',
+      cp: 'cp [文件|目录] [源] [目标]',
+      cpDesc: '复制文件或目录。当两者都存在时，使用 "cp file 名称 目标" 或 "cp dir 名称 目标" 来指定类型。',
+      mv: 'mv [文件|目录] [源] [目标]',
+      mvDesc: '移动或重命名文件或目录。当两者都存在时，使用 "mv file 名称 目标" 或 "mv dir 名称 目标" 来指定类型。',
       apps: 'apps, applist',
       appsDesc: '列出所有可用应用'
     }

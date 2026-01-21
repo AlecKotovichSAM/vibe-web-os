@@ -294,6 +294,10 @@ window.I18n_FR = {
       touchDesc: 'Créer un nouveau fichier',
       rm: 'rm [chemin]',
       rmDesc: 'Supprimer un fichier ou un répertoire',
+      cp: 'cp [fichier|répertoire] [source] [destination]',
+      cpDesc: 'Copier un fichier ou un répertoire. Utilisez "cp file nom destination" ou "cp dir nom destination" pour spécifier le type lorsque les deux existent.',
+      mv: 'mv [fichier|répertoire] [source] [destination]',
+      mvDesc: 'Déplacer ou renommer un fichier ou un répertoire. Utilisez "mv file nom destination" ou "mv dir nom destination" pour spécifier le type lorsque les deux existent.',
       apps: 'apps, applist',
       appsDesc: 'Lister toutes les applications disponibles'
     }

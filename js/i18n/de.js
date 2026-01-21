@@ -253,6 +253,10 @@ window.I18n_DE = {
       touchDesc: 'Neue Datei erstellen',
       rm: 'rm [pfad]',
       rmDesc: 'Datei oder Verzeichnis löschen',
+      cp: 'cp [datei|verzeichnis] [quelle] [ziel]',
+      cpDesc: 'Eine Datei oder ein Verzeichnis kopieren. Verwenden Sie "cp file name ziel" oder "cp dir name ziel", um den Typ anzugeben, wenn beide existieren.',
+      mv: 'mv [datei|verzeichnis] [quelle] [ziel]',
+      mvDesc: 'Eine Datei oder ein Verzeichnis verschieben oder umbenennen. Verwenden Sie "mv file name ziel" oder "mv dir name ziel", um den Typ anzugeben, wenn beide existieren.',
       apps: 'apps, applist',
       appsDesc: 'Alle verfügbaren Apps auflisten'
     }
