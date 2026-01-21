@@ -85,7 +85,15 @@ window.I18n_RU = {
     renameFile: 'Переименовать',
     folderName: 'Папка',
     fileName: 'Файл',
-    viewer: 'Просмотр'
+    viewer: 'Просмотр',
+    cannotRenameDefault: 'Папка или файл по умолчанию не могут быть переименованы',
+    cannotDeleteDefault: 'Папка или файл по умолчанию не могут быть удалены',
+    renameError: 'Ошибка при переименовании файла или папки',
+    nameAlreadyExists: '{type} с именем "{name}" уже существует в этом месте.',
+    errorCreatingFolder: 'Ошибка при создании папки',
+    errorCreatingFile: 'Ошибка при создании файла',
+    fileAlreadyExists: 'Файл с именем "{name}" уже существует в этом месте.',
+    folderAlreadyExists: 'Папка с именем "{name}" уже существует в этом месте.'
   },
 
   // Notes App
@@ -194,7 +202,8 @@ window.I18n_RU = {
   // Desktop
   desktop: {
     new: 'Новое',
-    newTextDocument: 'Новый текстовый документ'
+    newTextDocument: 'Новый текстовый документ',
+    newFolder: 'Новая папка'
   },
 
   // Common
@@ -255,6 +264,9 @@ window.I18n_RU = {
     directoryCreated: 'Директория создана: {name}',
     fileCreated: 'Файл создан: {name}',
     deleted: 'Удалено: {path}',
+    ambiguousPath: 'Существуют и файл, и папка с именем "{name}". Укажите тип: используйте "{cmd} file {name} {dest}" для файла или "{cmd} dir {name} {dest}" для папки.',
+    ambiguousPathRm: 'Существуют и файл, и папка с именем "{name}". Укажите тип: используйте "rm file {name}" для файла или "rm dir {name}" для папки.',
+    ambiguousPathCat: 'Существуют и файл, и папка с именем "{name}". Укажите тип: используйте "cat file {name}" для файла.',
     noApps: 'Нет доступных приложений',
     commandNotFound: 'Команда не найдена: {cmd}',
     error: 'Ошибка',

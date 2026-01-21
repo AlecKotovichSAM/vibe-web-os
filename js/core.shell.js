@@ -617,35 +617,25 @@ window.Shell = (() => {
       }
       
       const iconButtons = desktopIcons.querySelectorAll('button.icon');
-      console.log('Found icon buttons:', iconButtons.length); // Debug
       
       if (iconButtons.length === 0) {
         console.error('No icon buttons found!');
         return;
       }
       
-      iconButtons.forEach((btn, index) => {
-        console.log(`Setting up button ${index}:`, btn.dataset.app, btn); // Debug
-        
-        // Verify button is actually in DOM and visible
-        const rect = btn.getBoundingClientRect();
-        console.log(`Button ${index} position:`, rect); // Debug
-        
+      iconButtons.forEach((btn) => {
         // Double-click to open
         btn.addEventListener('dblclick', (e)=>{
-          console.log('Double-click detected on:', btn.dataset.app); // Debug
           e.preventDefault();
           e.stopPropagation();
           const appId = btn.dataset.app;
           if (appId) {
-            console.log('Opening app:', appId); // Debug
             Apps.open(appId);
           }
         }, true);
 
         // Right-click for context menu
         btn.addEventListener('contextmenu', (e)=>{
-          console.log('Right-click detected on:', btn.dataset.app); // Debug
           e.preventDefault();
           e.stopPropagation();
           const appId = btn.dataset.app;
@@ -787,25 +777,25 @@ window.Shell = (() => {
     function openTextEditor() {
       const id = 'text-editor-' + Date.now();
       const fileName = `new-file-${Date.now()}.txt`;
-      const filePath = `${FS.root}/${fileName}`;
+      const filePath = `/root/Desktop/${fileName}`;
       
       const content = `
         <div style="display:flex; flex-direction:column; height:100%; gap:8px;">
           <div style="display:flex; gap:8px; align-items:center;">
             <input type="text" id="editor-filename" value="${fileName}" style="flex:1; background:#0f1324; color:#e8e8e8; border:1px solid #2a2d3f; border-radius:6px; padding:6px;" />
-            <button id="editor-save" style="background:var(--accent); color:#fff; border:none; border-radius:6px; padding:8px 16px; cursor:pointer;">💾 Save</button>
-            <button id="editor-saveas" style="background:var(--panel-2); color:#ddd; border:none; border-radius:6px; padding:8px 16px; cursor:pointer;">Save As...</button>
+            <button id="editor-save" style="background:var(--accent); color:#fff; border:none; border-radius:6px; padding:8px 16px; cursor:pointer;">💾 ${I18n.t('editor.save')}</button>
+            <button id="editor-saveas" style="background:var(--panel-2); color:#ddd; border:none; border-radius:6px; padding:8px 16px; cursor:pointer;">${I18n.t('editor.saveAs')}</button>
           </div>
           <div style="flex:1; display:flex; flex-direction:column;">
-            <textarea id="editor-text" placeholder="Start typing..." style="flex:1; width:100%; background:#0f1324; color:#e8e8e8; border:1px solid #2a2d3f; border-radius:6px; padding:8px; font-family:monospace; resize:none;"></textarea>
+            <textarea id="editor-text" placeholder="${I18n.t('editor.placeholder')}" style="flex:1; width:100%; background:#0f1324; color:#e8e8e8; border:1px solid #2a2d3f; border-radius:6px; padding:8px; font-family:monospace; resize:none;"></textarea>
           </div>
-          <div id="editor-status" style="color:#a7a7a7; font-size:.85rem; padding:4px;">New file - not saved</div>
+          <div id="editor-status" style="color:#a7a7a7; font-size:.85rem; padding:4px;">${I18n.t('editor.newFileNotSaved')}</div>
         </div>
       `;
       
       const win = WindowManager.makeWindow({ 
         id, 
-        title: `Text Editor - ${fileName}`, 
+        title: `${I18n.t('editor.title')} - ${fileName}`, 
         content, 
         width: 600, 
         height: 500 
@@ -817,100 +807,187 @@ window.Shell = (() => {
       const saveAsBtn = win.querySelector('#editor-saveas');
       const status = win.querySelector('#editor-status');
       
-      let currentPath = filePath;
+      let currentPath = filePath; // This is already set to /root/Desktop/${fileName}
       let isSaved = false;
+      const isFromDesktop = true; // Text editor opened from Desktop always saves to Desktop
+      
+      console.log('[Text Editor] Initialized:', { filePath, currentPath, isFromDesktop });
       
       // Update window title when filename changes
       filenameInput.addEventListener('input', ()=>{
         const newName = filenameInput.value.trim() || fileName;
-        win.querySelector('.win-title').textContent = `Text Editor - ${newName}`;
+        win.querySelector('.win-title').textContent = `${I18n.t('editor.title')} - ${newName}`;
       });
       
       // Save file
       function saveFile(path, content) {
         try {
-          const pathParts = path.split('/');
-          const parentPath = pathParts.slice(0, -1).join('/') || FS.root;
+          console.log('[saveFile] Called with path:', path, 'isFromDesktop:', isFromDesktop);
+          
+          // For files opened from Desktop, ALWAYS use Desktop regardless of path
+          if (isFromDesktop) {
+            const pathParts = path.split('/').filter(p => p);
+            const name = pathParts[pathParts.length - 1] || path;
+            const parentPath = '/root/Desktop';
+            
+            console.log('[saveFile] File from Desktop - forcing Desktop:', { name, parentPath, originalPath: path });
+            FS.write(parentPath, name, content);
+            console.log('[saveFile] File saved successfully to:', parentPath);
+            
+            status.textContent = I18n.t('editor.savedAt', { time: new Date().toLocaleTimeString() });
+            status.style.color = '#9be0b5';
+            setTimeout(()=>{ status.style.color='#a7a7a7'; }, 2000);
+            isSaved = true;
+            renderDesktopItems(); // Refresh desktop items
+            return true;
+          }
+          
+          // Normalize path - ensure it starts with /
+          let normalizedPath = path.startsWith('/') ? path : '/' + path;
+          console.log('[saveFile] Normalized path:', normalizedPath);
+          
+          const pathParts = normalizedPath.split('/').filter(p => p); // Filter out empty strings
+          console.log('[saveFile] Path parts:', pathParts);
+          
+          if (pathParts.length === 0) {
+            throw new Error('Invalid path');
+          }
+          
           const name = pathParts[pathParts.length - 1];
+          console.log('[saveFile] File name:', name);
+          
+          let parentPath;
+          
+          if (pathParts.length > 1) {
+            parentPath = '/' + pathParts.slice(0, -1).join('/');
+            console.log('[saveFile] Parent path (from parts):', parentPath);
+          } else {
+            parentPath = '/root/Desktop'; // Single part means it's just a filename, use Desktop
+            console.log('[saveFile] Single part, using Desktop:', parentPath);
+          }
+          
+          // If empty or root, use Desktop (for files opened from Desktop)
+          if (!parentPath || parentPath === '/' || parentPath === '/root') {
+            console.log('[saveFile] Parent is root or empty, changing to Desktop');
+            parentPath = '/root/Desktop';
+          }
+          
+          // Ensure Desktop is used for files opened from Desktop context menu
+          // Check if the original path contains Desktop
+          if (normalizedPath.includes('/Desktop/') || normalizedPath.startsWith('/root/Desktop/')) {
+            console.log('[saveFile] Path contains Desktop, forcing Desktop');
+            parentPath = '/root/Desktop';
+          }
+          
+          console.log('[saveFile] Final parentPath:', parentPath);
+          console.log('[saveFile] Calling FS.write with:', { parentPath, name });
           
           // FS.write() handles both creating new files and updating existing ones
           FS.write(parentPath, name, content);
           
-          status.textContent = `Saved at ${new Date().toLocaleTimeString()}`;
+          console.log('[saveFile] File saved successfully to:', parentPath);
+          
+          status.textContent = I18n.t('editor.savedAt', { time: new Date().toLocaleTimeString() });
           status.style.color = '#9be0b5';
           setTimeout(()=>{ status.style.color='#a7a7a7'; }, 2000);
           isSaved = true;
+          renderDesktopItems(); // Refresh desktop items
           return true;
         } catch (e) {
-          status.textContent = `Error: ${e.message}`;
+          status.textContent = I18n.t('editor.error', { message: e.message });
           status.style.color = '#ff6b6b';
           return false;
         }
       }
       
       saveBtn.addEventListener('click', ()=>{
+        console.log('[Save Button] Click handler fired!');
         const content = textarea.value;
         const name = filenameInput.value.trim();
+        console.log('[Save Button] Name from input:', name);
         if (!name) {
-          status.textContent = 'Error: Filename cannot be empty';
+          status.textContent = I18n.t('editor.errorEmptyFilename');
           status.style.color = '#ff6b6b';
           return;
         }
         
-        const pathParts = currentPath.split('/');
-        const parentPath = pathParts.slice(0, -1).join('/') || FS.root;
+        // Always use Desktop for files opened from Desktop context menu
+        const parentPath = '/root/Desktop';
         const newPath = `${parentPath}/${name}`;
+        
+        console.log('[Save Button] Clicked:', { name, parentPath, newPath, currentPath, filePath, isFromDesktop });
+        console.log('[Save Button] About to call saveFile with:', newPath);
         
         if (saveFile(newPath, content)) {
           currentPath = newPath;
-          win.querySelector('.win-title').textContent = `Text Editor - ${name}`;
+          console.log('[Save Button] Updated currentPath to:', currentPath);
+          win.querySelector('.win-title').textContent = `${I18n.t('editor.title')} - ${name}`;
+        } else {
+          console.log('[Save Button] saveFile returned false');
         }
       });
       
       saveAsBtn.addEventListener('click', ()=>{
         const content = textarea.value;
-        const name = prompt('Enter filename:', filenameInput.value.trim());
+        const name = prompt(I18n.t('editor.saveAsPrompt'), filenameInput.value.trim());
         if (!name) return;
         
-        const newPath = `${FS.root}/${name}`;
+        const newPath = `/root/Desktop/${name}`;
         if (saveFile(newPath, content)) {
           currentPath = newPath;
           filenameInput.value = name;
-          win.querySelector('.win-title').textContent = `Text Editor - ${name}`;
+          win.querySelector('.win-title').textContent = `${I18n.t('editor.title')} - ${name}`;
         }
       });
       
       // Track unsaved changes
       textarea.addEventListener('input', ()=>{
         if (isSaved) {
-          status.textContent = 'Modified - not saved';
+          status.textContent = I18n.t('editor.modifiedNotSaved');
           status.style.color = '#ffa500';
           isSaved = false;
         }
       });
       
-      Bus.emit('app:opened', { id, title: `Text Editor - ${fileName}`, icon: '📄' });
+      Bus.emit('app:opened', { id, title: `${I18n.t('editor.title')} - ${fileName}`, icon: '📄' });
     }
 
     // Desktop context menu
     let contextMenu = null;
     
     function createContextMenu() {
-      if (contextMenu) return contextMenu;
+      if (contextMenu) {
+        // Update localized texts
+        const newMenuItem = contextMenu.querySelector('.context-menu-item.has-submenu');
+        if (newMenuItem) newMenuItem.childNodes[0].nodeValue = I18n.t('desktop.new');
+        const newTextItem = contextMenu.querySelector('[data-action="new-text"]');
+        if (newTextItem) newTextItem.textContent = I18n.t('desktop.newTextDocument');
+        const newFolderItem = contextMenu.querySelector('[data-action="new-folder"]');
+        if (newFolderItem) newFolderItem.textContent = I18n.t('desktop.newFolder');
+        return contextMenu;
+      }
       
       contextMenu = document.createElement('div');
       contextMenu.className = 'context-menu';
       contextMenu.innerHTML = `
         <div class="context-menu-item has-submenu">
-          New
+          ${I18n.t('desktop.new')}
           <div class="context-submenu">
-            <div class="context-menu-item" data-action="new-text">New text document</div>
+            <div class="context-menu-item" data-action="new-text">${I18n.t('desktop.newTextDocument')}</div>
+            <div class="context-menu-item" data-action="new-folder">${I18n.t('desktop.newFolder')}</div>
           </div>
         </div>
       `;
       document.body.appendChild(contextMenu);
       return contextMenu;
     }
+    
+    // Update context menu on locale change
+    Bus.on('locale:changed', () => {
+      if (contextMenu) {
+        createContextMenu(); // This will update the existing menu
+      }
+    });
     
     function showContextMenu(x, y) {
       const menu = createContextMenu();
@@ -959,7 +1036,29 @@ window.Shell = (() => {
       menu.classList.remove('show');
       
       if (action === 'new-text') {
-        Apps.open('editor');
+        Apps.open('editor', { initialPath: '/root/Desktop' });
+      } else if (action === 'new-folder') {
+        const name = prompt(I18n.t('files.folderName') + '?');
+        if (!name) return;
+        try {
+          // Check if folder already exists in Desktop
+          const desktopPath = '/root/Desktop';
+          const items = FS.ls(desktopPath);
+          const folderExists = items.some(item => item.name === name && item.type === 'dir');
+          if (folderExists) {
+            alert(I18n.t('files.folderAlreadyExists', { name }));
+            return;
+          }
+          FS.mkdir(desktopPath, name);
+          renderDesktopItems(); // Refresh desktop items
+        } catch (e) {
+          // Check if error is about duplicate folder name
+          if (e.message && e.message.includes('already exists in this location')) {
+            alert(I18n.t('files.folderAlreadyExists', { name }));
+          } else {
+            alert(e.message || I18n.t('files.errorCreatingFolder'));
+          }
+        }
       }
     });  
 
@@ -1223,6 +1322,151 @@ window.Shell = (() => {
     }    
 
     desktop.hidden = false;
+    
+    // Render desktop items from /root/Desktop
+    renderDesktopItems();
+    
+    // Listen for file system changes to refresh desktop items
+    Bus.on('fs:changed', () => {
+      renderDesktopItems();
+    });
+    
+    // Recalculate layout on window resize
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        renderDesktopItems();
+      }, 250);
+    });
+  }
+  
+  // Function to render items from /root/Desktop on the desktop
+  function renderDesktopItems() {
+    const desktopItems = document.getElementById('desktop-items');
+    if (!desktopItems) return;
+    
+    try {
+      const items = FS.ls('/root/Desktop');
+      desktopItems.innerHTML = '';
+      
+      if (items.length === 0) return;
+      
+      // Sort: folders first, then files, both alphabetically
+      const sortedItems = [...items].sort((a, b) => {
+        if (a.type !== b.type) {
+          return a.type === 'dir' ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name);
+      });
+      
+      // Calculate layout: items per column based on viewport height
+      const iconHeight = 110; // Approximate height of each icon (90px icon + 20px spacing)
+      const viewportHeight = window.innerHeight;
+      const itemsPerColumn = Math.floor((viewportHeight - 32) / iconHeight); // 32px for top/bottom padding
+      
+      // Group items into columns
+      const columns = [];
+      for (let i = 0; i < sortedItems.length; i += itemsPerColumn) {
+        columns.push(sortedItems.slice(i, i + itemsPerColumn));
+      }
+      
+      // Create columns container
+      const columnsContainer = document.createElement('div');
+      columnsContainer.style.cssText = 'display:flex; gap:16px; position:absolute; top:16px; right:16px; z-index:1; pointer-events:auto;';
+      
+      // Render each column
+      columns.forEach((columnItems, colIndex) => {
+        const column = document.createElement('div');
+        column.style.cssText = 'display:flex; flex-direction:column; gap:12px;';
+        
+        columnItems.forEach(item => {
+          const icon = document.createElement('button');
+          icon.className = 'icon desktop-item';
+          icon.dataset.path = item.path;
+          icon.dataset.type = item.type;
+          
+          // Determine icon glyph
+          let glyph = '📄';
+          if (item.type === 'dir') {
+            glyph = '📁';
+          } else {
+            const ext = item.name.split('.').pop()?.toLowerCase() || '';
+            if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(ext)) {
+              glyph = '🖼️';
+            } else if (['txt', 'md'].includes(ext)) {
+              glyph = '📄';
+            } else if (['js', 'html', 'css', 'json'].includes(ext)) {
+              glyph = '📜';
+            }
+          }
+          
+          icon.innerHTML = `
+            <span class="icon-glyph">${glyph}</span>
+            <span class="icon-label">${item.name}</span>
+          `;
+          
+          // Double-click to open
+          icon.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (item.type === 'dir') {
+              // Open Files app and navigate to folder
+              Apps.open('files');
+              // Emit event to navigate Files app to this folder
+              setTimeout(() => {
+                Bus.emit('files:navigate', { path: item.path });
+              }, 100);
+            } else {
+              // Open file in viewer
+              const content = FS.read(item.path, 'file');
+              const id = 'viewer-' + Date.now();
+              let viewerContent = '';
+              let viewerIcon = '📄';
+              let viewerWidth = 520;
+              let viewerHeight = 360;
+              
+              // Check if it's an image
+              if (content.startsWith('data:image/')) {
+                viewerIcon = '🖼️';
+                viewerWidth = 800;
+                viewerHeight = 600;
+                viewerContent = `
+                  <div style="display:flex; justify-content:center; align-items:center; height:100%; background:var(--bg); overflow:auto;">
+                    <img src="${content}" style="max-width:100%; max-height:100%; object-fit:contain;" alt="${item.name}" />
+                  </div>
+                `;
+              } else {
+                viewerContent = `<pre style="white-space:pre-wrap; margin:0; padding:10px; color:var(--text);">${content.replace(/[&<>]/g, (m)=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m]))}</pre>`;
+              }
+              
+              const win = WindowManager.makeWindow({
+                id, title: `Viewer - ${item.name}`,
+                content: viewerContent,
+                width: viewerWidth, height: viewerHeight
+              });
+              
+              Bus.emit('app:opened', { 
+                id, 
+                title: `Viewer - ${item.name}`, 
+                icon: viewerIcon,
+                appId: 'files',
+                titleKey: 'files.viewer',
+                extraData: { name: item.name }
+              });
+            }
+          });
+          
+          column.appendChild(icon);
+        });
+        
+        columnsContainer.appendChild(column);
+      });
+      
+      desktopItems.appendChild(columnsContainer);
+    } catch (e) {
+      console.error('Failed to render desktop items:', e);
+    }
   }
 
   return { initDesktop };

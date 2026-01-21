@@ -87,7 +87,15 @@ window.I18n_EN = {
     renameFile: 'Rename',
     folderName: 'Folder',
     fileName: 'File',
-    viewer: 'Viewer'
+    viewer: 'Viewer',
+    cannotRenameDefault: 'Default folder or file cannot be renamed',
+    cannotDeleteDefault: 'Default folder or file cannot be deleted',
+    renameError: 'Error renaming file or folder',
+    nameAlreadyExists: 'A {type} named "{name}" already exists in this location.',
+    errorCreatingFolder: 'Error creating folder',
+    errorCreatingFile: 'Error creating file',
+    fileAlreadyExists: 'A file named "{name}" already exists in this location.',
+    folderAlreadyExists: 'A folder named "{name}" already exists in this location.'
   },
 
   // Notes App
@@ -219,7 +227,8 @@ window.I18n_EN = {
   // Desktop
   desktop: {
     new: 'New',
-    newTextDocument: 'New text document'
+    newTextDocument: 'New text document',
+    newFolder: 'New Folder'
   },
 
   // File Save (Generic)
@@ -253,10 +262,13 @@ window.I18n_EN = {
     copied: 'Copied: {from} -> {to}',
     moved: 'Moved: {from} -> {to}',
     samePath: 'Source and destination are the same',
+    ambiguousPath: 'Both a file and folder named "{name}" exist. Please specify type: use "{cmd} file {name} {dest}" for file or "{cmd} dir {name} {dest}" for folder.',
+    ambiguousPathRm: 'Both a file and folder named "{name}" exist. Please specify type: use "rm file {name}" for file or "rm dir {name}" for folder.',
+    ambiguousPathCat: 'Both a file and folder named "{name}" exist. Please specify type: use "cat file {name}" for file.',
     noApps: 'No apps available',
     commandNotFound: 'Command not found: {cmd}',
     error: 'Error',
-    usage: 'Usage: {cmd} {example}',
+    usage: 'Usage: {example}',
     help: {
       title: 'Available Commands:',
       help: 'help, ?',
@@ -277,12 +289,12 @@ window.I18n_EN = {
       mkdirDesc: 'Create a new directory',
       touch: 'touch [name]',
       touchDesc: 'Create a new file',
-      rm: 'rm [path]',
-      rmDesc: 'Delete a file or directory',
-      cp: 'cp [source] [dest]',
-      cpDesc: 'Copy a file or directory',
-      mv: 'mv [source] [dest]',
-      mvDesc: 'Move or rename a file or directory',
+      rm: 'rm [file|dir] [path]',
+      rmDesc: 'Delete a file or directory. Use "rm file name" or "rm dir name" to specify type when both exist.',
+      cp: 'cp [file|dir] [source] [dest]',
+      cpDesc: 'Copy a file or directory. Use "cp file name dest" or "cp dir name dest" to specify type when both exist.',
+      mv: 'mv [file|dir] [source] [dest]',
+      mvDesc: 'Move or rename a file or directory. Use "mv file name dest" or "mv dir name dest" to specify type when both exist.',
       apps: 'apps, applist',
       appsDesc: 'List all available apps'
     }

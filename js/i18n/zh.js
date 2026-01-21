@@ -85,7 +85,15 @@ window.I18n_ZH = {
     renameFile: '重命名',
     folderName: '文件夹',
     fileName: '文件',
-    viewer: '查看器'
+    viewer: '查看器',
+    cannotRenameDefault: '默认文件夹或文件无法重命名',
+    cannotDeleteDefault: '默认文件夹或文件无法删除',
+    renameError: '重命名文件或文件夹时出错',
+    nameAlreadyExists: '名为 "{name}" 的{type}已在此位置存在。',
+    errorCreatingFolder: '创建文件夹时出错',
+    errorCreatingFile: '创建文件时出错',
+    fileAlreadyExists: '名为 "{name}" 的文件已在此位置存在。',
+    folderAlreadyExists: '名为 "{name}" 的文件夹已在此位置存在。'
   },
 
   // Notes App
@@ -194,7 +202,8 @@ window.I18n_ZH = {
   // Desktop
   desktop: {
     new: '新建',
-    newTextDocument: '新建文本文档'
+    newTextDocument: '新建文本文档',
+    newFolder: '新建文件夹'
   },
 
   // Common
@@ -255,6 +264,9 @@ window.I18n_ZH = {
     directoryCreated: '目录已创建: {name}',
     fileCreated: '文件已创建: {name}',
     deleted: '已删除: {path}',
+    ambiguousPath: '存在名为 "{name}" 的文件和文件夹。请指定类型：对文件使用 "{cmd} file {name} {dest}"，对文件夹使用 "{cmd} dir {name} {dest}"。',
+    ambiguousPathRm: '存在名为 "{name}" 的文件和文件夹。请指定类型：对文件使用 "rm file {name}"，对文件夹使用 "rm dir {name}"。',
+    ambiguousPathCat: '存在名为 "{name}" 的文件和文件夹。请指定类型：对文件使用 "cat file {name}"。',
     noApps: '没有可用应用',
     commandNotFound: '命令未找到: {cmd}',
     error: '错误',

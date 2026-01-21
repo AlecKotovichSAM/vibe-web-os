@@ -85,7 +85,15 @@ window.I18n_DE = {
     renameFile: 'Umbenennen',
     folderName: 'Ordner',
     fileName: 'Datei',
-    viewer: 'Betrachter'
+    viewer: 'Betrachter',
+    cannotRenameDefault: 'Standardordner oder -datei kann nicht umbenannt werden',
+    cannotDeleteDefault: 'Standardordner oder -datei kann nicht gelöscht werden',
+    renameError: 'Fehler beim Umbenennen der Datei oder des Ordners',
+    nameAlreadyExists: 'Ein {type} mit dem Namen "{name}" existiert bereits an diesem Speicherort.',
+    errorCreatingFolder: 'Fehler beim Erstellen des Ordners',
+    errorCreatingFile: 'Fehler beim Erstellen der Datei',
+    fileAlreadyExists: 'Eine Datei mit dem Namen "{name}" existiert bereits an diesem Speicherort.',
+    folderAlreadyExists: 'Ein Ordner mit dem Namen "{name}" existiert bereits an diesem Speicherort.'
   },
 
   // Notes App
@@ -194,7 +202,8 @@ window.I18n_DE = {
   // Desktop
   desktop: {
     new: 'Neu',
-    newTextDocument: 'Neues Textdokument'
+    newTextDocument: 'Neues Textdokument',
+    newFolder: 'Neuer Ordner'
   },
 
   // Terminal App
@@ -214,6 +223,9 @@ window.I18n_DE = {
     directoryCreated: 'Verzeichnis erstellt: {name}',
     fileCreated: 'Datei erstellt: {name}',
     deleted: 'Gelöscht: {path}',
+    ambiguousPath: 'Sowohl eine Datei als auch ein Ordner mit dem Namen "{name}" existieren. Bitte geben Sie den Typ an: Verwenden Sie "{cmd} file {name} {dest}" für Datei oder "{cmd} dir {name} {dest}" für Ordner.',
+    ambiguousPathRm: 'Sowohl eine Datei als auch ein Ordner mit dem Namen "{name}" existieren. Bitte geben Sie den Typ an: Verwenden Sie "rm file {name}" für Datei oder "rm dir {name}" für Ordner.',
+    ambiguousPathCat: 'Sowohl eine Datei als auch ein Ordner mit dem Namen "{name}" existieren. Bitte geben Sie den Typ an: Verwenden Sie "cat file {name}" für Datei.',
     noApps: 'Keine Apps verfügbar',
     commandNotFound: 'Befehl nicht gefunden: {cmd}',
     error: 'Fehler',

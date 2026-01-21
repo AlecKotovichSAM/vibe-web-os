@@ -85,7 +85,15 @@ window.I18n_ES = {
     renameFile: 'Renombrar',
     folderName: 'Carpeta',
     fileName: 'Archivo',
-    viewer: 'Visor'
+    viewer: 'Visor',
+    cannotRenameDefault: 'La carpeta o archivo predeterminado no se puede renombrar',
+    cannotDeleteDefault: 'La carpeta o archivo predeterminado no se puede eliminar',
+    renameError: 'Error al renombrar archivo o carpeta',
+    nameAlreadyExists: 'Ya existe un {type} con el nombre "{name}" en esta ubicación.',
+    errorCreatingFolder: 'Error al crear carpeta',
+    errorCreatingFile: 'Error al crear archivo',
+    fileAlreadyExists: 'Ya existe un archivo con el nombre "{name}" en esta ubicación.',
+    folderAlreadyExists: 'Ya existe una carpeta con el nombre "{name}" en esta ubicación.'
   },
 
   // Notes App
@@ -194,7 +202,8 @@ window.I18n_ES = {
   // Desktop
   desktop: {
     new: 'Nuevo',
-    newTextDocument: 'Nuevo documento de texto'
+    newTextDocument: 'Nuevo documento de texto',
+    newFolder: 'Nueva carpeta'
   },
 
   // Common
@@ -255,6 +264,9 @@ window.I18n_ES = {
     directoryCreated: 'Directorio creado: {name}',
     fileCreated: 'Archivo creado: {name}',
     deleted: 'Eliminado: {path}',
+    ambiguousPath: 'Existen tanto un archivo como una carpeta con el nombre "{name}". Especifique el tipo: use "{cmd} file {name} {dest}" para archivo o "{cmd} dir {name} {dest}" para carpeta.',
+    ambiguousPathRm: 'Existen tanto un archivo como una carpeta con el nombre "{name}". Especifique el tipo: use "rm file {name}" para archivo o "rm dir {name}" para carpeta.',
+    ambiguousPathCat: 'Existen tanto un archivo como una carpeta con el nombre "{name}". Especifique el tipo: use "cat file {name}" para archivo.',
     noApps: 'No hay aplicaciones disponibles',
     commandNotFound: 'Comando no encontrado: {cmd}',
     error: 'Error',

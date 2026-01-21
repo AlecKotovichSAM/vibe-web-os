@@ -85,7 +85,15 @@ window.I18n_JA = {
     renameFile: '名前を変更',
     folderName: 'フォルダ',
     fileName: 'ファイル',
-    viewer: 'ビューア'
+    viewer: 'ビューア',
+    cannotRenameDefault: 'デフォルトのフォルダまたはファイルは名前を変更できません',
+    cannotDeleteDefault: 'デフォルトのフォルダまたはファイルは削除できません',
+    renameError: 'ファイルまたはフォルダの名前変更中にエラーが発生しました',
+    nameAlreadyExists: '名前が "{name}" の{type}は既にこの場所に存在します。',
+    errorCreatingFolder: 'フォルダの作成中にエラーが発生しました',
+    errorCreatingFile: 'ファイルの作成中にエラーが発生しました',
+    fileAlreadyExists: '名前が "{name}" のファイルは既にこの場所に存在します。',
+    folderAlreadyExists: '名前が "{name}" のフォルダは既にこの場所に存在します。'
   },
 
   // Notes App
@@ -194,7 +202,8 @@ window.I18n_JA = {
   // Desktop
   desktop: {
     new: '新規',
-    newTextDocument: '新しいテキストドキュメント'
+    newTextDocument: '新しいテキストドキュメント',
+    newFolder: '新しいフォルダ'
   },
 
   // Common
@@ -255,6 +264,9 @@ window.I18n_JA = {
     directoryCreated: 'ディレクトリを作成しました: {name}',
     fileCreated: 'ファイルを作成しました: {name}',
     deleted: '削除しました: {path}',
+    ambiguousPath: '名前が "{name}" のファイルとフォルダの両方が存在します。タイプを指定してください: ファイルの場合は "{cmd} file {name} {dest}"、フォルダの場合は "{cmd} dir {name} {dest}" を使用してください。',
+    ambiguousPathRm: '名前が "{name}" のファイルとフォルダの両方が存在します。タイプを指定してください: ファイルの場合は "rm file {name}"、フォルダの場合は "rm dir {name}" を使用してください。',
+    ambiguousPathCat: '名前が "{name}" のファイルとフォルダの両方が存在します。タイプを指定してください: ファイルの場合は "cat file {name}" を使用してください。',
     noApps: '利用可能なアプリはありません',
     commandNotFound: 'コマンドが見つかりません: {cmd}',
     error: 'エラー',

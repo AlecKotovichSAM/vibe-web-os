@@ -6,10 +6,12 @@ Apps.register({
     description: 'Create and edit text files. Save your documents to the file system.',
     descriptionKey: 'editor.description',
     singleton: false,
-    launch() {
+    launch(args = {}) {
       const id = 'text-editor-' + Date.now();
       const fileName = `new-file-${Date.now()}.txt`;
-      const filePath = `${FS.root}/${fileName}`;
+      // Use initialPath if provided, otherwise default to root
+      const initialPath = args.initialPath || FS.root;
+      const filePath = `${initialPath}/${fileName}`;
       
       const content = `
         <div style="display:flex; flex-direction:column; height:100%; gap:8px;">
@@ -41,6 +43,7 @@ Apps.register({
       
       let currentPath = filePath;
       let isSaved = false;
+      const defaultSavePath = initialPath; // Store default path for save operations
       
       // Helper function to update window and taskbar title
       function updateWindowTitle(name) {
@@ -69,9 +72,27 @@ Apps.register({
       // Save file
       function saveFile(path, content) {
         try {
-          const pathParts = path.split('/');
-          const parentPath = pathParts.slice(0, -1).join('/') || FS.root;
+          const pathParts = path.split('/').filter(p => p);
           const name = pathParts[pathParts.length - 1];
+          
+          // Determine parent path: use path from argument, or fall back to defaultSavePath
+          let parentPath;
+          if (pathParts.length > 1) {
+            parentPath = '/' + pathParts.slice(0, -1).join('/');
+          } else {
+            // If path is just a filename, use the default save path
+            parentPath = defaultSavePath;
+          }
+          
+          // If empty or root, use defaultSavePath (which might be Desktop or root)
+          if (!parentPath || parentPath === '/' || parentPath === '/root') {
+            parentPath = defaultSavePath;
+          }
+          
+          // If defaultSavePath was set (e.g., from Desktop), always use it for consistency
+          if (defaultSavePath && defaultSavePath !== FS.root) {
+            parentPath = defaultSavePath;
+          }
           
           // FS.write() handles both creating new files and updating existing ones
           FS.write(parentPath, name, content);
@@ -97,9 +118,17 @@ Apps.register({
           return;
         }
         
-        const pathParts = currentPath.split('/');
-        const parentPath = pathParts.slice(0, -1).join('/') || FS.root;
-        const newPath = `${parentPath}/${name}`;
+        // Use defaultSavePath if set, otherwise use current path's parent
+        let newPath;
+        if (defaultSavePath && defaultSavePath !== FS.root) {
+          // Use the default path (e.g., Desktop)
+          newPath = `${defaultSavePath}/${name}`;
+        } else {
+          // Use current path's parent directory
+          const pathParts = currentPath.split('/').filter(p => p);
+          const parentPath = pathParts.length > 1 ? '/' + pathParts.slice(0, -1).join('/') : FS.root;
+          newPath = `${parentPath}/${name}`;
+        }
         
         if (saveFile(newPath, content)) {
           currentPath = newPath;
@@ -112,7 +141,8 @@ Apps.register({
         const name = prompt(I18n.t('editor.saveAsPrompt'), filenameInput.value.trim());
         if (!name) return;
         
-        const newPath = `${FS.root}/${name}`;
+        // Use defaultSavePath if set, otherwise use root
+        const newPath = defaultSavePath ? `${defaultSavePath}/${name}` : `${FS.root}/${name}`;
         if (saveFile(newPath, content)) {
           currentPath = newPath;
           filenameInput.value = name;

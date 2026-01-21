@@ -210,6 +210,8 @@ Apps.register({
           case 'cd':
             if (args.length === 0) {
               currentPath = FS.root;
+              // Show feedback when changing to root
+              addOutput(currentPath, 'var(--accent)');
             } else {
               const targetPath = args[0];
               let newPath;
@@ -252,18 +254,30 @@ Apps.register({
               addOutput(I18n.t('terminal.usage', { cmd: command, example: 'cat filename.txt' }), 'var(--danger)');
               return;
             }
-            const filePath = args[0].startsWith('/') ? args[0] : `${currentPath}/${args[0]}`;
-            const file = FS.find(filePath);
-            if (!file) {
-              addOutput(I18n.t('terminal.fileNotFound', { path: filePath }), 'var(--danger)');
-              return;
+            try {
+              const filePath = args[0].startsWith('/') ? args[0] : `${currentPath}/${args[0]}`;
+              
+              // Check if both file and folder with same name exist
+              const fileParentPath = filePath.split('/').slice(0, -1).join('/') || FS.root;
+              const fileName = filePath.split('/').pop();
+              const parent = FS.find(fileParentPath);
+              if (parent && parent.type === 'dir') {
+                const fileExists = parent.children.some(c => c.path === filePath && c.type === 'file');
+                const dirExists = parent.children.some(c => c.path === filePath && c.type === 'dir');
+                
+                if (fileExists && dirExists) {
+                  const msg = I18n.t('terminal.ambiguousPathCat', { name: fileName });
+                  addOutput(msg || `Both a file and folder named "${fileName}" exist. Please specify: use "cat file ${fileName}" for file.`, 'var(--danger)');
+                  return;
+                }
+              }
+              
+              // Use type-aware read to ensure we get the file
+              const content = FS.read(filePath, 'file');
+              addOutput(content);
+            } catch (e) {
+              addOutput(e.message, 'var(--danger)');
             }
-            if (file.type !== 'file') {
-              addOutput(I18n.t('terminal.notAFile', { path: filePath }), 'var(--danger)');
-              return;
-            }
-            const content = FS.read(filePath);
-            addOutput(content);
             break;
             
           case 'echo':
@@ -280,7 +294,12 @@ Apps.register({
               FS.mkdir(currentPath, dirName);
               addOutput(I18n.t('terminal.directoryCreated', { name: dirName }), 'var(--ok)');
             } catch (e) {
-              addOutput(e.message, 'var(--danger)');
+              // Check if error is about duplicate folder name
+              if (e.message && e.message.includes('already exists in this location')) {
+                addOutput(I18n.t('files.folderAlreadyExists', { name: dirName }), 'var(--danger)');
+              } else {
+                addOutput(e.message, 'var(--danger)');
+              }
             }
             break;
             
@@ -301,12 +320,41 @@ Apps.register({
           case 'rm':
           case 'del':
             if (args.length === 0) {
-              addOutput(I18n.t('terminal.usage', { cmd: command, example: 'rm filename.txt' }), 'var(--danger)');
+              addOutput(I18n.t('terminal.usage', { cmd: command, example: 'rm filename.txt or rm file|dir name' }), 'var(--danger)');
               return;
             }
-            const targetPath = args[0].startsWith('/') ? args[0] : `${currentPath}/${args[0]}`;
             try {
-              FS.rm(targetPath);
+              // Check if first argument is type specifier (file or dir)
+              let targetType = null;
+              let targetArgIndex = 0;
+              if (args[0] === 'file' || args[0] === 'dir') {
+                targetType = args[0] === 'file' ? 'file' : 'dir';
+                targetArgIndex = 1;
+                if (args.length < 2) {
+                  addOutput(I18n.t('terminal.usage', { cmd: command, example: 'rm file|dir name' }), 'var(--danger)');
+                  return;
+                }
+              }
+              
+              const targetPath = args[targetArgIndex].startsWith('/') ? args[targetArgIndex] : `${currentPath}/${args[targetArgIndex]}`;
+              
+              // Check if both file and folder with same name exist (only if type not specified)
+              const targetParentPath = targetPath.split('/').slice(0, -1).join('/') || FS.root;
+              const targetName = targetPath.split('/').pop();
+              const parent = FS.find(targetParentPath);
+              if (!targetType && parent && parent.type === 'dir') {
+                const fileExists = parent.children.some(c => c.path === targetPath && c.type === 'file');
+                const dirExists = parent.children.some(c => c.path === targetPath && c.type === 'dir');
+                
+                if (fileExists && dirExists) {
+                  const msg = I18n.t('terminal.ambiguousPathRm', { name: targetName });
+                  addOutput(msg || `Both a file and folder named "${targetName}" exist. Please specify type: use "rm file ${targetName}" for file or "rm dir ${targetName}" for folder.`, 'var(--danger)');
+                  return;
+                }
+              }
+              
+              // Delete with type awareness
+              FS.rm(targetPath, targetType);
               addOutput(I18n.t('terminal.deleted', { path: targetPath }), 'var(--ok)');
             } catch (e) {
               addOutput(e.message, 'var(--danger)');
@@ -316,14 +364,54 @@ Apps.register({
           case 'cp':
           case 'copy':
             if (args.length < 2) {
-              addOutput(I18n.t('terminal.usage', { cmd: command, example: 'cp source.txt dest.txt' }), 'var(--danger)');
+              addOutput(I18n.t('terminal.usage', { cmd: command, example: 'cp source.txt dest.txt or cp file|dir name dest' }), 'var(--danger)');
               return;
             }
             try {
-              const srcPath = args[0].startsWith('/') ? args[0] : `${currentPath}/${args[0]}`;
-              const destPath = args[1].startsWith('/') ? args[1] : `${currentPath}/${args[1]}`;
+              // Check if first argument is type specifier (file or dir)
+              let srcType = null;
+              let srcArgIndex = 0;
+              if (args[0] === 'file' || args[0] === 'dir') {
+                srcType = args[0] === 'file' ? 'file' : 'dir';
+                srcArgIndex = 1;
+                if (args.length < 3) {
+                  addOutput(I18n.t('terminal.usage', { cmd: command, example: 'cp file|dir name dest' }), 'var(--danger)');
+                  return;
+                }
+              }
               
-              const src = FS.find(srcPath);
+              const srcPath = args[srcArgIndex].startsWith('/') ? args[srcArgIndex] : `${currentPath}/${args[srcArgIndex]}`;
+              const destPath = args[srcArgIndex + 1].startsWith('/') ? args[srcArgIndex + 1] : `${currentPath}/${args[srcArgIndex + 1]}`;
+              
+              // Check if both file and folder with same name exist (only if type not specified)
+              const srcParentPath = srcPath.split('/').slice(0, -1).join('/') || FS.root;
+              const srcName = srcPath.split('/').pop();
+              const parent = FS.find(srcParentPath);
+              if (!srcType && parent && parent.type === 'dir') {
+                const fileExists = parent.children.some(c => c.path === srcPath && c.type === 'file');
+                const dirExists = parent.children.some(c => c.path === srcPath && c.type === 'dir');
+                
+                if (fileExists && dirExists) {
+                  const destName = args[srcArgIndex + 1] || 'destination';
+                  const msg = I18n.t('terminal.ambiguousPath', { cmd: 'cp', name: srcName, dest: destName });
+                  addOutput(msg || `Both a file and folder named "${srcName}" exist. Please specify type: use "cp file ${srcName} ${destName}" for file or "cp dir ${srcName} ${destName}" for folder.`, 'var(--danger)');
+                  return;
+                }
+              }
+              
+              // Find source with type awareness
+              let src;
+              if (srcType) {
+                // Type specified, find by path and type
+                if (parent && parent.type === 'dir') {
+                  src = parent.children.find(c => c.path === srcPath && c.type === srcType);
+                } else {
+                  src = null;
+                }
+              } else {
+                src = FS.find(srcPath);
+              }
+              
               if (!src) {
                 addOutput(I18n.t('terminal.fileNotFound', { path: srcPath }), 'var(--danger)');
                 return;
@@ -343,9 +431,9 @@ Apps.register({
                 destDir = destParts.join('/') || FS.root;
               }
               
-              // Copy file
+              // Copy file (use type-aware operations)
               if (src.type === 'file') {
-                const content = FS.read(srcPath);
+                const content = FS.read(srcPath, src.type);
                 FS.write(destDir, destName, content);
                 addOutput(I18n.t('terminal.copied', { from: srcPath, to: `${destDir}/${destName}` }), 'var(--ok)');
               } else if (src.type === 'dir') {
@@ -374,14 +462,54 @@ Apps.register({
           case 'mv':
           case 'move':
             if (args.length < 2) {
-              addOutput(I18n.t('terminal.usage', { cmd: command, example: 'mv source.txt dest.txt' }), 'var(--danger)');
+              addOutput(I18n.t('terminal.usage', { cmd: command, example: 'mv source.txt dest.txt or mv file|dir name dest' }), 'var(--danger)');
               return;
             }
             try {
-              const srcPath = args[0].startsWith('/') ? args[0] : `${currentPath}/${args[0]}`;
-              const destPath = args[1].startsWith('/') ? args[1] : `${currentPath}/${args[1]}`;
+              // Check if first argument is type specifier (file or dir)
+              let srcType = null;
+              let srcArgIndex = 0;
+              if (args[0] === 'file' || args[0] === 'dir') {
+                srcType = args[0] === 'file' ? 'file' : 'dir';
+                srcArgIndex = 1;
+                if (args.length < 3) {
+                  addOutput(I18n.t('terminal.usage', { cmd: command, example: 'mv file|dir name dest' }), 'var(--danger)');
+                  return;
+                }
+              }
               
-              const src = FS.find(srcPath);
+              const srcPath = args[srcArgIndex].startsWith('/') ? args[srcArgIndex] : `${currentPath}/${args[srcArgIndex]}`;
+              const destPath = args[srcArgIndex + 1].startsWith('/') ? args[srcArgIndex + 1] : `${currentPath}/${args[srcArgIndex + 1]}`;
+              
+              // Check if both file and folder with same name exist (only if type not specified)
+              const srcParentPath = srcPath.split('/').slice(0, -1).join('/') || FS.root;
+              const srcName = srcPath.split('/').pop();
+              const parent = FS.find(srcParentPath);
+              if (!srcType && parent && parent.type === 'dir') {
+                const fileExists = parent.children.some(c => c.path === srcPath && c.type === 'file');
+                const dirExists = parent.children.some(c => c.path === srcPath && c.type === 'dir');
+                
+                if (fileExists && dirExists) {
+                  const destName = args[srcArgIndex + 1] || 'destination';
+                  const msg = I18n.t('terminal.ambiguousPath', { cmd: 'mv', name: srcName, dest: destName });
+                  addOutput(msg || `Both a file and folder named "${srcName}" exist. Please specify type: use "mv file ${srcName} ${destName}" for file or "mv dir ${srcName} ${destName}" for folder.`, 'var(--danger)');
+                  return;
+                }
+              }
+              
+              // Find source with type awareness
+              let src;
+              if (srcType) {
+                // Type specified, find by path and type
+                if (parent && parent.type === 'dir') {
+                  src = parent.children.find(c => c.path === srcPath && c.type === srcType);
+                } else {
+                  src = null;
+                }
+              } else {
+                src = FS.find(srcPath);
+              }
+              
               if (!src) {
                 addOutput(I18n.t('terminal.fileNotFound', { path: srcPath }), 'var(--danger)');
                 return;
@@ -402,15 +530,14 @@ Apps.register({
               }
               
               // Check if source and destination are in same directory (simple rename)
-              const srcParentPath = srcPath.split('/').slice(0, -1).join('/') || FS.root;
               if (srcParentPath === destDir && src.name === destName) {
                 addOutput(I18n.t('terminal.samePath'), 'var(--danger)');
                 return;
               }
               
-              // Copy first
+              // Copy first (use type-aware operations)
               if (src.type === 'file') {
-                const content = FS.read(srcPath);
+                const content = FS.read(srcPath, src.type);
                 FS.write(destDir, destName, content);
               } else if (src.type === 'dir') {
                 function copyDir(srcNode, destParentPath, destDirName) {
@@ -429,8 +556,8 @@ Apps.register({
                 copyDir(src, destDir, destName);
               }
               
-              // Then delete source
-              FS.rm(srcPath);
+              // Then delete source (use type-aware delete)
+              FS.rm(srcPath, src.type);
               addOutput(I18n.t('terminal.moved', { from: srcPath, to: `${destDir}/${destName}` }), 'var(--ok)');
             } catch (e) {
               addOutput(e.message, 'var(--danger)');
@@ -463,6 +590,7 @@ Apps.register({
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         executeCommand(input.value);
+        input.value = ''; // Clear input after executing command
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         if (commandHistory.length > 0) {

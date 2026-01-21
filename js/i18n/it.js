@@ -85,7 +85,15 @@ window.I18n_IT = {
     renameFile: 'Rinomina',
     folderName: 'Cartella',
     fileName: 'File',
-    viewer: 'Visualizzatore'
+    viewer: 'Visualizzatore',
+    cannotRenameDefault: 'La cartella o il file predefinito non può essere rinominato',
+    cannotDeleteDefault: 'La cartella o il file predefinito non può essere eliminato',
+    renameError: 'Errore durante la rinomina del file o della cartella',
+    nameAlreadyExists: 'Un {type} con il nome "{name}" esiste già in questa posizione.',
+    errorCreatingFolder: 'Errore durante la creazione della cartella',
+    errorCreatingFile: 'Errore durante la creazione del file',
+    fileAlreadyExists: 'Un file con il nome "{name}" esiste già in questa posizione.',
+    folderAlreadyExists: 'Una cartella con il nome "{name}" esiste già in questa posizione.'
   },
 
   // Notes App
@@ -194,7 +202,8 @@ window.I18n_IT = {
   // Desktop
   desktop: {
     new: 'Nuovo',
-    newTextDocument: 'Nuovo documento di testo'
+    newTextDocument: 'Nuovo documento di testo',
+    newFolder: 'Nuova cartella'
   },
 
   // Common
@@ -255,6 +264,9 @@ window.I18n_IT = {
     directoryCreated: 'Directory creata: {name}',
     fileCreated: 'File creato: {name}',
     deleted: 'Eliminato: {path}',
+    ambiguousPath: 'Esistono sia un file che una cartella con il nome "{name}". Specificare il tipo: utilizzare "{cmd} file {name} {dest}" per il file o "{cmd} dir {name} {dest}" per la cartella.',
+    ambiguousPathRm: 'Esistono sia un file che una cartella con il nome "{name}". Specificare il tipo: utilizzare "rm file {name}" per il file o "rm dir {name}" per la cartella.',
+    ambiguousPathCat: 'Esistono sia un file che una cartella con il nome "{name}". Specificare il tipo: utilizzare "cat file {name}" per il file.',
     noApps: 'Nessuna applicazione disponibile',
     commandNotFound: 'Comando non trovato: {cmd}',
     error: 'Errore',

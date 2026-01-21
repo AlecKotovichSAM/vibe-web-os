@@ -85,7 +85,15 @@ window.I18n_KO = {
     renameFile: '이름 바꾸기',
     folderName: '폴더',
     fileName: '파일',
-    viewer: '뷰어'
+    viewer: '뷰어',
+    cannotRenameDefault: '기본 폴더 또는 파일은 이름을 변경할 수 없습니다',
+    cannotDeleteDefault: '기본 폴더 또는 파일은 삭제할 수 없습니다',
+    renameError: '파일 또는 폴더 이름 변경 중 오류가 발생했습니다',
+    nameAlreadyExists: '이름이 "{name}"인 {type}이(가) 이미 이 위치에 있습니다.',
+    errorCreatingFolder: '폴더 생성 중 오류가 발생했습니다',
+    errorCreatingFile: '파일 생성 중 오류가 발생했습니다',
+    fileAlreadyExists: '이름이 "{name}"인 파일이 이미 이 위치에 있습니다.',
+    folderAlreadyExists: '이름이 "{name}"인 폴더가 이미 이 위치에 있습니다.'
   },
 
   // Notes App
@@ -194,7 +202,8 @@ window.I18n_KO = {
   // Desktop
   desktop: {
     new: '새로 만들기',
-    newTextDocument: '새 텍스트 문서'
+    newTextDocument: '새 텍스트 문서',
+    newFolder: '새 폴더'
   },
 
   // Common
@@ -255,6 +264,9 @@ window.I18n_KO = {
     directoryCreated: '디렉토리 생성됨: {name}',
     fileCreated: '파일 생성됨: {name}',
     deleted: '삭제됨: {path}',
+    ambiguousPath: '이름이 "{name}"인 파일과 폴더가 모두 존재합니다. 유형을 지정하세요: 파일의 경우 "{cmd} file {name} {dest}"를 사용하고 폴더의 경우 "{cmd} dir {name} {dest}"를 사용하세요.',
+    ambiguousPathRm: '이름이 "{name}"인 파일과 폴더가 모두 존재합니다. 유형을 지정하세요: 파일의 경우 "rm file {name}"를 사용하고 폴더의 경우 "rm dir {name}"를 사용하세요.',
+    ambiguousPathCat: '이름이 "{name}"인 파일과 폴더가 모두 존재합니다. 유형을 지정하세요: 파일의 경우 "cat file {name}"를 사용하세요.',
     noApps: '사용 가능한 앱이 없습니다',
     commandNotFound: '명령을 찾을 수 없습니다: {cmd}',
     error: '오류',
