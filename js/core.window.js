@@ -14,19 +14,6 @@ window.WindowManager = (() => {
     // Build menu bar HTML if provided
     let menuBarHTML = '';
     if (menu && Array.isArray(menu) && menu.length > 0) {
-      // Debug: Log menu structure for File menu
-      const fileMenu = menu.find(m => m.labelKey === 'window.menu.file' || m.label === 'File');
-      if (fileMenu && fileMenu.items) {
-        const actions = fileMenu.items.filter(i => !i.separator).map(i => i.action);
-        const labels = fileMenu.items.filter(i => !i.separator).map(i => i.label || (i.labelKey ? I18n.t(i.labelKey) : ''));
-        console.log('[WindowManager] File menu actions:', actions);
-        console.log('[WindowManager] File menu labels:', labels);
-        // Verify Exit is last
-        if (actions.length > 0 && !actions[actions.length - 1].includes('exit')) {
-          console.warn('[WindowManager] WARNING: Exit is not the last menu item! Actions:', actions);
-        }
-      }
-      
       menuBarHTML = `
         <div class="win-menubar" role="menubar">
           ${menu.map(menuItem => `
@@ -503,10 +490,11 @@ window.WindowMenu = {
     items.push(WindowMenu.Separator());
     items.push(WindowMenu.Exit(exitAction));
     
-    // Verify menu structure
+    // Verify menu structure (Exit should always be last)
     const actionNames = items.filter(i => !i.separator).map(i => i.action);
     if (actionNames[actionNames.length - 1] !== exitAction) {
       console.error('[WindowMenu.createFileMenu] Exit is not last! Actions:', actionNames);
+      throw new Error('WindowMenu.createFileMenu: Exit must be the last menu item');
     }
     
     return WindowMenu.File(items);

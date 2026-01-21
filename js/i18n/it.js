@@ -85,7 +85,15 @@ window.I18n_IT = {
     renameFile: 'Rinomina',
     folderName: 'Cartella',
     fileName: 'File',
-    viewer: 'Visualizzatore'
+    viewer: 'Visualizzatore',
+    cannotRenameDefault: 'La cartella o il file predefinito non può essere rinominato',
+    cannotDeleteDefault: 'La cartella o il file predefinito non può essere eliminato',
+    renameError: 'Errore durante la rinomina del file o della cartella',
+    nameAlreadyExists: 'Un {type} con il nome "{name}" esiste già in questa posizione.',
+    errorCreatingFolder: 'Errore durante la creazione della cartella',
+    errorCreatingFile: 'Errore durante la creazione del file',
+    fileAlreadyExists: 'Un file con il nome "{name}" esiste già in questa posizione.',
+    folderAlreadyExists: 'Una cartella con il nome "{name}" esiste già in questa posizione.'
   },
 
   // Notes App
@@ -194,7 +202,8 @@ window.I18n_IT = {
   // Desktop
   desktop: {
     new: 'Nuovo',
-    newTextDocument: 'Nuovo documento di testo'
+    newTextDocument: 'Nuovo documento di testo',
+    newFolder: 'Nuova cartella'
   },
 
   // Common
@@ -254,7 +263,11 @@ window.I18n_IT = {
     notAFile: 'Non è un file: {path}',
     directoryCreated: 'Directory creata: {name}',
     fileCreated: 'File creato: {name}',
+    fileModified: 'File modificato: {name}',
     deleted: 'Eliminato: {path}',
+    ambiguousPath: 'Esistono sia un file che una cartella con il nome "{name}". Specificare il tipo: utilizzare "{cmd} file {name} {dest}" per il file o "{cmd} dir {name} {dest}" per la cartella.',
+    ambiguousPathRm: 'Esistono sia un file che una cartella con il nome "{name}". Specificare il tipo: utilizzare "rm file {name}" per il file o "rm dir {name}" per la cartella.',
+    ambiguousPathCat: 'Esistono sia un file che una cartella con il nome "{name}". Specificare il tipo: utilizzare "cat file {name}" per il file.',
     noApps: 'Nessuna applicazione disponibile',
     commandNotFound: 'Comando non trovato: {cmd}',
     error: 'Errore',
@@ -273,14 +286,18 @@ window.I18n_IT = {
       pwdDesc: 'Mostra la directory di lavoro corrente',
       cat: 'cat [file]',
       catDesc: 'Mostra il contenuto del file',
-      echo: 'echo [testo]',
-      echoDesc: 'Stampa testo nel terminale',
+      echo: 'echo [testo] [>|>> file]',
+      echoDesc: 'Stampa testo nel terminale o reindirizza a file (supporta > e >>)',
       mkdir: 'mkdir [nome]',
       mkdirDesc: 'Crea una nuova directory',
       touch: 'touch [nome]',
       touchDesc: 'Crea un nuovo file',
       rm: 'rm [percorso]',
       rmDesc: 'Elimina un file o directory',
+      cp: 'cp [file|directory] [origine] [destinazione]',
+      cpDesc: 'Copia un file o una directory. Usa "cp file nome destinazione" o "cp dir nome destinazione" per specificare il tipo quando entrambi esistono.',
+      mv: 'mv [file|directory] [origine] [destinazione]',
+      mvDesc: 'Sposta o rinomina un file o una directory. Usa "mv file nome destinazione" o "mv dir nome destinazione" per specificare il tipo quando entrambi esistono.',
       apps: 'apps, applist',
       appsDesc: 'Elenca tutte le applicazioni disponibili'
     }

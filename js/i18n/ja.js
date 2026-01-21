@@ -85,7 +85,15 @@ window.I18n_JA = {
     renameFile: '名前を変更',
     folderName: 'フォルダ',
     fileName: 'ファイル',
-    viewer: 'ビューア'
+    viewer: 'ビューア',
+    cannotRenameDefault: 'デフォルトのフォルダまたはファイルは名前を変更できません',
+    cannotDeleteDefault: 'デフォルトのフォルダまたはファイルは削除できません',
+    renameError: 'ファイルまたはフォルダの名前変更中にエラーが発生しました',
+    nameAlreadyExists: '名前が "{name}" の{type}は既にこの場所に存在します。',
+    errorCreatingFolder: 'フォルダの作成中にエラーが発生しました',
+    errorCreatingFile: 'ファイルの作成中にエラーが発生しました',
+    fileAlreadyExists: '名前が "{name}" のファイルは既にこの場所に存在します。',
+    folderAlreadyExists: '名前が "{name}" のフォルダは既にこの場所に存在します。'
   },
 
   // Notes App
@@ -194,7 +202,8 @@ window.I18n_JA = {
   // Desktop
   desktop: {
     new: '新規',
-    newTextDocument: '新しいテキストドキュメント'
+    newTextDocument: '新しいテキストドキュメント',
+    newFolder: '新しいフォルダ'
   },
 
   // Common
@@ -254,7 +263,11 @@ window.I18n_JA = {
     notAFile: 'ファイルではありません: {path}',
     directoryCreated: 'ディレクトリを作成しました: {name}',
     fileCreated: 'ファイルを作成しました: {name}',
+    fileModified: 'ファイルを変更しました: {name}',
     deleted: '削除しました: {path}',
+    ambiguousPath: '名前が "{name}" のファイルとフォルダの両方が存在します。タイプを指定してください: ファイルの場合は "{cmd} file {name} {dest}"、フォルダの場合は "{cmd} dir {name} {dest}" を使用してください。',
+    ambiguousPathRm: '名前が "{name}" のファイルとフォルダの両方が存在します。タイプを指定してください: ファイルの場合は "rm file {name}"、フォルダの場合は "rm dir {name}" を使用してください。',
+    ambiguousPathCat: '名前が "{name}" のファイルとフォルダの両方が存在します。タイプを指定してください: ファイルの場合は "cat file {name}" を使用してください。',
     noApps: '利用可能なアプリはありません',
     commandNotFound: 'コマンドが見つかりません: {cmd}',
     error: 'エラー',
@@ -273,14 +286,18 @@ window.I18n_JA = {
       pwdDesc: '現在の作業ディレクトリを表示',
       cat: 'cat [ファイル]',
       catDesc: 'ファイルの内容を表示',
-      echo: 'echo [テキスト]',
-      echoDesc: 'ターミナルにテキストを出力',
+      echo: 'echo [テキスト] [>|>> ファイル]',
+      echoDesc: 'ターミナルにテキストを出力またはファイルにリダイレクト（> と >> をサポート）',
       mkdir: 'mkdir [名前]',
       mkdirDesc: '新しいディレクトリを作成',
       touch: 'touch [名前]',
       touchDesc: '新しいファイルを作成',
       rm: 'rm [パス]',
       rmDesc: 'ファイルまたはディレクトリを削除',
+      cp: 'cp [ファイル|ディレクトリ] [ソース] [宛先]',
+      cpDesc: 'ファイルまたはディレクトリをコピーします。両方が存在する場合は、"cp file 名前 宛先"または"cp dir 名前 宛先"を使用してタイプを指定してください。',
+      mv: 'mv [ファイル|ディレクトリ] [ソース] [宛先]',
+      mvDesc: 'ファイルまたはディレクトリを移動または名前変更します。両方が存在する場合は、"mv file 名前 宛先"または"mv dir 名前 宛先"を使用してタイプを指定してください。',
       apps: 'apps, applist',
       appsDesc: '利用可能なすべてのアプリを一覧表示'
     }

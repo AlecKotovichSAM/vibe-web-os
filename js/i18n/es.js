@@ -85,7 +85,15 @@ window.I18n_ES = {
     renameFile: 'Renombrar',
     folderName: 'Carpeta',
     fileName: 'Archivo',
-    viewer: 'Visor'
+    viewer: 'Visor',
+    cannotRenameDefault: 'La carpeta o archivo predeterminado no se puede renombrar',
+    cannotDeleteDefault: 'La carpeta o archivo predeterminado no se puede eliminar',
+    renameError: 'Error al renombrar archivo o carpeta',
+    nameAlreadyExists: 'Ya existe un {type} con el nombre "{name}" en esta ubicación.',
+    errorCreatingFolder: 'Error al crear carpeta',
+    errorCreatingFile: 'Error al crear archivo',
+    fileAlreadyExists: 'Ya existe un archivo con el nombre "{name}" en esta ubicación.',
+    folderAlreadyExists: 'Ya existe una carpeta con el nombre "{name}" en esta ubicación.'
   },
 
   // Notes App
@@ -194,7 +202,8 @@ window.I18n_ES = {
   // Desktop
   desktop: {
     new: 'Nuevo',
-    newTextDocument: 'Nuevo documento de texto'
+    newTextDocument: 'Nuevo documento de texto',
+    newFolder: 'Nueva carpeta'
   },
 
   // Common
@@ -254,7 +263,11 @@ window.I18n_ES = {
     notAFile: 'No es un archivo: {path}',
     directoryCreated: 'Directorio creado: {name}',
     fileCreated: 'Archivo creado: {name}',
+    fileModified: 'Archivo modificado: {name}',
     deleted: 'Eliminado: {path}',
+    ambiguousPath: 'Existen tanto un archivo como una carpeta con el nombre "{name}". Especifique el tipo: use "{cmd} file {name} {dest}" para archivo o "{cmd} dir {name} {dest}" para carpeta.',
+    ambiguousPathRm: 'Existen tanto un archivo como una carpeta con el nombre "{name}". Especifique el tipo: use "rm file {name}" para archivo o "rm dir {name}" para carpeta.',
+    ambiguousPathCat: 'Existen tanto un archivo como una carpeta con el nombre "{name}". Especifique el tipo: use "cat file {name}" para archivo.',
     noApps: 'No hay aplicaciones disponibles',
     commandNotFound: 'Comando no encontrado: {cmd}',
     error: 'Error',
@@ -273,14 +286,18 @@ window.I18n_ES = {
       pwdDesc: 'Mostrar directorio de trabajo actual',
       cat: 'cat [archivo]',
       catDesc: 'Mostrar contenido del archivo',
-      echo: 'echo [texto]',
-      echoDesc: 'Imprimir texto en el terminal',
+      echo: 'echo [texto] [>|>> archivo]',
+      echoDesc: 'Imprimir texto en el terminal o redirigir a archivo (soporta > y >>)',
       mkdir: 'mkdir [nombre]',
       mkdirDesc: 'Crear un nuevo directorio',
       touch: 'touch [nombre]',
       touchDesc: 'Crear un nuevo archivo',
       rm: 'rm [ruta]',
       rmDesc: 'Eliminar un archivo o directorio',
+      cp: 'cp [archivo|directorio] [origen] [destino]',
+      cpDesc: 'Copiar un archivo o directorio. Use "cp file nombre destino" o "cp dir nombre destino" para especificar el tipo cuando ambos existan.',
+      mv: 'mv [archivo|directorio] [origen] [destino]',
+      mvDesc: 'Mover o renombrar un archivo o directorio. Use "mv file nombre destino" o "mv dir nombre destino" para especificar el tipo cuando ambos existan.',
       apps: 'apps, applist',
       appsDesc: 'Listar todas las aplicaciones disponibles'
     }

@@ -85,7 +85,15 @@ window.I18n_DE = {
     renameFile: 'Umbenennen',
     folderName: 'Ordner',
     fileName: 'Datei',
-    viewer: 'Betrachter'
+    viewer: 'Betrachter',
+    cannotRenameDefault: 'Standardordner oder -datei kann nicht umbenannt werden',
+    cannotDeleteDefault: 'Standardordner oder -datei kann nicht gelöscht werden',
+    renameError: 'Fehler beim Umbenennen der Datei oder des Ordners',
+    nameAlreadyExists: 'Ein {type} mit dem Namen "{name}" existiert bereits an diesem Speicherort.',
+    errorCreatingFolder: 'Fehler beim Erstellen des Ordners',
+    errorCreatingFile: 'Fehler beim Erstellen der Datei',
+    fileAlreadyExists: 'Eine Datei mit dem Namen "{name}" existiert bereits an diesem Speicherort.',
+    folderAlreadyExists: 'Ein Ordner mit dem Namen "{name}" existiert bereits an diesem Speicherort.'
   },
 
   // Notes App
@@ -194,7 +202,8 @@ window.I18n_DE = {
   // Desktop
   desktop: {
     new: 'Neu',
-    newTextDocument: 'Neues Textdokument'
+    newTextDocument: 'Neues Textdokument',
+    newFolder: 'Neuer Ordner'
   },
 
   // Terminal App
@@ -213,7 +222,11 @@ window.I18n_DE = {
     notAFile: 'Keine Datei: {path}',
     directoryCreated: 'Verzeichnis erstellt: {name}',
     fileCreated: 'Datei erstellt: {name}',
+    fileModified: 'Datei geändert: {name}',
     deleted: 'Gelöscht: {path}',
+    ambiguousPath: 'Sowohl eine Datei als auch ein Ordner mit dem Namen "{name}" existieren. Bitte geben Sie den Typ an: Verwenden Sie "{cmd} file {name} {dest}" für Datei oder "{cmd} dir {name} {dest}" für Ordner.',
+    ambiguousPathRm: 'Sowohl eine Datei als auch ein Ordner mit dem Namen "{name}" existieren. Bitte geben Sie den Typ an: Verwenden Sie "rm file {name}" für Datei oder "rm dir {name}" für Ordner.',
+    ambiguousPathCat: 'Sowohl eine Datei als auch ein Ordner mit dem Namen "{name}" existieren. Bitte geben Sie den Typ an: Verwenden Sie "cat file {name}" für Datei.',
     noApps: 'Keine Apps verfügbar',
     commandNotFound: 'Befehl nicht gefunden: {cmd}',
     error: 'Fehler',
@@ -232,14 +245,18 @@ window.I18n_DE = {
       pwdDesc: 'Aktuelles Arbeitsverzeichnis anzeigen',
       cat: 'cat [datei]',
       catDesc: 'Dateiinhalt anzeigen',
-      echo: 'echo [text]',
-      echoDesc: 'Text im Terminal ausgeben',
+      echo: 'echo [text] [>|>> datei]',
+      echoDesc: 'Text im Terminal ausgeben oder in Datei umleiten (unterstützt > und >>)',
       mkdir: 'mkdir [name]',
       mkdirDesc: 'Neues Verzeichnis erstellen',
       touch: 'touch [name]',
       touchDesc: 'Neue Datei erstellen',
       rm: 'rm [pfad]',
       rmDesc: 'Datei oder Verzeichnis löschen',
+      cp: 'cp [datei|verzeichnis] [quelle] [ziel]',
+      cpDesc: 'Eine Datei oder ein Verzeichnis kopieren. Verwenden Sie "cp file name ziel" oder "cp dir name ziel", um den Typ anzugeben, wenn beide existieren.',
+      mv: 'mv [datei|verzeichnis] [quelle] [ziel]',
+      mvDesc: 'Eine Datei oder ein Verzeichnis verschieben oder umbenennen. Verwenden Sie "mv file name ziel" oder "mv dir name ziel", um den Typ anzugeben, wenn beide existieren.',
       apps: 'apps, applist',
       appsDesc: 'Alle verfügbaren Apps auflisten'
     }

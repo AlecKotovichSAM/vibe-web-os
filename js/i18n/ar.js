@@ -85,7 +85,15 @@ window.I18n_AR = {
     renameFile: 'إعادة تسمية',
     folderName: 'مجلد',
     fileName: 'ملف',
-    viewer: 'عارض'
+    viewer: 'عارض',
+    cannotRenameDefault: 'لا يمكن إعادة تسمية المجلد أو الملف الافتراضي',
+    cannotDeleteDefault: 'لا يمكن حذف المجلد أو الملف الافتراضي',
+    renameError: 'خطأ في إعادة تسمية الملف أو المجلد',
+    nameAlreadyExists: 'يوجد {type} بالاسم "{name}" بالفعل في هذا الموقع.',
+    errorCreatingFolder: 'خطأ في إنشاء المجلد',
+    errorCreatingFile: 'خطأ في إنشاء الملف',
+    fileAlreadyExists: 'يوجد ملف بالاسم "{name}" بالفعل في هذا الموقع.',
+    folderAlreadyExists: 'يوجد مجلد بالاسم "{name}" بالفعل في هذا الموقع.'
   },
 
   // Notes App
@@ -194,7 +202,8 @@ window.I18n_AR = {
   // Desktop
   desktop: {
     new: 'جديد',
-    newTextDocument: 'مستند نصي جديد'
+    newTextDocument: 'مستند نصي جديد',
+    newFolder: 'مجلد جديد'
   },
 
   // Common
@@ -254,7 +263,11 @@ window.I18n_AR = {
     notAFile: 'ليس ملفاً: {path}',
     directoryCreated: 'تم إنشاء المجلد: {name}',
     fileCreated: 'تم إنشاء الملف: {name}',
+    fileModified: 'تم تعديل الملف: {name}',
     deleted: 'تم الحذف: {path}',
+    ambiguousPath: 'يوجد كل من ملف ومجلد بالاسم "{name}". يرجى تحديد النوع: استخدم "{cmd} file {name} {dest}" للملف أو "{cmd} dir {name} {dest}" للمجلد.',
+    ambiguousPathRm: 'يوجد كل من ملف ومجلد بالاسم "{name}". يرجى تحديد النوع: استخدم "rm file {name}" للملف أو "rm dir {name}" للمجلد.',
+    ambiguousPathCat: 'يوجد كل من ملف ومجلد بالاسم "{name}". يرجى تحديد النوع: استخدم "cat file {name}" للملف.',
     noApps: 'لا توجد تطبيقات متاحة',
     commandNotFound: 'الأمر غير موجود: {cmd}',
     error: 'خطأ',
@@ -273,14 +286,18 @@ window.I18n_AR = {
       pwdDesc: 'عرض مجلد العمل الحالي',
       cat: 'cat [ملف]',
       catDesc: 'عرض محتويات الملف',
-      echo: 'echo [نص]',
-      echoDesc: 'طباعة نص في الطرفية',
+      echo: 'echo [نص] [>|>> ملف]',
+      echoDesc: 'طباعة نص في الطرفية أو إعادة توجيه إلى ملف (يدعم > و >>)',
       mkdir: 'mkdir [اسم]',
       mkdirDesc: 'إنشاء مجلد جديد',
       touch: 'touch [اسم]',
       touchDesc: 'إنشاء ملف جديد',
       rm: 'rm [مسار]',
       rmDesc: 'حذف ملف أو مجلد',
+      cp: 'cp [ملف|مجلد] [المصدر] [الوجهة]',
+      cpDesc: 'نسخ ملف أو مجلد. استخدم "cp file الاسم الوجهة" أو "cp dir الاسم الوجهة" لتحديد النوع عندما يكون كلاهما موجودًا.',
+      mv: 'mv [ملف|مجلد] [المصدر] [الوجهة]',
+      mvDesc: 'نقل أو إعادة تسمية ملف أو مجلد. استخدم "mv file الاسم الوجهة" أو "mv dir الاسم الوجهة" لتحديد النوع عندما يكون كلاهما موجودًا.',
       apps: 'apps, applist',
       appsDesc: 'عرض جميع التطبيقات المتاحة'
     }

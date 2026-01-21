@@ -85,7 +85,15 @@ window.I18n_PT = {
     renameFile: 'Renomear',
     folderName: 'Pasta',
     fileName: 'Arquivo',
-    viewer: 'Visualizador'
+    viewer: 'Visualizador',
+    cannotRenameDefault: 'Pasta ou arquivo padrão não pode ser renomeado',
+    cannotDeleteDefault: 'Pasta ou arquivo padrão não pode ser excluído',
+    renameError: 'Erro ao renomear arquivo ou pasta',
+    nameAlreadyExists: 'Um {type} com o nome "{name}" já existe neste local.',
+    errorCreatingFile: 'Erro ao criar arquivo',
+    errorCreatingFolder: 'Erro ao criar pasta',
+    fileAlreadyExists: 'Um arquivo com o nome "{name}" já existe neste local.',
+    folderAlreadyExists: 'Uma pasta com o nome "{name}" já existe neste local.'
   },
 
   // Notes App
@@ -194,7 +202,8 @@ window.I18n_PT = {
   // Desktop
   desktop: {
     new: 'Novo',
-    newTextDocument: 'Novo documento de texto'
+    newTextDocument: 'Novo documento de texto',
+    newFolder: 'Nova pasta'
   },
 
   // Common
@@ -254,7 +263,11 @@ window.I18n_PT = {
     notAFile: 'Não é um arquivo: {path}',
     directoryCreated: 'Diretório criado: {name}',
     fileCreated: 'Arquivo criado: {name}',
+    fileModified: 'Arquivo modificado: {name}',
     deleted: 'Excluído: {path}',
+    ambiguousPath: 'Tanto um arquivo quanto uma pasta com o nome "{name}" existem. Especifique o tipo: use "{cmd} file {name} {dest}" para arquivo ou "{cmd} dir {name} {dest}" para pasta.',
+    ambiguousPathRm: 'Tanto um arquivo quanto uma pasta com o nome "{name}" existem. Especifique o tipo: use "rm file {name}" para arquivo ou "rm dir {name}" para pasta.',
+    ambiguousPathCat: 'Tanto um arquivo quanto uma pasta com o nome "{name}" existem. Especifique o tipo: use "cat file {name}" para arquivo.',
     noApps: 'Nenhum aplicativo disponível',
     commandNotFound: 'Comando não encontrado: {cmd}',
     error: 'Erro',
@@ -273,14 +286,18 @@ window.I18n_PT = {
       pwdDesc: 'Mostrar diretório de trabalho atual',
       cat: 'cat [arquivo]',
       catDesc: 'Exibir conteúdo do arquivo',
-      echo: 'echo [texto]',
-      echoDesc: 'Imprimir texto no terminal',
+      echo: 'echo [texto] [>|>> arquivo]',
+      echoDesc: 'Imprimir texto no terminal ou redirecionar para arquivo (suporta > e >>)',
       mkdir: 'mkdir [nome]',
       mkdirDesc: 'Criar um novo diretório',
       touch: 'touch [nome]',
       touchDesc: 'Criar um novo arquivo',
       rm: 'rm [caminho]',
       rmDesc: 'Excluir um arquivo ou diretório',
+      cp: 'cp [arquivo|diretório] [origem] [destino]',
+      cpDesc: 'Copiar um arquivo ou diretório. Use "cp file nome destino" ou "cp dir nome destino" para especificar o tipo quando ambos existirem.',
+      mv: 'mv [arquivo|diretório] [origem] [destino]',
+      mvDesc: 'Mover ou renomear um arquivo ou diretório. Use "mv file nome destino" ou "mv dir nome destino" para especificar o tipo quando ambos existirem.',
       apps: 'apps, applist',
       appsDesc: 'Listar todos os aplicativos disponíveis'
     }

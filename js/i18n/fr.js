@@ -85,7 +85,15 @@ window.I18n_FR = {
     renameFile: 'Renommer',
     folderName: 'Dossier',
     fileName: 'Fichier',
-    viewer: 'Visualiseur'
+    viewer: 'Visualiseur',
+    cannotRenameDefault: 'Le dossier ou fichier par défaut ne peut pas être renommé',
+    cannotDeleteDefault: 'Le dossier ou fichier par défaut ne peut pas être supprimé',
+    renameError: 'Erreur lors du renommage du fichier ou du dossier',
+    nameAlreadyExists: 'Un {type} nommé "{name}" existe déjà à cet emplacement.',
+    errorCreatingFolder: 'Erreur lors de la création du dossier',
+    errorCreatingFile: 'Erreur lors de la création du fichier',
+    fileAlreadyExists: 'Un fichier nommé "{name}" existe déjà à cet emplacement.',
+    folderAlreadyExists: 'Un dossier nommé "{name}" existe déjà à cet emplacement.'
   },
 
   // Notes App
@@ -194,7 +202,8 @@ window.I18n_FR = {
   // Desktop
   desktop: {
     new: 'Nouveau',
-    newTextDocument: 'Nouveau document texte'
+    newTextDocument: 'Nouveau document texte',
+    newFolder: 'Nouveau dossier'
   },
 
   // Common
@@ -254,7 +263,11 @@ window.I18n_FR = {
     notAFile: 'N\'est pas un fichier: {path}',
     directoryCreated: 'Répertoire créé: {name}',
     fileCreated: 'Fichier créé: {name}',
+    fileModified: 'Fichier modifié: {name}',
     deleted: 'Supprimé: {path}',
+    ambiguousPath: 'Un fichier et un dossier nommés "{name}" existent tous les deux. Veuillez spécifier le type : utilisez "{cmd} file {name} {dest}" pour le fichier ou "{cmd} dir {name} {dest}" pour le dossier.',
+    ambiguousPathRm: 'Un fichier et un dossier nommés "{name}" existent tous les deux. Veuillez spécifier le type : utilisez "rm file {name}" pour le fichier ou "rm dir {name}" pour le dossier.',
+    ambiguousPathCat: 'Un fichier et un dossier nommés "{name}" existent tous les deux. Veuillez spécifier le type : utilisez "cat file {name}" pour le fichier.',
     noApps: 'Aucune application disponible',
     commandNotFound: 'Commande introuvable: {cmd}',
     error: 'Erreur',
@@ -273,14 +286,18 @@ window.I18n_FR = {
       pwdDesc: 'Afficher le répertoire de travail actuel',
       cat: 'cat [fichier]',
       catDesc: 'Afficher le contenu du fichier',
-      echo: 'echo [texte]',
-      echoDesc: 'Afficher du texte dans le terminal',
+      echo: 'echo [texte] [>|>> fichier]',
+      echoDesc: 'Afficher du texte dans le terminal ou rediriger vers un fichier (supporte > et >>)',
       mkdir: 'mkdir [nom]',
       mkdirDesc: 'Créer un nouveau répertoire',
       touch: 'touch [nom]',
       touchDesc: 'Créer un nouveau fichier',
       rm: 'rm [chemin]',
       rmDesc: 'Supprimer un fichier ou un répertoire',
+      cp: 'cp [fichier|répertoire] [source] [destination]',
+      cpDesc: 'Copier un fichier ou un répertoire. Utilisez "cp file nom destination" ou "cp dir nom destination" pour spécifier le type lorsque les deux existent.',
+      mv: 'mv [fichier|répertoire] [source] [destination]',
+      mvDesc: 'Déplacer ou renommer un fichier ou un répertoire. Utilisez "mv file nom destination" ou "mv dir nom destination" pour spécifier le type lorsque les deux existent.',
       apps: 'apps, applist',
       appsDesc: 'Lister toutes les applications disponibles'
     }

@@ -85,7 +85,15 @@ window.I18n_ZH = {
     renameFile: '重命名',
     folderName: '文件夹',
     fileName: '文件',
-    viewer: '查看器'
+    viewer: '查看器',
+    cannotRenameDefault: '默认文件夹或文件无法重命名',
+    cannotDeleteDefault: '默认文件夹或文件无法删除',
+    renameError: '重命名文件或文件夹时出错',
+    nameAlreadyExists: '名为 "{name}" 的{type}已在此位置存在。',
+    errorCreatingFolder: '创建文件夹时出错',
+    errorCreatingFile: '创建文件时出错',
+    fileAlreadyExists: '名为 "{name}" 的文件已在此位置存在。',
+    folderAlreadyExists: '名为 "{name}" 的文件夹已在此位置存在。'
   },
 
   // Notes App
@@ -194,7 +202,8 @@ window.I18n_ZH = {
   // Desktop
   desktop: {
     new: '新建',
-    newTextDocument: '新建文本文档'
+    newTextDocument: '新建文本文档',
+    newFolder: '新建文件夹'
   },
 
   // Common
@@ -254,7 +263,11 @@ window.I18n_ZH = {
     notAFile: '不是文件: {path}',
     directoryCreated: '目录已创建: {name}',
     fileCreated: '文件已创建: {name}',
+    fileModified: '文件已修改: {name}',
     deleted: '已删除: {path}',
+    ambiguousPath: '存在名为 "{name}" 的文件和文件夹。请指定类型：对文件使用 "{cmd} file {name} {dest}"，对文件夹使用 "{cmd} dir {name} {dest}"。',
+    ambiguousPathRm: '存在名为 "{name}" 的文件和文件夹。请指定类型：对文件使用 "rm file {name}"，对文件夹使用 "rm dir {name}"。',
+    ambiguousPathCat: '存在名为 "{name}" 的文件和文件夹。请指定类型：对文件使用 "cat file {name}"。',
     noApps: '没有可用应用',
     commandNotFound: '命令未找到: {cmd}',
     error: '错误',
@@ -273,14 +286,18 @@ window.I18n_ZH = {
       pwdDesc: '显示当前工作目录',
       cat: 'cat [文件]',
       catDesc: '显示文件内容',
-      echo: 'echo [文本]',
-      echoDesc: '在终端中打印文本',
+      echo: 'echo [文本] [>|>> 文件]',
+      echoDesc: '在终端中打印文本或重定向到文件（支持 > 和 >>）',
       mkdir: 'mkdir [名称]',
       mkdirDesc: '创建新目录',
       touch: 'touch [名称]',
       touchDesc: '创建新文件',
       rm: 'rm [路径]',
       rmDesc: '删除文件或目录',
+      cp: 'cp [文件|目录] [源] [目标]',
+      cpDesc: '复制文件或目录。当两者都存在时，使用 "cp file 名称 目标" 或 "cp dir 名称 目标" 来指定类型。',
+      mv: 'mv [文件|目录] [源] [目标]',
+      mvDesc: '移动或重命名文件或目录。当两者都存在时，使用 "mv file 名称 目标" 或 "mv dir 名称 目标" 来指定类型。',
       apps: 'apps, applist',
       appsDesc: '列出所有可用应用'
     }

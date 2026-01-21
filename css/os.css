@@ -31,6 +31,14 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
   z-index: 1; /* Ensure icons are above window-layer */
   pointer-events: auto; /* Ensure clicks work */
 }
+#desktop-items {
+  position:absolute; top:0; right:0; bottom:0; left:0;
+  z-index: 1; /* Ensure items are above window-layer */
+  pointer-events: none; /* Let clicks pass through to desktop, but items themselves are clickable */
+}
+#desktop-items .desktop-item {
+  pointer-events: auto; /* Make items themselves clickable */
+}
 .icon {
   width:90px; border:none; background:rgba(0,0,0,0.2); color:var(--text);
   display:grid; justify-items:center; gap:6px; padding:10px; border-radius:8px; cursor:pointer;
@@ -846,6 +854,15 @@ hr { border:0; border-top:1px solid var(--panel-2); margin:12px 0; }
 
 .context-menu-item:hover .context-submenu {
   display: block;
+}
+
+/* File selection highlight */
+.file-selected {
+  background: var(--accent) !important;
+  color: #fff !important;
+}
+.file-selected * {
+  color: #fff !important;
 }
 
 /* BSOD - Blue Screen of Death */

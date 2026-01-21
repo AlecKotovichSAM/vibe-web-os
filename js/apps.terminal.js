@@ -52,6 +52,50 @@ Apps.register({
       output.scrollTop = output.scrollHeight;
     }
     
+    // Normalize path by resolving .. and . components
+    function normalizePath(path, basePath = currentPath) {
+      // Remove leading ./ from relative paths (treat ./ as current directory)
+      if (path.startsWith('./')) {
+        path = path.substring(2);
+      }
+      
+      if (path.startsWith('/')) {
+        // Absolute path
+        const parts = path.split('/').filter(p => p && p !== '.');
+        const result = [];
+        for (const part of parts) {
+          if (part === '..') {
+            if (result.length > 0) {
+              result.pop();
+            }
+          } else {
+            result.push(part);
+          }
+        }
+        const normalized = '/' + result.join('/');
+        return normalized === '/' ? FS.root : normalized;
+      } else {
+        // Relative path - always split basePath, even if it's /root
+        let baseParts = [];
+        if (basePath) {
+          baseParts = basePath.split('/').filter(p => p);
+        }
+        const pathParts = path.split('/').filter(p => p && p !== '.');
+        const result = [...baseParts];
+        for (const part of pathParts) {
+          if (part === '..') {
+            if (result.length > 0) {
+              result.pop();
+            }
+          } else {
+            result.push(part);
+          }
+        }
+        const normalized = '/' + result.join('/');
+        return normalized === '/' ? FS.root : normalized;
+      }
+    }
+    
     function formatSize(bytes) {
       if (bytes === 0) return '0 B';
       if (bytes < 1024) return bytes + ' B';
@@ -113,9 +157,22 @@ Apps.register({
           const char = cmd[i];
           
           if (char === '\\' && i + 1 < cmd.length) {
-            // Handle escaped characters
-            current += cmd[i + 1];
-            i++; // Skip next character
+            const nextChar = cmd[i + 1];
+            // Only escape characters needed for command parsing (quotes, spaces)
+            // Preserve escape sequences like \n, \t, \r, \\ for processEscapeSequences
+            if (inQuotes && (nextChar === quoteChar || nextChar === ' ' || nextChar === '\\')) {
+              // Inside quotes: escape quotes, spaces, and backslashes
+              current += nextChar;
+              i++; // Skip next character
+            } else if (!inQuotes && nextChar === ' ') {
+              // Outside quotes: escape spaces to include them in arguments
+              current += ' ';
+              i++; // Skip next character
+            } else {
+              // Preserve escape sequences (like \n, \t, \r) as literal for processEscapeSequences
+              current += char; // Add the backslash
+              // Don't skip nextChar - it will be added in next iteration
+            }
           } else if ((char === '"' || char === "'") && !inQuotes) {
             // Start quoted string - don't add quote to current
             inQuotes = true;
@@ -174,10 +231,26 @@ Apps.register({
             
           case 'ls':
           case 'dir':
-            const items = FS.ls(currentPath);
-            if (items.length === 0) {
-              addOutput(I18n.t('terminal.emptyDirectory'), 'var(--muted)');
-            } else {
+            try {
+              let targetPath = currentPath;
+              if (args.length > 0) {
+                targetPath = normalizePath(args[0], currentPath);
+                // Verify the path exists and is a directory
+                const target = FS.find(targetPath);
+                if (!target) {
+                  addOutput(I18n.t('terminal.pathNotFound', { path: targetPath }), 'var(--danger)');
+                  break;
+                }
+                if (target.type !== 'dir') {
+                  addOutput(I18n.t('terminal.notADirectory', { path: targetPath }), 'var(--danger)');
+                  break;
+                }
+              }
+              
+              const items = FS.ls(targetPath);
+              if (items.length === 0) {
+                addOutput(I18n.t('terminal.emptyDirectory'), 'var(--muted)');
+              } else {
               // Calculate max name length for alignment (cap at reasonable limit)
               const MAX_NAME_DISPLAY = 45; // Maximum characters to display/consider for alignment
               const MIN_NAME_WIDTH = 20; // Minimum width for alignment
@@ -204,12 +277,17 @@ Apps.register({
                 const sizePadded = sizeStr.padStart(10);
                 addOutput(`${icon} ${namePadded}  ${sizePadded}  (${type})`);
               });
+              }
+            } catch (e) {
+              addOutput(e.message, 'var(--danger)');
             }
             break;
             
           case 'cd':
             if (args.length === 0) {
               currentPath = FS.root;
+              // Show feedback when changing to root
+              addOutput(currentPath, 'var(--accent)');
             } else {
               const targetPath = args[0];
               let newPath;
@@ -252,22 +330,72 @@ Apps.register({
               addOutput(I18n.t('terminal.usage', { cmd: command, example: 'cat filename.txt' }), 'var(--danger)');
               return;
             }
-            const filePath = args[0].startsWith('/') ? args[0] : `${currentPath}/${args[0]}`;
-            const file = FS.find(filePath);
-            if (!file) {
-              addOutput(I18n.t('terminal.fileNotFound', { path: filePath }), 'var(--danger)');
-              return;
+            try {
+              const filePath = normalizePath(args[0], currentPath);
+              
+              // cat command only works with files - ignore folders
+              // Use type-aware read to ensure we get the file
+              const content = FS.read(filePath, 'file');
+              addOutput(content);
+            } catch (e) {
+              addOutput(e.message, 'var(--danger)');
             }
-            if (file.type !== 'file') {
-              addOutput(I18n.t('terminal.notAFile', { path: filePath }), 'var(--danger)');
-              return;
-            }
-            const content = FS.read(filePath);
-            addOutput(content);
             break;
             
           case 'echo':
-            addOutput(args.join(' '));
+            // Helper function to process escape sequences
+            function processEscapeSequences(text) {
+              return text
+                .replace(/\\n/g, '\n')
+                .replace(/\\t/g, '\t')
+                .replace(/\\r/g, '\r')
+                .replace(/\\\\/g, '\\');
+            }
+            
+            // Check for output redirection (> or >>)
+            const redirectIndex = args.findIndex(arg => arg === '>' || arg === '>>');
+            
+            if (redirectIndex !== -1) {
+              // Output redirection detected
+              const textParts = args.slice(0, redirectIndex);
+              let text = textParts.join(' ');
+              text = processEscapeSequences(text);
+              const redirectOp = args[redirectIndex];
+              const filePath = args[redirectIndex + 1];
+              
+              if (!filePath) {
+                addOutput(I18n.t('terminal.usage', { cmd: command, example: 'echo "text" > filename.txt' }), 'var(--danger)');
+                break;
+              }
+              
+              try {
+                const normalizedPath = normalizePath(filePath, currentPath);
+                const pathParts = normalizedPath.split('/').filter(p => p);
+                const fileName = pathParts.pop();
+                const parentPath = '/' + pathParts.join('/') || FS.root;
+                
+                if (redirectOp === '>>') {
+                  // Append mode: use FS.append which handles both existing and new files
+                  const result = FS.append(parentPath, fileName, text);
+                  if (result.wasCreated) {
+                    addOutput(I18n.t('terminal.fileCreated', { name: fileName }), 'var(--ok)');
+                  } else {
+                    addOutput(I18n.t('terminal.fileModified', { name: fileName }), 'var(--ok)');
+                  }
+                } else {
+                  // Overwrite mode (>)
+                  FS.write(parentPath, fileName, text);
+                  addOutput(I18n.t('terminal.fileCreated', { name: fileName }), 'var(--ok)');
+                }
+              } catch (e) {
+                addOutput(e.message, 'var(--danger)');
+              }
+            } else {
+              // Normal echo - process escape sequences and output the text
+              let text = args.join(' ');
+              text = processEscapeSequences(text);
+              addOutput(text);
+            }
             break;
             
           case 'mkdir':
@@ -280,7 +408,12 @@ Apps.register({
               FS.mkdir(currentPath, dirName);
               addOutput(I18n.t('terminal.directoryCreated', { name: dirName }), 'var(--ok)');
             } catch (e) {
-              addOutput(e.message, 'var(--danger)');
+              // Check if error is about duplicate folder name
+              if (e.message && e.message.includes('already exists in this location')) {
+                addOutput(I18n.t('files.folderAlreadyExists', { name: dirName }), 'var(--danger)');
+              } else {
+                addOutput(e.message, 'var(--danger)');
+              }
             }
             break;
             
@@ -291,6 +424,16 @@ Apps.register({
             }
             const fileName = args[0];
             try {
+              // Check if file already exists
+              const parent = FS.find(currentPath);
+              if (parent && parent.type === 'dir') {
+                const existingFile = parent.children.find(c => c.name === fileName && c.type === 'file');
+                if (existingFile) {
+                  addOutput(I18n.t('files.fileAlreadyExists', { name: fileName }), 'var(--danger)');
+                  return;
+                }
+              }
+              // Create new file only if it doesn't exist
               FS.write(currentPath, fileName, '');
               addOutput(I18n.t('terminal.fileCreated', { name: fileName }), 'var(--ok)');
             } catch (e) {
@@ -301,13 +444,45 @@ Apps.register({
           case 'rm':
           case 'del':
             if (args.length === 0) {
-              addOutput(I18n.t('terminal.usage', { cmd: command, example: 'rm filename.txt' }), 'var(--danger)');
+              addOutput(I18n.t('terminal.usage', { cmd: command, example: 'rm filename.txt or rm file|dir name' }), 'var(--danger)');
               return;
             }
-            const targetPath = args[0].startsWith('/') ? args[0] : `${currentPath}/${args[0]}`;
             try {
-              FS.rm(targetPath);
-              addOutput(I18n.t('terminal.deleted', { path: targetPath }), 'var(--ok)');
+              // Check if first argument is type specifier based on number of arguments
+              // 1 arg: rm name - first arg is path
+              // 2 args: rm file|dir name - first arg is type specifier
+              let targetType = null;
+              let targetArgIndex = 0;
+              
+              if (args.length === 2 && (args[0] === 'file' || args[0] === 'dir')) {
+                targetType = args[0] === 'file' ? 'file' : 'dir';
+                targetArgIndex = 1;
+              }
+              
+              const targetPath = normalizePath(args[targetArgIndex], currentPath);
+              
+              // Check if both file and folder with same name exist (only if type not specified)
+              const targetParentPath = targetPath.split('/').slice(0, -1).join('/') || FS.root;
+              const targetName = targetPath.split('/').pop();
+              const parent = FS.find(targetParentPath);
+              if (!targetType && parent && parent.type === 'dir') {
+                const fileExists = parent.children.some(c => c.path === targetPath && c.type === 'file');
+                const dirExists = parent.children.some(c => c.path === targetPath && c.type === 'dir');
+                
+                if (fileExists && dirExists) {
+                  const msg = I18n.t('terminal.ambiguousPathRm', { name: targetName });
+                  addOutput(msg || `Both a file and folder named "${targetName}" exist. Please specify type: use "rm file ${targetName}" for file or "rm dir ${targetName}" for folder.`, 'var(--danger)');
+                  return;
+                }
+              }
+              
+              // Delete with type awareness
+              const deleted = FS.rm(targetPath, targetType);
+              if (deleted) {
+                addOutput(I18n.t('terminal.deleted', { path: targetPath }), 'var(--ok)');
+              } else {
+                addOutput(I18n.t('terminal.fileNotFound', { path: targetPath }), 'var(--danger)');
+              }
             } catch (e) {
               addOutput(e.message, 'var(--danger)');
             }
@@ -316,14 +491,53 @@ Apps.register({
           case 'cp':
           case 'copy':
             if (args.length < 2) {
-              addOutput(I18n.t('terminal.usage', { cmd: command, example: 'cp source.txt dest.txt' }), 'var(--danger)');
+              addOutput(I18n.t('terminal.usage', { cmd: command, example: 'cp source.txt dest.txt or cp file|dir name dest' }), 'var(--danger)');
               return;
             }
             try {
-              const srcPath = args[0].startsWith('/') ? args[0] : `${currentPath}/${args[0]}`;
-              const destPath = args[1].startsWith('/') ? args[1] : `${currentPath}/${args[1]}`;
+              // Check if first argument is type specifier based on number of arguments
+              // 2 args: cp source dest - first arg is path
+              // 3 args: cp file|dir name dest - first arg is type specifier
+              let srcType = null;
+              let srcArgIndex = 0;
               
-              const src = FS.find(srcPath);
+              if (args.length === 3 && (args[0] === 'file' || args[0] === 'dir')) {
+                srcType = args[0] === 'file' ? 'file' : 'dir';
+                srcArgIndex = 1;
+              }
+              
+              const srcPath = normalizePath(args[srcArgIndex], currentPath);
+              const destPath = normalizePath(args[srcArgIndex + 1], currentPath);
+              
+              // Check if both file and folder with same name exist (only if type not specified)
+              const srcParentPath = srcPath.split('/').slice(0, -1).join('/') || FS.root;
+              const srcName = srcPath.split('/').pop();
+              const parent = FS.find(srcParentPath);
+              if (!srcType && parent && parent.type === 'dir') {
+                const fileExists = parent.children.some(c => c.path === srcPath && c.type === 'file');
+                const dirExists = parent.children.some(c => c.path === srcPath && c.type === 'dir');
+                
+                if (fileExists && dirExists) {
+                  const destName = args[srcArgIndex + 1] || 'destination';
+                  const msg = I18n.t('terminal.ambiguousPath', { cmd: 'cp', name: srcName, dest: destName });
+                  addOutput(msg || `Both a file and folder named "${srcName}" exist. Please specify type: use "cp file ${srcName} ${destName}" for file or "cp dir ${srcName} ${destName}" for folder.`, 'var(--danger)');
+                  return;
+                }
+              }
+              
+              // Find source with type awareness
+              let src;
+              if (srcType) {
+                // Type specified, find by path and type
+                if (parent && parent.type === 'dir') {
+                  src = parent.children.find(c => c.path === srcPath && c.type === srcType);
+                } else {
+                  src = null;
+                }
+              } else {
+                src = FS.find(srcPath);
+              }
+              
               if (!src) {
                 addOutput(I18n.t('terminal.fileNotFound', { path: srcPath }), 'var(--danger)');
                 return;
@@ -343,9 +557,9 @@ Apps.register({
                 destDir = destParts.join('/') || FS.root;
               }
               
-              // Copy file
+              // Copy file (use type-aware operations)
               if (src.type === 'file') {
-                const content = FS.read(srcPath);
+                const content = FS.read(srcPath, src.type);
                 FS.write(destDir, destName, content);
                 addOutput(I18n.t('terminal.copied', { from: srcPath, to: `${destDir}/${destName}` }), 'var(--ok)');
               } else if (src.type === 'dir') {
@@ -374,14 +588,53 @@ Apps.register({
           case 'mv':
           case 'move':
             if (args.length < 2) {
-              addOutput(I18n.t('terminal.usage', { cmd: command, example: 'mv source.txt dest.txt' }), 'var(--danger)');
+              addOutput(I18n.t('terminal.usage', { cmd: command, example: 'mv source.txt dest.txt or mv file|dir name dest' }), 'var(--danger)');
               return;
             }
             try {
-              const srcPath = args[0].startsWith('/') ? args[0] : `${currentPath}/${args[0]}`;
-              const destPath = args[1].startsWith('/') ? args[1] : `${currentPath}/${args[1]}`;
+              // Check if first argument is type specifier based on number of arguments
+              // 2 args: mv source dest - first arg is path
+              // 3 args: mv file|dir name dest - first arg is type specifier
+              let srcType = null;
+              let srcArgIndex = 0;
               
-              const src = FS.find(srcPath);
+              if (args.length === 3 && (args[0] === 'file' || args[0] === 'dir')) {
+                srcType = args[0] === 'file' ? 'file' : 'dir';
+                srcArgIndex = 1;
+              }
+              
+              const srcPath = normalizePath(args[srcArgIndex], currentPath);
+              const destPath = normalizePath(args[srcArgIndex + 1], currentPath);
+              
+              // Check if both file and folder with same name exist (only if type not specified)
+              const srcParentPath = srcPath.split('/').slice(0, -1).join('/') || FS.root;
+              const srcName = srcPath.split('/').pop();
+              const parent = FS.find(srcParentPath);
+              if (!srcType && parent && parent.type === 'dir') {
+                const fileExists = parent.children.some(c => c.path === srcPath && c.type === 'file');
+                const dirExists = parent.children.some(c => c.path === srcPath && c.type === 'dir');
+                
+                if (fileExists && dirExists) {
+                  const destName = args[srcArgIndex + 1] || 'destination';
+                  const msg = I18n.t('terminal.ambiguousPath', { cmd: 'mv', name: srcName, dest: destName });
+                  addOutput(msg || `Both a file and folder named "${srcName}" exist. Please specify type: use "mv file ${srcName} ${destName}" for file or "mv dir ${srcName} ${destName}" for folder.`, 'var(--danger)');
+                  return;
+                }
+              }
+              
+              // Find source with type awareness
+              let src;
+              if (srcType) {
+                // Type specified, find by path and type
+                if (parent && parent.type === 'dir') {
+                  src = parent.children.find(c => c.path === srcPath && c.type === srcType);
+                } else {
+                  src = null;
+                }
+              } else {
+                src = FS.find(srcPath);
+              }
+              
               if (!src) {
                 addOutput(I18n.t('terminal.fileNotFound', { path: srcPath }), 'var(--danger)');
                 return;
@@ -402,15 +655,14 @@ Apps.register({
               }
               
               // Check if source and destination are in same directory (simple rename)
-              const srcParentPath = srcPath.split('/').slice(0, -1).join('/') || FS.root;
               if (srcParentPath === destDir && src.name === destName) {
                 addOutput(I18n.t('terminal.samePath'), 'var(--danger)');
                 return;
               }
               
-              // Copy first
+              // Copy first (use type-aware operations)
               if (src.type === 'file') {
-                const content = FS.read(srcPath);
+                const content = FS.read(srcPath, src.type);
                 FS.write(destDir, destName, content);
               } else if (src.type === 'dir') {
                 function copyDir(srcNode, destParentPath, destDirName) {
@@ -429,8 +681,8 @@ Apps.register({
                 copyDir(src, destDir, destName);
               }
               
-              // Then delete source
-              FS.rm(srcPath);
+              // Then delete source (use type-aware delete)
+              FS.rm(srcPath, src.type);
               addOutput(I18n.t('terminal.moved', { from: srcPath, to: `${destDir}/${destName}` }), 'var(--ok)');
             } catch (e) {
               addOutput(e.message, 'var(--danger)');
@@ -463,6 +715,7 @@ Apps.register({
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         executeCommand(input.value);
+        input.value = ''; // Clear input after executing command
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         if (commandHistory.length > 0) {
@@ -484,6 +737,13 @@ Apps.register({
     });
     
     input.focus();
+    
+    // Focus input when window is focused
+    Bus.on('wm:focus', ({ id: focusedId }) => {
+      if (focusedId === id) {
+        input.focus();
+      }
+    });
     
     // Function to update UI elements on locale change
     function updateUIOnLocaleChange() {
