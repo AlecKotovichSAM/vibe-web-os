@@ -24,7 +24,7 @@
     } else {
       boot.remove();
       Shell.initDesktop();
-      BSOD.startRandomSchedule(30, 600);
+      BSOD.startRandomSchedule(600, 1200); // 10-20 minutes
     }
   }
 

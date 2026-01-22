@@ -225,7 +225,7 @@ BSOD.stopRandomSchedule() // Stop automatic triggers
 BSOD.hide() // Manually dismiss BSOD
 ```
 
-**Auto-trigger:** After boot, BSOD randomly triggers every 30-600 seconds (5-10 min)
+**Auto-trigger:** After boot, BSOD randomly triggers every 600-1200 seconds (10-20 minutes)
 - Automatically reschedules after each BSOD
 - Can be stopped with `BSOD.stopRandomSchedule()`
 - Console logs next trigger time
