@@ -80,6 +80,32 @@ window.BSOD = (() => {
   }
 
   function trigger() {
+    const now = new Date();
+    const currentTime = now.toLocaleString();
+    
+    // Calculate time since last trigger
+    let timeSinceLast = null;
+    if (lastTriggerTime !== null) {
+      const diffMs = now.getTime() - lastTriggerTime.getTime();
+      const diffSeconds = Math.round(diffMs / 1000);
+      const diffMinutes = Math.floor(diffSeconds / 60);
+      const remainingSeconds = diffSeconds % 60;
+      
+      if (diffMinutes > 0) {
+        timeSinceLast = `${diffMinutes}m ${remainingSeconds}s`;
+      } else {
+        timeSinceLast = `${diffSeconds}s`;
+      }
+    } else {
+      timeSinceLast = 'First BSOD';
+    }
+    
+    // Log BSOD trigger info
+    console.log(`[BSOD] Triggered at ${currentTime} | Time since last: ${timeSinceLast}`);
+    
+    // Update last trigger time
+    lastTriggerTime = now;
+
     const stopCodes = [
       'CRITICAL_PROCESS_DIED',
       'KERNEL_DATA_INPAGE_ERROR',
@@ -111,9 +137,11 @@ window.BSOD = (() => {
   }
 
   let randomTimer = null;
+  let lastTriggerTime = null;
 
   function startRandomSchedule(minSeconds = 600, maxSeconds = 12000) {
     stopRandomSchedule();
+    lastTriggerTime = null; // Reset on new schedule
 
     function scheduleNext() {
       const randomMs = Math.floor(Math.random() * (maxSeconds - minSeconds + 1)) + minSeconds;
