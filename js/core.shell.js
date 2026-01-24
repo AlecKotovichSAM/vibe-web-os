@@ -1457,6 +1457,71 @@ window.Shell = (() => {
             }
           });
           
+          // Right-click context menu for desktop file icons
+          icon.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Only show menu for files, not folders
+            if (item.type !== 'file') return;
+            
+            // Create context menu for this file
+            let desktopFileMenu = document.querySelector('.desktop-file-context-menu');
+            if (!desktopFileMenu) {
+              desktopFileMenu = document.createElement('div');
+              desktopFileMenu.className = 'context-menu desktop-file-context-menu';
+              desktopFileMenu.innerHTML = `
+                <div class="context-menu-item" data-action="download">${I18n.t('window.menu.download')}</div>
+              `;
+              document.body.appendChild(desktopFileMenu);
+              
+              // Handle menu item clicks
+              desktopFileMenu.addEventListener('click', (clickE) => {
+                const menuItem = clickE.target.closest('.context-menu-item[data-action]');
+                if (!menuItem) return;
+                
+                const action = menuItem.dataset.action;
+                const path = desktopFileMenu.dataset.path;
+                const type = desktopFileMenu.dataset.type;
+                
+                desktopFileMenu.classList.remove('show');
+                
+                if (action === 'download' && path && type) {
+                  FileMenuUtility.downloadFile(path, type);
+                }
+              });
+              
+              // Update menu on locale change
+              Bus.on('locale:changed', () => {
+                const downloadItem = desktopFileMenu.querySelector('[data-action="download"]');
+                if (downloadItem) {
+                  downloadItem.textContent = I18n.t('window.menu.download');
+                }
+              });
+            }
+            
+            // Show menu
+            desktopFileMenu.style.left = e.clientX + 'px';
+            desktopFileMenu.style.top = e.clientY + 'px';
+            desktopFileMenu.classList.add('show');
+            desktopFileMenu.dataset.path = item.path;
+            desktopFileMenu.dataset.type = item.type;
+            
+            // Close menu when clicking outside
+            const closeMenu = (closeE) => {
+              if (!desktopFileMenu.contains(closeE.target)) {
+                desktopFileMenu.classList.remove('show');
+                document.removeEventListener('click', closeMenu);
+                document.removeEventListener('contextmenu', closeMenu);
+              }
+            };
+            
+            setTimeout(() => {
+              document.addEventListener('click', closeMenu);
+              document.addEventListener('contextmenu', closeMenu);
+            }, 10);
+          });
+          
           column.appendChild(icon);
         });
         

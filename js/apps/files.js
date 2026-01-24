@@ -576,8 +576,10 @@ Apps.register({
       if (contextMenu) {
         // Update menu items with current locale
         const renameItem = contextMenu.querySelector('[data-action="rename"]');
+        const downloadItem = contextMenu.querySelector('[data-action="download"]');
         const deleteItem = contextMenu.querySelector('[data-action="delete"]');
         if (renameItem) renameItem.textContent = I18n.t('files.renameFile');
+        if (downloadItem) downloadItem.textContent = I18n.t('window.menu.download');
         if (deleteItem) deleteItem.textContent = I18n.t('files.deleteFile');
         return contextMenu;
       }
@@ -585,6 +587,7 @@ Apps.register({
       contextMenu.className = 'context-menu';
       contextMenu.innerHTML = `
         <div class="context-menu-item" data-action="rename">${I18n.t('files.renameFile')}</div>
+        <div class="context-menu-item" data-action="download" style="display:none;">${I18n.t('window.menu.download')}</div>
         <div class="context-menu-item" data-action="delete">${I18n.t('files.deleteFile')}</div>
       `;
       document.body.appendChild(contextMenu);
@@ -598,6 +601,12 @@ Apps.register({
       menu.classList.add('show');
       menu.dataset.path = path;
       menu.dataset.type = type;
+      
+      // Show/hide download option based on file type
+      const downloadItem = menu.querySelector('[data-action="download"]');
+      if (downloadItem) {
+        downloadItem.style.display = type === 'file' ? 'block' : 'none';
+      }
       
       // Close menu when clicking outside
       const closeMenu = (e) => {
@@ -618,8 +627,10 @@ Apps.register({
     Bus.on('locale:changed', () => {
       if (contextMenu) {
         const renameItem = contextMenu.querySelector('[data-action="rename"]');
+        const downloadItem = contextMenu.querySelector('[data-action="download"]');
         const deleteItem = contextMenu.querySelector('[data-action="delete"]');
         if (renameItem) renameItem.textContent = I18n.t('files.renameFile');
+        if (downloadItem) downloadItem.textContent = I18n.t('window.menu.download');
         if (deleteItem) deleteItem.textContent = I18n.t('files.deleteFile');
       }
     });
@@ -654,6 +665,8 @@ Apps.register({
       
       if (action === 'rename' && path && type) {
         startRename(path, type);
+      } else if (action === 'download' && path && type) {
+        FileMenuUtility.downloadFile(path, type);
       } else if (action === 'delete' && path && type) {
         deleteItem(path, type);
       }

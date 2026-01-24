@@ -203,15 +203,18 @@ window.FileMenuUtility = (() => {
       if (!path) return;
 
       try {
-        // Read file from filesystem
-        const content = FS.read(path);
+        // Normalize path (ensure it starts with /)
+        const normalizedPath = path.startsWith('/') ? path : '/' + path;
+        
+        // Read file from filesystem using type-aware read to ensure we get a file, not a folder
+        const content = FS.read(normalizedPath, 'file');
         
         // Extract filename from path
-        const pathParts = path.split('/');
+        const pathParts = normalizedPath.split('/');
         const name = pathParts[pathParts.length - 1];
         
         // Update current path
-        currentPath = path;
+        currentPath = normalizedPath;
         isSaved = true; // File is loaded from disk, so it's "saved"
         
         // Update status bar if it exists
@@ -244,7 +247,7 @@ window.FileMenuUtility = (() => {
         
         // Call onOpen callback
         if (onOpen) {
-          onOpen(content, path, name);
+          onOpen(content, normalizedPath, name);
         }
         
         return true;
@@ -304,5 +307,85 @@ window.FileMenuUtility = (() => {
     };
   }
 
-  return { init };
+  /**
+   * Download a file from the virtual file system to the user's computer
+   * @param {string} path - Full path to the file
+   * @param {string} type - File type ('file' or 'dir'), defaults to 'file'
+   * @returns {boolean} - Success
+   */
+  function downloadFile(path, type = 'file') {
+    try {
+      // Only download files, not folders
+      if (type !== 'file') {
+        throw new Error('Cannot download folders');
+      }
+
+      // Normalize path (ensure it starts with /)
+      const normalizedPath = path.startsWith('/') ? path : '/' + path;
+      
+      // Read file content using type-aware read
+      const content = FS.read(normalizedPath, 'file');
+      
+      // Extract filename from path
+      const pathParts = normalizedPath.split('/');
+      const fileName = pathParts[pathParts.length - 1];
+      
+      // Check if content is a data URL (image)
+      if (typeof content === 'string' && content.startsWith('data:')) {
+        // For data URLs, convert to blob and download
+        fetch(content)
+          .then(res => res.blob())
+          .then(blob => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          })
+          .catch(e => {
+            alert('Failed to download file: ' + e.message);
+          });
+      } else {
+        // Regular text content - determine MIME type
+        const ext = fileName.split('.').pop()?.toLowerCase() || '';
+        const mimeTypes = {
+          'txt': 'text/plain',
+          'md': 'text/markdown',
+          'html': 'text/html',
+          'css': 'text/css',
+          'js': 'text/javascript',
+          'json': 'application/json',
+          'png': 'image/png',
+          'jpg': 'image/jpeg',
+          'jpeg': 'image/jpeg',
+          'gif': 'image/gif',
+          'svg': 'image/svg+xml',
+          'webp': 'image/webp'
+        };
+        const mimeType = mimeTypes[ext] || 'text/plain';
+        
+        // Create blob and download
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+      
+      return true;
+    } catch (e) {
+      const errorMsg = e.message || 'Failed to download file';
+      alert(errorMsg);
+      return false;
+    }
+  }
+
+  return { init, downloadFile };
 })();
