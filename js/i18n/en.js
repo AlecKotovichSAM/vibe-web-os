@@ -242,6 +242,35 @@ window.I18n_EN = {
     opened: 'Opened: {name}'
   },
 
+  // Task Manager App
+  taskmanager: {
+    title: 'Task Manager',
+    description: 'View and manage running applications and windows. Monitor system resources.',
+    windows: 'Windows',
+    systemInfo: 'System Information',
+    refresh: 'Refresh',
+    columnWinId: 'Window ID',
+    noWindows: 'No windows are currently open',
+    statusBarReady: 'Ready',
+    statusRunning: 'Running',
+    statusMinimized: 'Minimized',
+    switchTo: 'Switch To',
+    endTask: 'End Task',
+    endTaskConfirm: 'End task "{title}"?',
+    columnApp: 'App',
+    columnTitle: 'Window Title',
+    columnStatus: 'Status',
+    columnSize: 'Size',
+    columnMemory: 'Memory',
+    columnActions: 'Actions',
+    totalWindows: 'Total Windows',
+    runningWindows: 'Running',
+    minimizedWindows: 'Minimized',
+    totalMemory: 'Total Memory',
+    systemUptime: 'System Uptime',
+    browserInfo: 'Browser'
+  },
+
   // Terminal App
   terminal: {
     title: 'Terminal',
