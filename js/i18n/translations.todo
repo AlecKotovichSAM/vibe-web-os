@@ -132,6 +132,47 @@ These should be translated and added to all locale files later.
 - `"🟦"` (multiple lines: 174, 229, 281)
   - Default app icon emoji, probably fine to keep as-is
 
+## Task Manager App (js/apps/taskmanager.js)
+
+### All translations added to en.js
+- File: `js/i18n/en.js` (lines 245-268)
+- Namespace: `taskmanager.*`
+- All user-facing strings are properly localized
+- No hardcoded strings found
+
+**Translation keys:**
+- `taskmanager.title` - 'Task Manager'
+- `taskmanager.description` - 'View and manage running applications and windows. Monitor system resources.'
+- `taskmanager.windows` - 'Windows'
+- `taskmanager.systemInfo` - 'System Information'
+- `taskmanager.refresh` - 'Refresh'
+- `taskmanager.noWindows` - 'No windows are currently open'
+- `taskmanager.statusBarReady` - 'Ready'
+- `taskmanager.statusRunning` - 'Running'
+- `taskmanager.statusMinimized` - 'Minimized'
+- `taskmanager.switchTo` - 'Switch To'
+- `taskmanager.endTask` - 'End Task'
+- `taskmanager.endTaskConfirm` - 'End task "{title}"?' (with placeholder)
+- `taskmanager.columnApp` - 'App'
+- `taskmanager.columnTitle` - 'Window Title'
+- `taskmanager.columnStatus` - 'Status'
+- `taskmanager.columnSize` - 'Size'
+- `taskmanager.columnMemory` - 'Memory'
+- `taskmanager.columnActions` - 'Actions'
+- `taskmanager.totalWindows` - 'Total Windows'
+- `taskmanager.runningWindows` - 'Running'
+- `taskmanager.minimizedWindows` - 'Minimized'
+- `taskmanager.totalMemory` - 'Total Memory'
+- `taskmanager.systemUptime` - 'System Uptime'
+- `taskmanager.browserInfo` - 'Browser'
+
+**Context:**
+- Task Manager is a system utility app for viewing and managing open windows
+- Hidden from desktop and start menu, accessible only via search
+- Shows window list with app name, title, status, size, memory usage
+- Shows system information (total windows, memory, uptime)
+- Allows switching to windows and ending tasks
+
 ## Notes
 
 1. **Error messages from FS module**: Many error messages are thrown from `core.fs.js` and caught in other modules. These should be localized in the FS module itself, or we should create a `fs` namespace in i18n files.

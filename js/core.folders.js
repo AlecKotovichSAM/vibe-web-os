@@ -197,8 +197,10 @@ window.Folders = (() => {
       const appId = btn.dataset.appId;
       if (!appId) return;
       
-      // Click to open
-      btn.addEventListener('click', () => {
+      // Double-click to open (consistent with Files app)
+      btn.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         Apps.open(appId, { parentId: id });
         // Keep folder open - don't minimize
       });

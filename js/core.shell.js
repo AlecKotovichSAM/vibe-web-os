@@ -343,8 +343,8 @@ window.Shell = (() => {
       // Get English translations for fallback search
       const enTranslations = window.I18n_EN || {};
 
-      // Search apps (exclude hidden apps unless searching for special code)
-      Apps.list(isSpecialCode).forEach(app => {
+      // Search apps (include hidden apps in search - they're just not shown in start menu/desktop)
+      Apps.list(true).forEach(app => {
         // Get localized name (current locale)
         const localizedName = app.name.toLowerCase();
         

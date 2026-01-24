@@ -203,15 +203,33 @@ window.FileMenuUtility = (() => {
       if (!path) return;
 
       try {
-        // Normalize path (ensure it starts with /)
-        const normalizedPath = path.startsWith('/') ? path : '/' + path;
+        // Normalize path: trim whitespace, ensure it starts with /
+        let normalizedPath = path.trim();
+        if (!normalizedPath.startsWith('/')) {
+          normalizedPath = '/' + normalizedPath;
+        }
+        // Remove any trailing slashes (except for root)
+        normalizedPath = normalizedPath.replace(/\/+$/, '') || '/root';
         
-        // Read file from filesystem using type-aware read to ensure we get a file, not a folder
-        const content = FS.read(normalizedPath, 'file');
+        // Try type-aware read first (to handle cases where file and folder have same name)
+        let content;
+        try {
+          content = FS.read(normalizedPath, 'file');
+        } catch (typeError) {
+          // If type-aware read fails with "File not found", try regular read as fallback
+          // This handles edge cases where path matching might be slightly off
+          // Regular read will throw "Not a file" if it finds a folder, which is fine
+          if (typeError.message && typeError.message.includes('File not found')) {
+            content = FS.read(normalizedPath);
+          } else {
+            // Re-throw other errors (like "Parent directory not found")
+            throw typeError;
+          }
+        }
         
         // Extract filename from path
-        const pathParts = normalizedPath.split('/');
-        const name = pathParts[pathParts.length - 1];
+        const pathParts = normalizedPath.split('/').filter(p => p);
+        const name = pathParts.length > 0 ? pathParts[pathParts.length - 1] : normalizedPath;
         
         // Update current path
         currentPath = normalizedPath;

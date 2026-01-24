@@ -606,6 +606,205 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
 
 .app-empty { color:var(--muted); padding:12px; }
 
+/* Task Manager Styles */
+#taskmanager-list {
+  overflow-x: hidden !important; /* Prevent horizontal scroll */
+}
+
+.taskmanager-header {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  background: var(--panel-2);
+  border-bottom: 2px solid var(--accent);
+  font-weight: 600;
+  color: var(--text);
+  font-size: 0.9rem;
+  min-width: 0; /* Prevent grid overflow */
+  overflow: hidden; /* Prevent horizontal scroll */
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.taskmanager-sortable {
+  user-select: none;
+  transition: background 0.15s;
+  position: relative;
+}
+
+.taskmanager-sortable:hover {
+  background: var(--panel);
+  border-radius: 4px;
+}
+
+/* Header cells - allow truncation but show sort indicators */
+.taskmanager-header .taskmanager-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  position: relative;
+}
+
+.taskmanager-header .taskmanager-cell.taskmanager-sortable {
+  /* Sortable headers - reserve space for sort indicator */
+  padding-right: 18px;
+  position: relative;
+}
+
+.taskmanager-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 4px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 10;
+}
+
+.taskmanager-resizer:hover {
+  background: var(--accent);
+  opacity: 0.5;
+}
+
+.taskmanager-cell.taskmanager-icon .taskmanager-resizer {
+  display: none; /* Don't show resizer on icon column */
+}
+
+/* Sort indicator positioned absolutely to not affect text truncation */
+.taskmanager-header .taskmanager-cell.taskmanager-sortable::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.taskmanager-header .taskmanager-cell.taskmanager-sortable[data-sort-asc]::after {
+  content: '▲';
+  font-size: 0.7em;
+  line-height: 1;
+}
+
+.taskmanager-header .taskmanager-cell.taskmanager-sortable[data-sort-desc]::after {
+  content: '▼';
+  font-size: 0.7em;
+  line-height: 1;
+}
+
+.taskmanager-row {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid var(--panel-2);
+  cursor: pointer;
+  transition: background 0.15s;
+  align-items: center;
+  min-width: 0; /* Prevent grid overflow */
+  overflow: hidden; /* Prevent horizontal scroll */
+}
+
+.taskmanager-row:hover {
+  background: var(--panel-2);
+}
+
+.taskmanager-row.taskmanager-focused {
+  background: rgba(79, 124, 255, 0.1);
+  border-left: 3px solid var(--accent);
+}
+
+.taskmanager-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  min-width: 0; /* Allow cells to shrink below content size */
+  max-width: 100%; /* Prevent overflow */
+}
+
+.taskmanager-cell.taskmanager-icon {
+  text-align: center;
+  font-size: 1.2rem;
+}
+
+.taskmanager-cell.taskmanager-app {
+  min-width: 0; /* Allow shrinking if needed */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.taskmanager-cell.taskmanager-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0; /* Allow shrinking if needed */
+}
+
+/* Header cells should not truncate - they need to show sort indicators */
+.taskmanager-header .taskmanager-cell {
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.taskmanager-cell.taskmanager-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0; /* Prevent buttons from being compressed */
+  min-width: 0; /* Allow shrinking if absolutely necessary */
+  overflow: visible; /* Allow buttons to be fully visible */
+}
+
+.taskmanager-btn {
+  background: var(--panel-2);
+  color: var(--text);
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: background 0.15s;
+  flex-shrink: 0; /* Prevent buttons from shrinking */
+  white-space: nowrap; /* Keep button text on one line */
+  pointer-events: auto; /* Ensure buttons are clickable */
+  position: relative; /* Ensure buttons are above other elements */
+  z-index: 1; /* Ensure buttons are clickable */
+}
+
+.taskmanager-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.taskmanager-btn.taskmanager-end {
+  background: var(--panel-2);
+  color: var(--danger);
+}
+
+.taskmanager-btn.taskmanager-end:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+.taskmanager-info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 0.85rem;
+}
+
+.taskmanager-info-label {
+  color: var(--muted);
+}
+
+.taskmanager-info-value {
+  color: var(--text);
+  font-weight: 600;
+}
+
 /* File Manager Grid View */
 .file-grid {
   display: grid;
