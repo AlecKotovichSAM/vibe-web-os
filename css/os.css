@@ -1523,3 +1523,17 @@ html:not([data-theme]) #datetime-digital-clock {
   color: #000 !important;
   border: 1px solid #000 !important;
 }
+
+/* File rename input styling - ensure good contrast */
+.grid-name-edit,
+.list-name-edit {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid var(--accent) !important;
+}
+
+.grid-name-edit:focus,
+.list-name-edit:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
