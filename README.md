@@ -197,6 +197,19 @@ Free to use and modify. Have fun!
 - Service Worker cache fixes
 - Various UI and localization fixes
 
+## 🧪 Testing
+
+**Test Framework:**
+- Browser-based test runner: `tests/test-runner.html` (open in browser)
+- Node.js test runner: `node tests/run-browser-tests.js`
+- Current: 93 tests covering 7 core modules (64% core coverage)
+
+**Testing Policy:**
+- **Every bugfix MUST include a test** (see `AGENTS.md` for details)
+- Tests are located in `tests/*.browser.test.js`
+- Run tests: `node tests/run-browser-tests.js` or open `tests/test-runner.html` in browser
+- See `tests/COVERAGE.md` for detailed coverage report
+
 ### Version 0.1
 
 This is the first stable release of Vibe Web OS, featuring:

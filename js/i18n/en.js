@@ -419,5 +419,14 @@ window.I18n_EN = {
     webOS: 'Web OS',
     version: 'Version',
     apps: 'Apps'
+  },
+
+  // Error handling
+  error: {
+    title: 'Error',
+    checkConsole: 'Check console for details',
+    unknownError: 'An unknown error occurred',
+    systemError: 'System error',
+    userFriendlyMessage: 'Something went wrong. Please try again or refresh the page.'
   }
 };

@@ -1,0 +1,35 @@
+{
+  "name": "vibe-web-os",
+  "version": "0.2.0",
+  "description": "A browser-based operating system built with pure HTML, CSS, and JavaScript",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:browser": "echo 'Open tests/test-runner.html in your browser'",
+    "test:node": "node --test tests/*.node.test.js",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint js/**/*.js --fix",
+    "format": "prettier --write \"**/*.{js,css,html,md}\"",
+    "format:check": "prettier --check \"**/*.{js,css,html,md}\"",
+    "quality": "npm run lint && npm run format:check && npm run test"
+  },
+  "keywords": [
+    "web-os",
+    "desktop",
+    "browser",
+    "operating-system"
+  ],
+  "author": "Alec Kotovich",
+  "license": "MIT",
+  "devDependencies": {
+    "@testing-library/dom": "^9.3.4",
+    "@vitest/ui": "^1.2.0",
+    "@vitest/coverage-v8": "^1.2.0",
+    "eslint": "^8.57.0",
+    "jsdom": "^23.0.1",
+    "prettier": "^3.2.5",
+    "vitest": "^1.2.0"
+  }
+}

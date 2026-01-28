@@ -2,3 +2,19 @@
 .idea/modules.xml
 .idea/vcs.xml
 .idea/web-os.iml
+
+# Dependencies
+node_modules/
+
+# Test coverage
+coverage/
+
+# IDE
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

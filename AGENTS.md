@@ -10,7 +10,27 @@ This is a **pure HTML/CSS/JS** project with no build system.
 - For PWA features, use HTTPS or localhost
 
 ### Testing
-- **No test framework currently exists** - run manually by opening in browser
+
+**Test Framework:**
+- Browser-based test runner: `tests/test-runner.html` (open in browser)
+- Node.js test runner: `node tests/run-browser-tests.js`
+- Custom test framework with `describe`, `it`, `expect`, `beforeEach`
+- Tests located in `tests/*.browser.test.js`
+
+**Running Tests:**
+```bash
+# Browser (recommended for development)
+# Open tests/test-runner.html in browser
+
+# Node.js (for CI/automation)
+node tests/run-browser-tests.js
+```
+
+**Test Coverage:**
+- Current: 93 tests covering 7 core modules (64% core coverage)
+- See `tests/COVERAGE.md` for detailed coverage report
+
+**Manual Testing:**
 - Test apps by clicking desktop icons or using the start menu
 - Test Service Worker offline: DevTools > Application > Service Workers > Offline
 
@@ -261,6 +281,44 @@ BSOD.startRandomSchedule(60, 300); // 1-5 minutes
 - Comment non-obvious logic briefly
 - Console logging is present for debugging (clean up before production)
 - No external dependencies - pure vanilla JS
+
+### Bugfix Testing Policy
+
+**REQUIRED: Every bugfix MUST include a test.**
+
+When fixing a bug:
+1. **Write a test first** that reproduces the bug (it should fail)
+2. **Fix the bug** so the test passes
+3. **Ensure all existing tests still pass**
+
+**Test Requirements:**
+- Test should be in the appropriate `tests/*.browser.test.js` file
+- Test should clearly describe the bug being fixed
+- Test should verify both the bug is fixed AND the fix doesn't break existing behavior
+- If the bug affects multiple modules, add tests to all affected modules
+
+**Example:**
+```javascript
+// Before fixing: Test fails
+it('should handle empty folder name gracefully', () => {
+  expect(() => {
+    Folders.create({ name: '' });
+  }).toThrow('Folder name is required');
+});
+
+// After fixing: Test passes
+```
+
+**Exceptions:**
+- UI-only changes (pure CSS/styling) may not require tests
+- Documentation-only changes don't require tests
+- When in doubt, add a test - it's better to have too many tests than too few
+
+**Test Isolation:**
+- Tests must be isolated and order-independent
+- Use `beforeEach` to set up clean state
+- Clear localStorage, reset mocks, and clean up DOM between tests
+- Never rely on test execution order
 
 ### Internationalization (i18n) Workflow
 
