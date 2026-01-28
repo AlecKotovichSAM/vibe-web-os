@@ -214,6 +214,26 @@ These should be translated and added to all locale files later.
 - Used by `Dialog.saveAs()` and `Dialog.open()` dialogs
 - Can be reused by Files app (future refactoring)
 
+## File Preview Component (js/core.filepreview.js)
+
+### New reusable component
+- File: `js/core.filepreview.js` (new)
+- Provides file preview functionality for text and image files
+- Used by `Dialog.open()` dialog preview panel
+- Can be reused elsewhere in the future
+
+**Translation keys used:**
+- `filesave.preview` - 'Preview' (preview panel title)
+- `filesave.loading` - 'Loading...' (loading state)
+- `filesave.previewError` - 'Unable to preview file' (error message)
+- `filesave.selectFilePreview` - 'Select a file to preview' (empty state)
+
+**Context:**
+- Reusable module for displaying file previews
+- Supports text files (first 5000 characters) and images
+- Handles errors and loading states gracefully
+- Used in Open dialog to show file preview when a file is selected
+
 **Translation keys used:**
 - `files.emptyFolder` - 'This folder is empty' (already exists)
 - `files.fileName` - 'File' (already exists, used as label)
@@ -244,12 +264,17 @@ These should be translated and added to all locale files later.
 - `filesave.openPrompt` - 'Enter file path:' (legacy, now uses Dialog.open())
 - `filesave.opened` - 'Opened: {name}' (with placeholder)
 - `filesave.selectFile` - 'Please select a file' (NEW - for open dialog validation)
+- `filesave.preview` - 'Preview' (NEW - preview panel title in Open dialog)
+- `filesave.loading` - 'Loading...' (NEW - loading state in preview)
+- `filesave.previewError` - 'Unable to preview file' (NEW - error message when preview fails)
+- `filesave.selectFilePreview` - 'Select a file to preview' (NEW - empty state message in preview panel)
 
 **Context:**
 - Generic file save/open utility for apps
 - **UPDATED**: Now uses `Dialog.saveAs()` and `Dialog.open()` with file browser instead of simple prompts
 - Provides Save, Save As, and Open functionality
 - Handles window title updates and status bar messages
+- **NEW**: Open dialog now includes file preview panel (text and image files)
 
 ## Notes
 

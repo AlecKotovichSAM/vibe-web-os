@@ -249,60 +249,19 @@ Apps.register({
       }
     }
 
-    // Rename handler (F2 or context menu)
-    async function startRename(path, type) {
-      if (isSystemFile(path)) {
-        await Dialog.alert(I18n.t('files.cannotRenameDefault'));
-        return;
-      }
-      
-      renamingPath = path;
-      renamingType = type;
-      render();
-      
-      // Focus the input and select text
-      setTimeout(() => {
-        const input = listDiv.querySelector(`input[data-path="${path}"][data-type="${type}"]`);
-        if (input) {
-          input.focus();
-          input.select();
-        }
-      }, 10);
-    }
+    // ============================================================================
+    // SINGLE ENTRY POINTS FOR FILE/FOLDER OPERATIONS
+    // All delete and rename operations MUST go through these functions
+    // ============================================================================
     
-    async function finishRename(path, type, newName) {
-      if (!newName || newName.trim() === '') {
-        renamingPath = null;
-        renamingType = null;
-        render();
-        return;
-      }
-      
-      try {
-        FS.rename(path, newName.trim(), type);
-        renamingPath = null;
-        renamingType = null;
-        selectedPath = path; // Keep selection after rename
-        selectedType = type; // Keep type
-        render();
-      } catch (e) {
-        // Check if error is about duplicate name
-        if (e.message && e.message.includes('already exists in this location')) {
-          // Use the type we already have instead of parsing the error message
-          const itemType = type === 'file' ? I18n.t('files.fileName') : I18n.t('files.folderName');
-          await Dialog.alert(I18n.t('files.nameAlreadyExists', { type: itemType, name: newName.trim() }));
-        } else {
-          await Dialog.alert(e.message || I18n.t('files.renameError'));
-        }
-        renamingPath = null;
-        renamingType = null;
-        render();
-      }
-    }
-    
-    // Shared delete function with confirmation
+    /**
+     * Single entry point for deleting a file or folder
+     * Called from: delete button click, context menu, or any other source
+     * @param {string} path - Full path to the item
+     * @param {string} type - 'file' or 'dir'
+     */
     async function deleteItem(path, type) {
-      // Check if it's a system file/folder
+      // Check if it's a system file/folder - show alert and return immediately
       if (isSystemFile(path)) {
         await Dialog.alert(I18n.t('files.cannotDeleteDefault'));
         return;
@@ -325,7 +284,79 @@ Apps.register({
         }
         setTimeout(() => { render(); }, 0); // Defer render
       } catch (e) {
+        // Handle errors
         await Dialog.alert(e.message || I18n.t('files.errorCreatingFile'));
+      }
+    }
+    
+    /**
+     * Single entry point for starting rename operation
+     * Called from: F2 key, context menu, slow-click, or any other source
+     * @param {string} path - Full path to the item
+     * @param {string} type - 'file' or 'dir'
+     */
+    async function startRename(path, type) {
+      // Check if it's a system file/folder - show alert and return immediately
+      if (isSystemFile(path)) {
+        await Dialog.alert(I18n.t('files.cannotRenameDefault'));
+        return;
+      }
+      
+      renamingPath = path;
+      renamingType = type;
+      render();
+      
+      // Focus the input and select text
+      setTimeout(() => {
+        const input = listDiv.querySelector(`input[data-path="${path}"][data-type="${type}"]`);
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      }, 10);
+    }
+    
+    /**
+     * Completes the rename operation (called when user finishes editing)
+     * @param {string} path - Full path to the item being renamed
+     * @param {string} type - 'file' or 'dir'
+     * @param {string} newName - New name for the item
+     */
+    async function finishRename(path, type, newName) {
+      if (!newName || newName.trim() === '') {
+        renamingPath = null;
+        renamingType = null;
+        render();
+        return;
+      }
+      
+      // Safety check: if somehow we got here with a system file, prevent it
+      if (isSystemFile(path)) {
+        await Dialog.alert(I18n.t('files.cannotRenameDefault'));
+        renamingPath = null;
+        renamingType = null;
+        render();
+        return;
+      }
+      
+      try {
+        FS.rename(path, newName.trim(), type);
+        renamingPath = null;
+        renamingType = null;
+        selectedPath = path; // Keep selection after rename
+        selectedType = type; // Keep type
+        render();
+      } catch (e) {
+        // Handle errors (duplicate name, etc.)
+        if (e.message && e.message.includes('already exists in this location')) {
+          const itemType = type === 'file' ? I18n.t('files.fileName') : I18n.t('files.folderName');
+          await Dialog.alert(I18n.t('files.nameAlreadyExists', { type: itemType, name: newName.trim() }));
+        } else {
+          await Dialog.alert(e.message || I18n.t('files.renameError'));
+        }
+        renamingPath = null;
+        renamingType = null;
+        render();
       }
     }
     
@@ -462,11 +493,10 @@ Apps.register({
       const p = clickedItem.dataset.path;
       const t = clickedItem.dataset.type;
       
-      // Handle delete button
+      // Handle delete button - use centralized deleteItem function
       if (clickTarget.classList.contains('del') || clickTarget.classList.contains('grid-del')) {
-        // Get type from the delete button or parent item
         const deleteType = clickTarget.dataset.type || t;
-        deleteItem(p, deleteType);
+        deleteItem(p, deleteType); // Single entry point for all deletions
         return;
       }
       
@@ -507,7 +537,7 @@ Apps.register({
             // 2. Not already renaming
             // 3. Click tracking hasn't been reset (double-click resets it)
             if (selectedPath === p && selectedType === t && !renamingPath && lastClickPath === p && lastClickType === t) {
-              startRename(p, t);
+              startRename(p, t); // Single entry point for all renames
               lastClickTime = 0;
               lastClickPath = null;
               lastClickType = null;
@@ -550,7 +580,7 @@ Apps.register({
       // Only handle F2 if Files window is visible, focused, and has a selected item
       if (e.key === 'F2' && selectedPath && selectedType && !renamingPath && win && win.offsetParent !== null && win.classList.contains('focus')) {
         e.preventDefault();
-        startRename(selectedPath, selectedType);
+        startRename(selectedPath, selectedType); // Single entry point for all renames
       }
     }
     document.addEventListener('keydown', handleF2Key);
@@ -643,26 +673,32 @@ Apps.register({
       showContextMenu(e.clientX, e.clientY, path, type);
     });
     
-    // Handle context menu actions
-    document.addEventListener('click', (e)=>{
+    // Handle context menu actions - store handler so we can remove it
+    function handleContextMenuClick(e) {
       const menuItem = e.target.closest('.context-menu-item[data-action]');
       if (!menuItem) return;
       
-      const action = menuItem.dataset.action;
       const menu = menuItem.closest('.context-menu');
-      const path = menu?.dataset.path;
-      const type = menu?.dataset.type;
+      // Only handle clicks on our context menu (the one we created)
+      if (!menu || menu !== contextMenu) return;
       
-      if (menu) menu.classList.remove('show');
+      const action = menuItem.dataset.action;
+      const path = menu.dataset.path;
+      const type = menu.dataset.type;
       
+      menu.classList.remove('show');
+      
+      // Route all actions through centralized functions
       if (action === 'rename' && path && type) {
-        startRename(path, type);
+        startRename(path, type); // Single entry point for all renames
       } else if (action === 'download' && path && type) {
         FileMenuUtility.downloadFile(path, type);
       } else if (action === 'delete' && path && type) {
-        deleteItem(path, type);
+        deleteItem(path, type); // Single entry point for all deletions
       }
-    });
+    }
+    
+    document.addEventListener('click', handleContextMenuClick);
 
     win.querySelector('#btn-up').addEventListener('click', ()=>{
       if (cwd === FS.root) return;
@@ -751,6 +787,7 @@ Apps.register({
       if (closedId === id) {
         unsubscribeLocale();
         unsubscribeNavigate();
+        document.removeEventListener('click', handleContextMenuClick);
       }
     });
 

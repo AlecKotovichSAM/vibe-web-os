@@ -145,6 +145,13 @@ window.FS = (() => {
     const p = find(parentPath);
     if (!p || p.type !== 'dir') throw new Error('Parent is not a directory');
     
+    const filePath = `${parentPath}/${name}`;
+    
+    // Check if this is a system file that cannot be overwritten
+    if (isSystemPath(filePath)) {
+      throw new Error('Cannot overwrite system file: ' + filePath);
+    }
+    
     // Check if file already exists (folders can have the same name)
     const existing = p.children.find(c => c.name === name && c.type === 'file');
     if (existing) {
@@ -155,7 +162,7 @@ window.FS = (() => {
       return existing;
     }
     
-    const node = { type:'file', name, path: `${parentPath}/${name}`, mtime: now(), content };
+    const node = { type:'file', name, path: filePath, mtime: now(), content };
     p.children.push(node); 
     p.mtime = now(); 
     save(tree); 
@@ -166,6 +173,13 @@ window.FS = (() => {
   function append(parentPath, name, content='') {
     const p = find(parentPath);
     if (!p || p.type !== 'dir') throw new Error('Parent is not a directory');
+    
+    const filePath = `${parentPath}/${name}`;
+    
+    // Check if this is a system file that cannot be modified
+    if (isSystemPath(filePath)) {
+      throw new Error('Cannot modify system file: ' + filePath);
+    }
     
     // Find existing file
     const existing = p.children.find(c => c.name === name && c.type === 'file');
@@ -179,7 +193,7 @@ window.FS = (() => {
     }
     
     // File doesn't exist, create new one
-    const node = { type:'file', name, path: `${parentPath}/${name}`, mtime: now(), content };
+    const node = { type:'file', name, path: filePath, mtime: now(), content };
     p.children.push(node); 
     p.mtime = now(); 
     save(tree); 

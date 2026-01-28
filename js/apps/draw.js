@@ -494,8 +494,6 @@ Apps.register({
     // Handle menu actions
     const unsubscribeMenu = Bus.on('window:menu-action', async ({ windowId, action }) => {
       if (windowId === id) {
-        console.log('Menu action:', action);
-        
         switch (action) {
           case 'draw-new':
             const confirmedNew = await Dialog.confirm(I18n.t('draw.confirmNew'));
@@ -575,8 +573,6 @@ Apps.register({
     // Handle toolbar actions
     const unsubscribeToolbar = Bus.on('window:toolbar-action', async ({ windowId, action }) => {
       if (windowId === id) {
-        console.log('Toolbar action:', action);
-        
         switch (action) {
           case 'draw-new':
             const confirmedNewToolbar = await Dialog.confirm(I18n.t('draw.confirmNew'));

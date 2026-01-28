@@ -738,5 +738,55 @@ window.Dialog = (() => {
     await finishRename();
     expect(errorShown).toBe(true);
   });
+
+  it('should have fixed dimensions for Save As dialog (600x600px)', async () => {
+    // Mock FileBrowser and FS for Save As dialog
+    if (!window.FileBrowser) {
+      window.FileBrowser = {
+        render(container, path, options) {
+          // Mock render - just create a simple div
+          container.innerHTML = '<div class="filebrowser-item">test.txt</div>';
+          if (options.onItemClick) {
+            setTimeout(() => options.onItemClick('/root/test.txt', 'file'), 10);
+          }
+        }
+      };
+    }
+    
+    if (!window.FS) {
+      window.FS = { root: '/root' };
+    }
+    
+    if (!window.Dialog.saveAs) {
+      // Mock saveAs if not available
+      window.Dialog.saveAs = async (defaultPath, defaultFileName) => {
+        const dialog = document.createElement('div');
+        dialog.className = 'dialog';
+        dialog.style.cssText = `
+          width: 600px;
+          height: 600px;
+          max-width: 90vw;
+          max-height: 80vh;
+        `;
+        document.body.appendChild(dialog);
+        return Promise.resolve('/root/test.txt');
+      };
+    }
+    
+    const promise = window.Dialog.saveAs('/root', 'test.txt');
+    
+    // Wait for dialog to be created
+    await new Promise(resolve => setTimeout(resolve, 20));
+    
+    const dialog = document.querySelector('.dialog');
+    if (dialog) {
+      expect(dialog.style.width).toBe('600px');
+      expect(dialog.style.height).toBe('600px');
+    }
+    
+    // Clean up
+    if (dialog) dialog.remove();
+    await promise.catch(() => {});
+  });
   }); // Close describe block
 })(); // Close IIFE

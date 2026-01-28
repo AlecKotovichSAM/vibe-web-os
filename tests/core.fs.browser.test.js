@@ -133,6 +133,15 @@
           write(parentPath, name, content = '') {
             const p = find(parentPath);
             if (!p || p.type !== 'dir') throw new Error('Parent is not a directory');
+            
+            const filePath = `${parentPath}/${name}`;
+            
+            // Check if this is a system file that cannot be overwritten
+            const SYSTEM_PATHS = ['/root', '/root/Desktop', '/root/Documents', '/root/Pictures', '/root/Pictures/Wallpapers', '/root/hello.txt'];
+            if (SYSTEM_PATHS.includes(filePath)) {
+              throw new Error('Cannot overwrite system file: ' + filePath);
+            }
+            
             const existing = p.children.find(c => c.name === name && c.type === 'file');
             if (existing) {
               existing.content = content;
@@ -140,7 +149,7 @@
               save(tree);
               return existing;
             }
-            const node = { type: 'file', name, path: `${parentPath}/${name}`, mtime: now(), content };
+            const node = { type: 'file', name, path: filePath, mtime: now(), content };
             p.children.push(node);
             p.mtime = now();
             save(tree);
@@ -244,6 +253,32 @@
             rewalk(n);
             save(tree);
             return n;
+          },
+          append(parentPath, name, content = '') {
+            const p = find(parentPath);
+            if (!p || p.type !== 'dir') throw new Error('Parent is not a directory');
+            
+            const filePath = `${parentPath}/${name}`;
+            
+            // Check if this is a system file that cannot be modified
+            const SYSTEM_PATHS = ['/root', '/root/Desktop', '/root/Documents', '/root/Pictures', '/root/Pictures/Wallpapers', '/root/hello.txt'];
+            if (SYSTEM_PATHS.includes(filePath)) {
+              throw new Error('Cannot modify system file: ' + filePath);
+            }
+            
+            const existing = p.children.find(c => c.name === name && c.type === 'file');
+            if (existing) {
+              existing.content = existing.content + content;
+              existing.mtime = now();
+              save(tree);
+              return { node: existing, wasCreated: false };
+            }
+            
+            const node = { type: 'file', name, path: filePath, mtime: now(), content };
+            p.children.push(node);
+            p.mtime = now();
+            save(tree);
+            return { node, wasCreated: true };
           },
           reset() {
             tree = JSON.parse(JSON.stringify(defaultFS));
@@ -654,7 +689,8 @@
             SYSTEM_PATHS: ['/root', '/root/Desktop', '/root/Documents', '/root/Pictures', '/root/Pictures/Wallpapers', '/root/hello.txt'],
             ls(path) { const d = find(path); if (!d || d.type !== 'dir') throw new Error('Not a directory: ' + path); return d.children; },
             mkdir(parentPath, name) { const p = find(parentPath); if (!p || p.type !== 'dir') throw new Error('Parent is not a directory'); const existing = p.children.find(c => c.name === name && c.type === 'dir'); if (existing) throw new Error(`A folder named "${name}" already exists in this location`); const node = { type: 'dir', name, path: `${parentPath}/${name}`, mtime: now(), children: [] }; p.children.push(node); p.mtime = now(); save(tree); return node; },
-            write(parentPath, name, content = '') { const p = find(parentPath); if (!p || p.type !== 'dir') throw new Error('Parent is not a directory'); const existing = p.children.find(c => c.name === name && c.type === 'file'); if (existing) { existing.content = content; existing.mtime = now(); save(tree); return existing; } const node = { type: 'file', name, path: `${parentPath}/${name}`, mtime: now(), content }; p.children.push(node); p.mtime = now(); save(tree); return node; },
+            write(parentPath, name, content = '') { const p = find(parentPath); if (!p || p.type !== 'dir') throw new Error('Parent is not a directory'); const filePath = `${parentPath}/${name}`; const SYSTEM_PATHS = ['/root', '/root/Desktop', '/root/Documents', '/root/Pictures', '/root/Pictures/Wallpapers', '/root/hello.txt']; if (SYSTEM_PATHS.includes(filePath)) { throw new Error('Cannot overwrite system file: ' + filePath); } const existing = p.children.find(c => c.name === name && c.type === 'file'); if (existing) { existing.content = content; existing.mtime = now(); save(tree); return existing; } const node = { type: 'file', name, path: filePath, mtime: now(), content }; p.children.push(node); p.mtime = now(); save(tree); return node; },
+            append(parentPath, name, content = '') { const p = find(parentPath); if (!p || p.type !== 'dir') throw new Error('Parent is not a directory'); const filePath = `${parentPath}/${name}`; const SYSTEM_PATHS = ['/root', '/root/Desktop', '/root/Documents', '/root/Pictures', '/root/Pictures/Wallpapers', '/root/hello.txt']; if (SYSTEM_PATHS.includes(filePath)) { throw new Error('Cannot modify system file: ' + filePath); } const existing = p.children.find(c => c.name === name && c.type === 'file'); if (existing) { existing.content = existing.content + content; existing.mtime = now(); save(tree); return { node: existing, wasCreated: false }; } const node = { type: 'file', name, path: filePath, mtime: now(), content }; p.children.push(node); p.mtime = now(); save(tree); return { node, wasCreated: true }; },
             read(path, type = null) { let f; if (type !== null) { const parentPath = path.split('/').slice(0,-1).join('/') || '/root'; const fileName = path.split('/').pop(); const parent = find(parentPath); if (!parent || parent.type !== 'dir') throw new Error('Parent directory not found'); f = parent.children.find(c => c.path === path && c.type === type); if (!f) { f = parent.children.find(c => c.name === fileName && c.type === type); if (f) { f.path = path; save(tree); } } if (!f) throw new Error('File not found: ' + path); } else { f = find(path); if (!f) throw new Error('File not found: ' + path); } if (f.type !== 'file') throw new Error('Not a file: ' + path); return f.content; },
             rm(path, type = null) { const SYSTEM_PATHS = ['/root', '/root/Desktop', '/root/Documents', '/root/Pictures', '/root/Pictures/Wallpapers', '/root/hello.txt']; if (SYSTEM_PATHS.includes(path)) { throw new Error('Cannot delete system folder or file: ' + path); } function deleteRecursive(node, parent, targetPath, targetType) { if (node.path === targetPath && parent) { if (targetType !== null && node.type !== targetType) { return false; } parent.children = parent.children.filter(c => c !== node); parent.mtime = now(); save(tree); return true; } if (node.type === 'dir') { for (const c of node.children) { if (deleteRecursive(c, node, targetPath, targetType)) { return true; } } } return false; } return deleteRecursive(tree, null, path, type); },
             rename(path, newName, type = null) { const SYSTEM_PATHS = ['/root', '/root/Desktop', '/root/Documents', '/root/Pictures', '/root/Pictures/Wallpapers', '/root/hello.txt']; if (SYSTEM_PATHS.includes(path)) { throw new Error('Cannot rename system folder or file: ' + path); } const parentPath = path.split('/').slice(0, -1).join('/') || '/root'; const parent = find(parentPath); if (!parent || parent.type !== 'dir') throw new Error('Parent directory not found or not a directory'); let n; if (type !== null) { n = parent.children.find(c => c.path === path && c.type === type); if (!n) throw new Error('Path not found or type mismatch'); } else { n = parent.children.find(c => c.path === path); if (!n) throw new Error('Path not found'); } if (newName !== n.name) { const duplicateExists = parent.children.some(c => c.name === newName && c.type === n.type && c.path !== path); if (duplicateExists) { const itemType = n.type === 'dir' ? 'folder' : 'file'; throw new Error(`A ${itemType} named "${newName}" already exists in this location.`); } } n.name = newName; function rewalk(node) { const currentParentPath = node.path.split('/').slice(0, -1).join('/') || '/root'; node.path = currentParentPath + '/' + node.name; if (node.type === 'dir') node.children.forEach(rewalk); } rewalk(n); save(tree); return n; },
@@ -836,6 +872,49 @@
       // Verify file still exists
       const content = window.FS.read('/root/hello.txt');
       expect(content).toBe('Welcome to Web OS!');
+    });
+
+    it('should prevent overwriting hello.txt system file with write()', () => {
+      let threwError = false;
+      try {
+        window.FS.write('/root', 'hello.txt', 'Modified content');
+      } catch (error) {
+        threwError = true;
+        expect(error.message).toContain('Cannot overwrite system file');
+        expect(error.message).toContain('/root/hello.txt');
+      }
+      expect(threwError).toBe(true);
+      
+      // Verify file content is unchanged
+      const content = window.FS.read('/root/hello.txt');
+      expect(content).toBe('Welcome to Web OS!');
+    });
+
+    it('should prevent modifying hello.txt system file with append()', () => {
+      let threwError = false;
+      try {
+        window.FS.append('/root', 'hello.txt', 'Additional content');
+      } catch (error) {
+        threwError = true;
+        expect(error.message).toContain('Cannot modify system file');
+        expect(error.message).toContain('/root/hello.txt');
+      }
+      expect(threwError).toBe(true);
+      
+      // Verify file content is unchanged
+      const content = window.FS.read('/root/hello.txt');
+      expect(content).toBe('Welcome to Web OS!');
+    });
+
+    it('should allow writing to non-system files', () => {
+      window.FS.write('/root', 'user-file.txt', 'User content');
+      const content = window.FS.read('/root/user-file.txt');
+      expect(content).toBe('User content');
+      
+      // Should allow overwriting non-system files
+      window.FS.write('/root', 'user-file.txt', 'Updated user content');
+      const updatedContent = window.FS.read('/root/user-file.txt');
+      expect(updatedContent).toBe('Updated user content');
     });
   }); // Close System Path Protection describe
   }); // Close FS (File System) describe

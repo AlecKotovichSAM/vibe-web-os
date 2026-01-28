@@ -382,8 +382,9 @@ window.Dialog = (() => {
         background: var(--panel);
         border-radius: 8px;
         padding: 0;
-        min-width: 500px;
-        max-width: 700px;
+        width: 600px;
+        height: 600px;
+        max-width: 90vw;
         max-height: 80vh;
         box-shadow: var(--shadow);
         z-index: ${zIndex};
@@ -427,6 +428,7 @@ window.Dialog = (() => {
         gap: 12px;
         flex: 1;
         overflow: hidden;
+        min-height: 0;
       `;
 
       // Path navigation
@@ -435,6 +437,7 @@ window.Dialog = (() => {
         display: flex;
         gap: 8px;
         align-items: center;
+        flex-shrink: 0;
       `;
 
       const upBtn = document.createElement('button');
@@ -481,40 +484,81 @@ window.Dialog = (() => {
       browserContainer.style.cssText = `
         flex: 1;
         overflow-y: auto;
+        overflow-x: hidden;
         border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 6px;
         background: var(--bg);
-        min-height: 200px;
-        max-height: 400px;
+        min-height: 0;
+        min-width: 0;
       `;
 
+      // Track pending re-render timeout to cancel it on double-click
+      let pendingRenderTimeout = null;
+
       function renderBrowser() {
+        // Cancel any pending re-render
+        if (pendingRenderTimeout) {
+          clearTimeout(pendingRenderTimeout);
+          pendingRenderTimeout = null;
+        }
+        
         pathInput.value = currentPath;
         FileBrowser.render(browserContainer, currentPath, {
           mode: 'list',
           selectedPath: selectedPath,
           filterFiles: false, // Show both files and folders
           onItemClick: (path, type) => {
+            // Update selection state
             selectedPath = path;
             selectedType = type;
+            
+            // Update visual selection without full re-render to avoid breaking double-click
+            browserContainer.querySelectorAll('.filebrowser-item').forEach(item => {
+              const itemPath = item.dataset.path;
+              if (itemPath === path) {
+                item.classList.add('file-selected');
+                item.style.background = 'var(--accent)';
+              } else {
+                item.classList.remove('file-selected');
+                item.style.background = '';
+              }
+            });
+            
             if (type === 'file') {
               fileName = path.split('/').pop();
               filenameInput.value = fileName;
             }
-            renderBrowser();
           },
           onItemDblClick: (path, type) => {
+            // Cancel any pending single-click re-render
+            if (pendingRenderTimeout) {
+              clearTimeout(pendingRenderTimeout);
+              pendingRenderTimeout = null;
+            }
+            
             if (type === 'dir') {
+              // Double-click folder = navigate into it
               currentPath = path;
               selectedPath = null;
               selectedType = null;
               renderBrowser();
             } else {
+              // Double-click file = select it and update filename
               selectedPath = path;
               selectedType = type;
               fileName = path.split('/').pop();
               filenameInput.value = fileName;
-              renderBrowser();
+              // Update visual selection
+              browserContainer.querySelectorAll('.filebrowser-item').forEach(item => {
+                const itemPath = item.dataset.path;
+                if (itemPath === path) {
+                  item.classList.add('file-selected');
+                  item.style.background = 'var(--accent)';
+                } else {
+                  item.classList.remove('file-selected');
+                  item.style.background = '';
+                }
+              });
             }
           }
         });
@@ -635,8 +679,9 @@ window.Dialog = (() => {
         background: var(--panel);
         border-radius: 8px;
         padding: 0;
-        min-width: 500px;
-        max-width: 700px;
+        width: 900px;
+        height: 600px;
+        max-width: 90vw;
         max-height: 80vh;
         box-shadow: var(--shadow);
         z-index: ${zIndex};
@@ -680,6 +725,7 @@ window.Dialog = (() => {
         gap: 12px;
         flex: 1;
         overflow: hidden;
+        min-height: 0;
       `;
 
       // Path navigation
@@ -688,6 +734,7 @@ window.Dialog = (() => {
         display: flex;
         gap: 8px;
         align-items: center;
+        flex-shrink: 0;
       `;
 
       const upBtn = document.createElement('button');
@@ -708,6 +755,7 @@ window.Dialog = (() => {
         selectedPath = null;
         selectedType = null;
         renderBrowser();
+        updatePreview();
       });
 
       const pathInput = document.createElement('input');
@@ -728,46 +776,160 @@ window.Dialog = (() => {
       pathBar.appendChild(pathInput);
       content.appendChild(pathBar);
 
-      // File browser
+      // Browser and preview container (split view)
+      const browserPreviewContainer = document.createElement('div');
+      browserPreviewContainer.style.cssText = `
+        display: flex;
+        gap: 12px;
+        flex: 1;
+        overflow: hidden;
+        min-height: 0;
+        height: 0;
+      `;
+
+      // File browser (left side)
       const browserContainer = document.createElement('div');
       browserContainer.id = 'dialog-browser-' + dialogId;
       browserContainer.style.cssText = `
         flex: 1;
         overflow-y: auto;
+        overflow-x: hidden;
         border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 6px;
         background: var(--bg);
-        min-height: 200px;
-        max-height: 400px;
+        min-width: 0;
+        min-height: 0;
       `;
 
+      // Preview panel (right side)
+      const previewContainer = document.createElement('div');
+      previewContainer.id = 'dialog-preview-' + dialogId;
+      previewContainer.style.cssText = `
+        width: 300px;
+        flex-shrink: 0;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 6px;
+        background: var(--panel-2);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      `;
+
+      // Preview title
+      const previewTitle = document.createElement('div');
+      previewTitle.style.cssText = `
+        padding: 8px 12px;
+        background: var(--panel);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: var(--text);
+      `;
+      previewTitle.textContent = I18n.t('filesave.preview') || 'Preview';
+      previewContainer.appendChild(previewTitle);
+
+      // Preview content area
+      const previewContent = document.createElement('div');
+      previewContent.id = 'dialog-preview-content-' + dialogId;
+      previewContent.style.cssText = `
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        min-height: 0;
+      `;
+      previewContainer.appendChild(previewContent);
+
+      browserPreviewContainer.appendChild(browserContainer);
+      browserPreviewContainer.appendChild(previewContainer);
+      content.appendChild(browserPreviewContainer);
+
+      // Common function to handle opening a file
+      // Used by both double-click and Open button
+      function handleOpenFile(pathToOpen = null, typeToOpen = null) {
+        const path = pathToOpen || selectedPath;
+        const type = typeToOpen || selectedType;
+        
+        if (!path || type !== 'file') {
+          Dialog.alert(I18n.t('filesave.selectFile') || 'Please select a file');
+          return;
+        }
+        
+        closeDialog(dialogId);
+        resolve(path);
+      }
+
+      // Track pending re-render timeout to cancel it on double-click
+      let pendingRenderTimeout = null;
+
+      // Update preview when file is selected
+      function updatePreview() {
+        if (selectedPath && selectedType === 'file') {
+          const fileName = selectedPath.split('/').pop();
+          FilePreview.render(previewContent, selectedPath, fileName, {
+            maxHeight: 400,
+            maxWidth: '100%',
+            onError: (errorMsg) => {
+              // Error already displayed in preview
+            }
+          });
+        } else {
+          FilePreview.clear(previewContent);
+        }
+      }
+
       function renderBrowser() {
+        // Cancel any pending re-render
+        if (pendingRenderTimeout) {
+          clearTimeout(pendingRenderTimeout);
+          pendingRenderTimeout = null;
+        }
+        
         pathInput.value = currentPath;
         FileBrowser.render(browserContainer, currentPath, {
           mode: 'list',
           selectedPath: selectedPath,
-          filterFiles: true, // Only show files for open dialog
+          filterFiles: false, // Show both files and folders for navigation
           onItemClick: (path, type) => {
+            // Update selection state
             selectedPath = path;
             selectedType = type;
-            renderBrowser();
+            
+            // Update visual selection without full re-render to avoid breaking double-click
+            browserContainer.querySelectorAll('.filebrowser-item').forEach(item => {
+              const itemPath = item.dataset.path;
+              if (itemPath === path) {
+                item.classList.add('file-selected');
+                item.style.background = 'var(--accent)';
+              } else {
+                item.classList.remove('file-selected');
+                item.style.background = '';
+              }
+            });
+            
+            // Update preview when file is selected
+            updatePreview();
           },
           onItemDblClick: (path, type) => {
+            // Cancel any pending single-click re-render
+            if (pendingRenderTimeout) {
+              clearTimeout(pendingRenderTimeout);
+              pendingRenderTimeout = null;
+            }
+            
             if (type === 'dir') {
+              // Double-click folder = navigate into it
               currentPath = path;
               selectedPath = null;
               selectedType = null;
               renderBrowser();
+              updatePreview();
             } else {
-              // Double-click file = open
-              closeDialog(dialogId);
-              resolve(path);
+              // Double-click file = open it (use common function)
+              handleOpenFile(path, type);
             }
           }
         });
       }
-
-      content.appendChild(browserContainer);
       dialog.appendChild(content);
 
       // Button area
@@ -787,13 +949,9 @@ window.Dialog = (() => {
         resolve(null);
       });
       
+      // Open button uses the same common function as double-click
       const openBtn = createButton(I18n.t('window.menu.open') || 'Open', true, () => {
-        if (!selectedPath || selectedType !== 'file') {
-          Dialog.alert(I18n.t('filesave.selectFile') || 'Please select a file');
-          return;
-        }
-        closeDialog(dialogId);
-        resolve(selectedPath);
+        handleOpenFile();
       });
       
       buttons.appendChild(cancelBtn);
@@ -804,6 +962,7 @@ window.Dialog = (() => {
       
       // Initial render
       renderBrowser();
+      updatePreview(); // Show initial empty preview state
       
       // Focus open button
       setTimeout(() => {

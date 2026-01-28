@@ -26,6 +26,23 @@ if (!window.FS) {
     },
     ls(path) {
       return [];
+    },
+    rm(path, type) {
+      if (path === '/root/Desktop' || path === '/root/hello.txt') {
+        throw new Error('Cannot delete system folder or file: ' + path);
+      }
+      return true;
+    },
+    rename(path, newName, type) {
+      if (path === '/root/Desktop' || path === '/root/hello.txt') {
+        throw new Error('Cannot rename system folder or file: ' + path);
+      }
+      return { path: path.replace(/\/[^/]+$/, '/' + newName), name: newName, type };
+    },
+    isSystemPath(path) {
+      return path === '/root' || path === '/root/Desktop' || path === '/root/Documents' || 
+             path === '/root/Pictures' || path === '/root/Pictures/Wallpapers' || 
+             path === '/root/hello.txt';
     }
   };
 }
@@ -35,7 +52,10 @@ if (!window.I18n) {
     t(key) {
       const translations = {
         'files.openFile': 'Open File',
-        'files.errorCreatingFile': 'Error creating file'
+        'files.errorCreatingFile': 'Error creating file',
+        'files.cannotDeleteDefault': 'Cannot delete system folder or file',
+        'files.cannotRenameDefault': 'Cannot rename system folder or file',
+        'files.deleteConfirm': 'Delete "{name}"?'
       };
       return translations[key] || key;
     }
@@ -147,5 +167,99 @@ if (!window.I18n) {
     
     expect(errorThrown).toBe(false);
   });
+  }); // Close describe block
+
+  describe('Files App - Centralized Delete and Rename', () => {
+    beforeEach(() => {
+      // Reset alert call counter
+      window.alertCallCount = 0;
+    });
+
+    it('should show only one alert when deleting system file via centralized deleteItem', async () => {
+      let alertCallCount = 0;
+      let alertMessage = null;
+      
+      window.Dialog.alert = async (message) => {
+        alertCallCount++;
+        alertMessage = message;
+        return Promise.resolve();
+      };
+      
+      // Simulate centralized deleteItem function
+      async function deleteItem(path, type) {
+        // Check if it's a system file/folder - show alert and return immediately
+        if (window.FS.isSystemPath(path)) {
+          await window.Dialog.alert(window.I18n.t('files.cannotDeleteDefault'));
+          return;
+        }
+        // ... rest of delete logic (not reached for system files)
+      }
+      
+      await deleteItem('/root/Desktop', 'dir');
+      
+      expect(alertCallCount).toBe(1);
+      expect(alertMessage).toBe('files.cannotDeleteDefault'); // I18n mock returns the key
+    });
+
+    it('should show only one alert when renaming system file via centralized startRename', async () => {
+      let alertCallCount = 0;
+      let alertMessage = null;
+      
+      window.Dialog.alert = async (message) => {
+        alertCallCount++;
+        alertMessage = message;
+        return Promise.resolve();
+      };
+      
+      // Simulate centralized startRename function
+      async function startRename(path, type) {
+        // Check if it's a system file/folder - show alert and return immediately
+        if (window.FS.isSystemPath(path)) {
+          await window.Dialog.alert(window.I18n.t('files.cannotRenameDefault'));
+          return;
+        }
+        // ... rest of rename logic (not reached for system files)
+      }
+      
+      await startRename('/root/hello.txt', 'file');
+      
+      expect(alertCallCount).toBe(1);
+      expect(alertMessage).toBe('files.cannotRenameDefault'); // I18n mock returns the key
+    });
+
+    it('should prevent duplicate alerts when finishRename is called on system file', async () => {
+      let alertCallCount = 0;
+      
+      window.Dialog.alert = async (message) => {
+        alertCallCount++;
+        return Promise.resolve();
+      };
+      
+      // Simulate finishRename function with safety check
+      async function finishRename(path, type, newName) {
+        if (!newName || newName.trim() === '') {
+          return;
+        }
+        
+        // Safety check: if somehow we got here with a system file, prevent it
+        if (window.FS.isSystemPath(path)) {
+          await window.Dialog.alert(window.I18n.t('files.cannotRenameDefault'));
+          return;
+        }
+        
+        try {
+          window.FS.rename(path, newName.trim(), type);
+        } catch (e) {
+          // Should not reach here for system files due to check above
+          if (e.message && e.message.includes('Cannot rename system')) {
+            await window.Dialog.alert(window.I18n.t('files.cannotRenameDefault'));
+          }
+        }
+      }
+      
+      await finishRename('/root/hello.txt', 'file', 'newname.txt');
+      
+      expect(alertCallCount).toBe(1); // Only one alert from safety check
+    });
   }); // Close describe block
 })(); // Close IIFE

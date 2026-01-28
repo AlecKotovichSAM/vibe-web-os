@@ -242,7 +242,11 @@ window.I18n_EN = {
     openPrompt: 'Enter file path:',
     opened: 'Opened: {name}',
     selectFile: 'Please select a file',
-    fileName: 'File name:'
+    fileName: 'File name:',
+    preview: 'Preview',
+    loading: 'Loading...',
+    previewError: 'Unable to preview file',
+    selectFilePreview: 'Select a file to preview'
   },
 
   // Task Manager App

@@ -666,18 +666,16 @@ Apps.register({
                 destDir = destParts.join('/') || FS.root;
               }
               
-              // Check if destination path would be a system path
+              // Check if destination path would be a system path (prevent overwriting system files/folders)
               const finalDestPath = `${destDir}/${destName}`;
               if (FS.isSystemPath && FS.isSystemPath(finalDestPath)) {
                 addOutput(I18n.t('files.cannotRenameDefault') || 'Cannot move to system folder or file: ' + finalDestPath, 'var(--danger)');
                 return;
               }
               
-              // Check if destination directory is a system path (cannot move into system folders)
-              if (FS.isSystemPath && FS.isSystemPath(destDir)) {
-                addOutput(I18n.t('files.cannotRenameDefault') || 'Cannot move into system folder: ' + destDir, 'var(--danger)');
-                return;
-              }
+              // Note: We allow moving files INTO system folders (like Desktop, Documents)
+              // We only prevent moving/renaming the system folders themselves (checked above for srcPath)
+              // and overwriting system files (checked above for finalDestPath)
               
               // Check if source and destination are in same directory (simple rename)
               if (srcParentPath === destDir && src.name === destName) {

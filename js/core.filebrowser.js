@@ -167,27 +167,49 @@ window.FileBrowser = (() => {
 
       container.innerHTML = html;
 
+      // Update selection visually without re-rendering
+      container.querySelectorAll('.filebrowser-item').forEach(item => {
+        const itemPath = item.dataset.path;
+        if (itemPath === selectedPath) {
+          item.classList.add('file-selected');
+          item.style.background = 'var(--accent)';
+        } else {
+          item.classList.remove('file-selected');
+          item.style.background = '';
+        }
+      });
+
       // Attach event listeners
       container.querySelectorAll('.filebrowser-item').forEach(item => {
         const path = item.dataset.path;
         const type = item.dataset.type;
 
-        // Single click
+        // Helper to check if click is on delete button or its children
+        function isDeleteButton(target) {
+          return target.classList.contains('filebrowser-delete') || 
+                 target.closest('.filebrowser-delete');
+        }
+
+        // Single click - fires immediately
         item.addEventListener('click', (e) => {
           // Don't trigger if clicking delete button
-          if (e.target.classList.contains('filebrowser-delete')) {
+          if (isDeleteButton(e.target)) {
             return;
           }
           onItemClick(path, type);
         });
 
-        // Double click
+        // Handle native dblclick event
         item.addEventListener('dblclick', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (e.target.classList.contains('filebrowser-delete')) {
+          // Don't trigger if clicking delete button
+          if (isDeleteButton(e.target)) {
             return;
           }
+          
+          e.preventDefault();
+          e.stopPropagation();
+          
+          // Call the double-click handler
           onItemDblClick(path, type);
         });
 
