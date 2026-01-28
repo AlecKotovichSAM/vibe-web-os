@@ -556,8 +556,6 @@ window.Shell = (() => {
         if (systemApp) {
           // Add at the beginning (no need to check for duplicates since we filtered them out)
           uncategorizedApps.unshift(systemApp);
-        } else {
-          console.warn('System app not found:', systemAppId);
         }
       }
       
@@ -605,10 +603,26 @@ window.Shell = (() => {
         startApps.appendChild(btn);
       });
     }
+    
+    // Initial render
     renderStart();
+    
+    // Re-render Start menu when apps are registered (in case Files app registers late)
+    let renderStartTimeout = null;
+    if (window.Bus) {
+      Bus.on('app:registered', ({ id }) => {
+        // Only re-render for system apps that should appear in Start menu
+        if (id === 'files' || id === 'sysinfo') {
+          if (renderStartTimeout) clearTimeout(renderStartTimeout);
+          renderStartTimeout = setTimeout(() => {
+            renderStart();
+          }, 50);
+        }
+      });
+    }
 
     // Desktop icons - attach listeners directly to each button
-    // Use setTimeout to ensure DOM is fully ready
+    // Use setTimeout to ensure DOM is fully ready and all apps are registered
     setTimeout(() => {
       const desktopIcons = document.getElementById('desktop-icons');
       if (!desktopIcons) {
@@ -616,6 +630,7 @@ window.Shell = (() => {
         return;
       }
       
+      // Attach handlers to desktop icons
       const iconButtons = desktopIcons.querySelectorAll('button.icon');
       
       if (iconButtons.length === 0) {
@@ -630,7 +645,11 @@ window.Shell = (() => {
           e.stopPropagation();
           const appId = btn.dataset.app;
           if (appId) {
-            Apps.open(appId);
+            try {
+              Apps.open(appId);
+            } catch (err) {
+              console.error('Failed to open app:', appId, err);
+            }
           }
         }, true);
 
@@ -771,7 +790,7 @@ window.Shell = (() => {
           Bus.emit('app:opened', { id, title: `${I18n.t('apps.appInfo')} - ${app.name}`, icon: 'ℹ️' });
         }, true);
       });
-    }, 100); // Small delay to ensure DOM is ready
+    }, 200); // Small delay to ensure DOM is ready and all apps are registered
 
     // Function to open text editor (extracted for reuse)
     function openTextEditor() {
@@ -927,9 +946,9 @@ window.Shell = (() => {
         }
       });
       
-      saveAsBtn.addEventListener('click', ()=>{
+      saveAsBtn.addEventListener('click', async ()=>{
         const content = textarea.value;
-        const name = prompt(I18n.t('editor.saveAsPrompt'), filenameInput.value.trim());
+        const name = await Dialog.prompt(I18n.t('editor.saveAsPrompt'), filenameInput.value.trim());
         if (!name) return;
         
         const newPath = `/root/Desktop/${name}`;
@@ -1027,7 +1046,7 @@ window.Shell = (() => {
     });
     
     // Handle context menu item clicks
-    document.addEventListener('click', (e)=>{
+    document.addEventListener('click', async (e)=>{
       const menuItem = e.target.closest('.context-menu-item[data-action]');
       if (!menuItem) return;
       
@@ -1038,7 +1057,7 @@ window.Shell = (() => {
       if (action === 'new-text') {
         Apps.open('editor', { initialPath: '/root/Desktop' });
       } else if (action === 'new-folder') {
-        const name = prompt(I18n.t('files.folderName') + '?');
+        const name = await Dialog.prompt(I18n.t('files.folderName') + '?');
         if (!name) return;
         try {
           // Check if folder already exists in Desktop
@@ -1046,7 +1065,7 @@ window.Shell = (() => {
           const items = FS.ls(desktopPath);
           const folderExists = items.some(item => item.name === name && item.type === 'dir');
           if (folderExists) {
-            alert(I18n.t('files.folderAlreadyExists', { name }));
+            await Dialog.alert(I18n.t('files.folderAlreadyExists', { name }));
             return;
           }
           FS.mkdir(desktopPath, name);
@@ -1054,9 +1073,9 @@ window.Shell = (() => {
         } catch (e) {
           // Check if error is about duplicate folder name
           if (e.message && e.message.includes('already exists in this location')) {
-            alert(I18n.t('files.folderAlreadyExists', { name }));
+            await Dialog.alert(I18n.t('files.folderAlreadyExists', { name }));
           } else {
-            alert(e.message || I18n.t('files.errorCreatingFolder'));
+            await Dialog.alert(e.message || I18n.t('files.errorCreatingFolder'));
           }
         }
       }
@@ -1347,6 +1366,28 @@ window.Shell = (() => {
     if (!desktopItems) return;
     
     try {
+      // Ensure Desktop folder exists (should be protected now, but check anyway)
+      let desktopDir = FS.find('/root/Desktop');
+      if (!desktopDir || desktopDir.type !== 'dir') {
+        // Desktop folder is missing - this should not happen with protection,
+        // but if it does, reload the FS to trigger recovery
+        console.error('Desktop folder is missing! Attempting recovery...');
+        // Force reload by accessing FS (which will trigger load() recovery)
+        const rootItems = FS.ls('/root');
+        desktopDir = FS.find('/root/Desktop');
+        if (!desktopDir || desktopDir.type !== 'dir') {
+          // Last resort: create empty Desktop (data loss warning)
+          console.error('CRITICAL: Desktop folder missing and recovery failed!');
+          try {
+            FS.mkdir('/root', 'Desktop');
+          } catch (e) {
+            console.error('Failed to recreate Desktop folder:', e);
+            desktopItems.innerHTML = '<div style="padding:20px; color:var(--danger);">Error: Desktop folder is missing and could not be recovered.</div>';
+            return;
+          }
+        }
+      }
+      
       const items = FS.ls('/root/Desktop');
       desktopItems.innerHTML = '';
       
@@ -1411,9 +1452,34 @@ window.Shell = (() => {
             e.preventDefault();
             e.stopPropagation();
             if (item.type === 'dir') {
-              // Open Files app and navigate to folder
+              // Check if this is a folder app (custom folder or games folder)
+              const folderName = item.name;
+              const customFolders = window.Folders ? Folders.list() : [];
+              
+              // Check if there's a folder app matching this name
+              const folderApp = customFolders.find(f => f.id === folderName || f.name === folderName);
+              
+              if (folderApp) {
+                // Check if folder app is registered
+                const registeredFolderApp = Apps.get(folderApp.id);
+                if (registeredFolderApp) {
+                  // Open as folder app
+                  Folders.open(folderApp.id);
+                  return;
+                }
+              }
+              
+              // Check for Games folder
+              if (folderName === 'Games' || folderName === 'games-folder') {
+                const gamesFolderApp = Apps.get('games-folder');
+                if (gamesFolderApp) {
+                  Apps.open('games-folder');
+                  return;
+                }
+              }
+              
+              // Regular folder - open Files app and navigate to folder
               Apps.open('files');
-              // Emit event to navigate Files app to this folder
               setTimeout(() => {
                 Bus.emit('files:navigate', { path: item.path });
               }, 100);

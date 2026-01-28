@@ -1,8 +1,14 @@
 // Browser-based tests for Apps (App Registry) module
 
-const { describe, it, expect, beforeEach } = window;
+// Wrap in IIFE to create isolated scope and avoid const redeclaration errors
+(function() {
+  'use strict';
+  const describe = window.describe;
+  const it = window.it;
+  const expect = window.expect;
+  const beforeEach = window.beforeEach;
 
-describe('Apps (App Registry)', () => {
+  describe('Apps (App Registry)', () => {
   let originalI18n;
 
   // Mock Apps module if not already loaded (create once, outside beforeEach)
@@ -255,4 +261,5 @@ describe('Apps (App Registry)', () => {
     const app = window.Apps.get('multi-app');
     expect(app.singleton).toBe(false);
   });
-});
+  }); // Close describe block
+})(); // Close IIFE

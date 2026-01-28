@@ -1,5 +1,21 @@
 # Agent Guidelines for Vibe Web OS
 
+## Development Workflow
+
+**Before completing any task:**
+1. Make code changes
+2. **Run `npm test` to verify all tests pass**
+3. Check console output for test results
+4. Fix any failing tests before considering the task complete
+5. If tests pass, proceed with commit/push
+
+**Test Command:**
+```bash
+npm test
+```
+
+This will run all browser tests via Node.js and exit with code 1 if any tests fail, making it suitable for automated workflows.
+
 ## Build & Testing
 
 This is a **pure HTML/CSS/JS** project with no build system.
@@ -12,22 +28,37 @@ This is a **pure HTML/CSS/JS** project with no build system.
 ### Testing
 
 **Test Framework:**
-- Browser-based test runner: `tests/test-runner.html` (open in browser)
-- Node.js test runner: `node tests/run-browser-tests.js`
+- Browser-based test runner: `tests/test-runner.html` (open in browser for visual debugging)
+- Node.js test runner: `tests/run-browser-tests.js` (for automated testing)
 - Custom test framework with `describe`, `it`, `expect`, `beforeEach`
 - Tests located in `tests/*.browser.test.js`
 
 **Running Tests:**
 ```bash
-# Browser (recommended for development)
-# Open tests/test-runner.html in browser
+# Primary method: Run via npm (automated, checks console output)
+npm test
 
-# Node.js (for CI/automation)
+# Save test output to file for analysis
+npm run test:save
+# Results saved to test-results.txt - read this file to see detailed results
+
+# Alternative: Browser UI (for visual debugging)
+npm run test:browser-ui
+# Then open tests/test-runner.html in browser
+
+# Direct Node.js execution (same as npm test)
 node tests/run-browser-tests.js
 ```
 
+**Test Policy:**
+- **Always run `npm test` after making changes** to verify all tests pass
+- Tests must pass before committing code changes
+- The npm script will exit with code 1 if any tests fail, making it suitable for CI/CD
+- **To analyze test output:** Run `npm run test:save` to save results to `test-results.txt`, then read the file to see detailed results
+- The test runner outputs a summary with Total/Passed/Failed counts and lists all failed tests
+
 **Test Coverage:**
-- Current: 93 tests covering 7 core modules (64% core coverage)
+- Current: 157 tests covering core modules
 - See `tests/COVERAGE.md` for detailed coverage report
 
 **Manual Testing:**
@@ -289,7 +320,7 @@ BSOD.startRandomSchedule(60, 300); // 1-5 minutes
 When fixing a bug:
 1. **Write a test first** that reproduces the bug (it should fail)
 2. **Fix the bug** so the test passes
-3. **Ensure all existing tests still pass**
+3. **Run `npm test` to ensure all existing tests still pass**
 
 **Test Requirements:**
 - Test should be in the appropriate `tests/*.browser.test.js` file

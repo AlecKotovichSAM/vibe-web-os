@@ -492,13 +492,14 @@ Apps.register({
     pencilBtn.style.color = '#fff';
 
     // Handle menu actions
-    const unsubscribeMenu = Bus.on('window:menu-action', ({ windowId, action }) => {
+    const unsubscribeMenu = Bus.on('window:menu-action', async ({ windowId, action }) => {
       if (windowId === id) {
         console.log('Menu action:', action);
         
         switch (action) {
           case 'draw-new':
-            if (confirm(I18n.t('draw.confirmNew'))) {
+            const confirmedNew = await Dialog.confirm(I18n.t('draw.confirmNew'));
+            if (confirmedNew) {
               ctx.clearRect(0, 0, canvasWidth, canvasHeight);
               if (fileMenuUtility) {
                 fileMenuUtility.markUnsaved();
@@ -565,20 +566,21 @@ Apps.register({
             WindowManager.closeWindow(id);
             break;
           case 'draw-about':
-            alert(I18n.t('draw.about'));
+            await Dialog.alert(I18n.t('draw.about'));
             break;
         }
       }
     });
 
     // Handle toolbar actions
-    const unsubscribeToolbar = Bus.on('window:toolbar-action', ({ windowId, action }) => {
+    const unsubscribeToolbar = Bus.on('window:toolbar-action', async ({ windowId, action }) => {
       if (windowId === id) {
         console.log('Toolbar action:', action);
         
         switch (action) {
           case 'draw-new':
-            if (confirm(I18n.t('draw.confirmNew'))) {
+            const confirmedNewToolbar = await Dialog.confirm(I18n.t('draw.confirmNew'));
+            if (confirmedNewToolbar) {
               ctx.clearRect(0, 0, canvasWidth, canvasHeight);
               if (fileMenuUtility) {
                 fileMenuUtility.markUnsaved();

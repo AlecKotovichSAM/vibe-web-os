@@ -4,6 +4,25 @@ window.FS = (() => {
   const KEY = 'webos.fs.v1';
   const now = () => new Date().toISOString();
 
+  // System paths that cannot be deleted or renamed
+  const SYSTEM_PATHS = [
+    '/root',
+    '/root/Desktop',
+    '/root/Documents',
+    '/root/Pictures',
+    '/root/Pictures/Wallpapers',
+    '/root/hello.txt'
+  ];
+
+  /**
+   * Check if a path is a protected system path
+   * @param {string} path - Path to check
+   * @returns {boolean} - True if path is protected
+   */
+  function isSystemPath(path) {
+    return SYSTEM_PATHS.includes(path);
+  }
+
   const defaultFS = {
     type:'dir', name:'root', path:'/root', mtime: now(), children: [
       { type:'dir', name:'Desktop', path:'/root/Desktop', mtime: now(), children: [] },
@@ -77,7 +96,32 @@ window.FS = (() => {
   function ls(path) {
     const d = find(path);
     if (!d || d.type !== 'dir') throw new Error('Not a directory: ' + path);
-    return [...d.children];
+    // Fix any corrupted paths in children
+    const fixed = d.children.map(child => {
+      const expectedPath = `${path}/${child.name}`;
+      if (child.path !== expectedPath) {
+        // Path is corrupted, fix it
+        const oldPath = child.path;
+        child.path = expectedPath;
+        // If it's a directory, fix all children's paths recursively
+        if (child.type === 'dir' && child.children) {
+          function fixChildPaths(node, parentPath) {
+            node.path = `${parentPath}/${node.name}`;
+            if (node.type === 'dir' && node.children) {
+              node.children.forEach(c => fixChildPaths(c, node.path));
+            }
+          }
+          child.children.forEach(c => fixChildPaths(c, child.path));
+        }
+      }
+      return child;
+    });
+    // Save if any paths were fixed
+    const needsSave = d.children.some((child, i) => child.path !== fixed[i].path);
+    if (needsSave) {
+      save(tree);
+    }
+    return fixed;
   }
 
   function mkdir(parentPath, name) {
@@ -148,9 +192,21 @@ window.FS = (() => {
     if (type !== null) {
       // Type-aware read: find parent and search for file with matching path and type
       const parentPath = path.split('/').slice(0,-1).join('/') || '/root';
+      const fileName = path.split('/').pop();
       const parent = find(parentPath);
       if (!parent || parent.type !== 'dir') throw new Error('Parent directory not found');
       f = parent.children.find(c => c.path === path && c.type === type);
+      
+      // If not found by exact path, try finding by name and type (handles corrupted paths)
+      if (!f) {
+        f = parent.children.find(c => c.name === fileName && c.type === type);
+        if (f) {
+          // Fix the corrupted path
+          f.path = path;
+          save(tree);
+        }
+      }
+      
       if (!f) throw new Error('File not found: ' + path);
     } else {
       f = find(path);
@@ -161,6 +217,11 @@ window.FS = (() => {
   }
 
   function rm(path, type = null, node = tree, parent = null) {
+    // Check if path is protected system path
+    if (isSystemPath(path)) {
+      throw new Error('Cannot delete system folder or file: ' + path);
+    }
+    
     if (node.path === path && parent) {
       // If type is specified, only delete if types match
       if (type !== null && node.type !== type) {
@@ -184,6 +245,11 @@ window.FS = (() => {
   }
 
   function rename(path, newName, type = null) {
+    // Check if path is protected system path
+    if (isSystemPath(path)) {
+      throw new Error('Cannot rename system folder or file: ' + path);
+    }
+    
     // If type is specified, we need to find the exact item by path and type
     // Since find() might return the wrong item if both folder and file have same name,
     // we need to search more carefully
@@ -237,5 +303,18 @@ window.FS = (() => {
 
   function reset() { tree = defaultFS; save(tree); }
 
-  return { ls, mkdir, write, append, read, rm, rename, find, reset, root: '/root' };
+  return { 
+    ls, 
+    mkdir, 
+    write, 
+    append, 
+    read, 
+    rm, 
+    rename, 
+    find, 
+    reset, 
+    root: '/root',
+    isSystemPath,
+    SYSTEM_PATHS: [...SYSTEM_PATHS] // Expose as read-only copy
+  };
 })();

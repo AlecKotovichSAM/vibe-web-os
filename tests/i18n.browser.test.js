@@ -1,6 +1,12 @@
 // Browser-based tests for I18n (Internationalization) module
 
-const { describe, it, expect, beforeEach } = window;
+// Wrap in IIFE to create isolated scope and avoid const redeclaration errors
+(function() {
+  'use strict';
+  const describe = window.describe;
+  const it = window.it;
+  const expect = window.expect;
+  const beforeEach = window.beforeEach;
 
 // Helper function to create I18n mock - can be called by any test suite
 function createI18nMock() {
@@ -112,7 +118,7 @@ function createI18nMock() {
   };
 }
 
-describe('I18n (Internationalization)', () => {
+  describe('I18n (Internationalization)', () => {
   // Mock Bus if not available (I18n uses it)
   if (!window.Bus) {
     window.Bus = {
@@ -264,4 +270,5 @@ describe('I18n (Internationalization)', () => {
     expect(result1).toBe('number');
     expect(result2).toBe('object');
   });
-});
+  }); // Close describe block
+})(); // Close IIFE

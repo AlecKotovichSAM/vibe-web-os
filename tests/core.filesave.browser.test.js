@@ -1,6 +1,12 @@
 // Browser-based tests for FileMenuUtility module
 
-const { describe, it, expect, beforeEach } = window;
+// Wrap in IIFE to create isolated scope and avoid const redeclaration errors
+(function() {
+  'use strict';
+  const describe = window.describe;
+  const it = window.it;
+  const expect = window.expect;
+  const beforeEach = window.beforeEach;
 
 // Create FileMenuUtility mock if not available
 if (!window.FileMenuUtility) {
@@ -116,7 +122,7 @@ if (!window.FileMenuUtility) {
   })();
 }
 
-describe('FileMenuUtility', () => {
+  describe('FileMenuUtility', () => {
   beforeEach(() => {
     // Clear localStorage
     localStorage.clear();
@@ -535,4 +541,5 @@ describe('FileMenuUtility', () => {
     }
     expect(errorThrown).toBe(true);
   });
-});
+  }); // Close describe block
+})(); // Close IIFE

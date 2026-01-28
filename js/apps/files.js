@@ -36,18 +36,9 @@ Apps.register({
     let lastClickType = null; // Track last clicked type
     let isDoubleClick = false; // Track if double-click is happening
     
-    // System/default files and folders that cannot be renamed or deleted
-    const SYSTEM_PATHS = [
-      '/root',
-      '/root/Desktop',
-      '/root/Documents',
-      '/root/Pictures',
-      '/root/Pictures/Wallpapers',
-      '/root/hello.txt'
-    ];
-    
+    // Use shared system paths from FS module
     function isSystemFile(path) {
-      return SYSTEM_PATHS.includes(path);
+      return FS.isSystemPath ? FS.isSystemPath(path) : false;
     }
 
     // Load view modes from localStorage
@@ -259,9 +250,9 @@ Apps.register({
     }
 
     // Rename handler (F2 or context menu)
-    function startRename(path, type) {
+    async function startRename(path, type) {
       if (isSystemFile(path)) {
-        alert(I18n.t('files.cannotRenameDefault'));
+        await Dialog.alert(I18n.t('files.cannotRenameDefault'));
         return;
       }
       
@@ -279,7 +270,7 @@ Apps.register({
       }, 10);
     }
     
-    function finishRename(path, type, newName) {
+    async function finishRename(path, type, newName) {
       if (!newName || newName.trim() === '') {
         renamingPath = null;
         renamingType = null;
@@ -299,9 +290,9 @@ Apps.register({
         if (e.message && e.message.includes('already exists in this location')) {
           // Use the type we already have instead of parsing the error message
           const itemType = type === 'file' ? I18n.t('files.fileName') : I18n.t('files.folderName');
-          alert(I18n.t('files.nameAlreadyExists', { type: itemType, name: newName.trim() }));
+          await Dialog.alert(I18n.t('files.nameAlreadyExists', { type: itemType, name: newName.trim() }));
         } else {
-          alert(e.message || I18n.t('files.renameError'));
+          await Dialog.alert(e.message || I18n.t('files.renameError'));
         }
         renamingPath = null;
         renamingType = null;
@@ -310,16 +301,17 @@ Apps.register({
     }
     
     // Shared delete function with confirmation
-    function deleteItem(path, type) {
+    async function deleteItem(path, type) {
       // Check if it's a system file/folder
       if (isSystemFile(path)) {
-        alert(I18n.t('files.cannotDeleteDefault'));
+        await Dialog.alert(I18n.t('files.cannotDeleteDefault'));
         return;
       }
       
       // Ask for confirmation
       const name = path.split('/').pop();
-      if (!confirm(I18n.t('files.deleteConfirm', { name }))) {
+      const confirmed = await Dialog.confirm(I18n.t('files.deleteConfirm', { name }));
+      if (!confirmed) {
         return;
       }
       
@@ -333,7 +325,7 @@ Apps.register({
         }
         setTimeout(() => { render(); }, 0); // Defer render
       } catch (e) {
-        alert(e.message || I18n.t('files.errorCreatingFile'));
+        await Dialog.alert(e.message || I18n.t('files.errorCreatingFile'));
       }
     }
     
@@ -342,7 +334,7 @@ Apps.register({
     let clickTimer = null;
     
     // Helper function to open file/folder
-    function openFileOrFolder(path, type) {
+    async function openFileOrFolder(path, type) {
       if (type === 'dir') {
         cwd = path;
         render();
@@ -354,7 +346,7 @@ Apps.register({
           // Use type-aware read to ensure we get the file, not a folder with same name
           content = FS.read(path, type);
         } catch (e) {
-          alert(e.message || I18n.t('files.openFile') + ': ' + fileName);
+          await Dialog.alert(e.message || I18n.t('files.openFile') + ': ' + fileName);
           return;
         }
 
@@ -453,7 +445,7 @@ Apps.register({
       }
 
       // Open file/folder
-      openFileOrFolder(p, t);
+      openFileOrFolder(p, t).catch(() => {});
     });
     
     // Click handler for selection, slow-click rename, and delete
@@ -533,7 +525,7 @@ Apps.register({
           e.preventDefault();
           const path = e.target.dataset.path;
           const type = e.target.dataset.type;
-          finishRename(path, type, e.target.value);
+          finishRename(path, type, e.target.value).catch(() => {});
         } else if (e.key === 'Escape') {
           e.preventDefault();
           renamingPath = null;
@@ -548,7 +540,7 @@ Apps.register({
       if (e.target.classList.contains('grid-name-edit') || e.target.classList.contains('list-name-edit')) {
         const path = e.target.dataset.path;
         const type = e.target.dataset.type;
-        finishRename(path, type, e.target.value);
+        finishRename(path, type, e.target.value).catch(() => {});
       }
     }, true);
 
@@ -677,8 +669,8 @@ Apps.register({
       cwd = cwd.split('/').slice(0,-1).join('/') || FS.root; render();
     });
 
-    win.querySelector('#btn-mkdir').addEventListener('click', ()=>{
-      const name = prompt(I18n.t('files.folderName') + '?'); 
+    win.querySelector('#btn-mkdir').addEventListener('click', async ()=>{
+      const name = await Dialog.prompt(I18n.t('files.folderName') + '?'); 
       if (!name) return;
       try {
         FS.mkdir(cwd, name); 
@@ -686,28 +678,28 @@ Apps.register({
       } catch (e) {
         // Check if error is about duplicate folder name
         if (e.message && e.message.includes('already exists in this location')) {
-          alert(I18n.t('files.folderAlreadyExists', { name }));
+          await Dialog.alert(I18n.t('files.folderAlreadyExists', { name }));
         } else {
-          alert(e.message || I18n.t('files.errorCreatingFolder'));
+          await Dialog.alert(e.message || I18n.t('files.errorCreatingFolder'));
         }
       }
     });
 
-    win.querySelector('#btn-newfile').addEventListener('click', ()=>{
-      const name = prompt(I18n.t('files.fileName') + '?'); 
+    win.querySelector('#btn-newfile').addEventListener('click', async ()=>{
+      const name = await Dialog.prompt(I18n.t('files.fileName') + '?'); 
       if (!name) return;
       try {
         // Check if file already exists before creating
         const items = FS.ls(cwd);
         const fileExists = items.some(item => item.name === name && item.type === 'file');
         if (fileExists) {
-          alert(I18n.t('files.fileAlreadyExists', { name }));
+          await Dialog.alert(I18n.t('files.fileAlreadyExists', { name }));
           return;
         }
         FS.write(cwd, name, I18n.t('files.newFile')); 
         setTimeout(() => { render(); }, 0); // Defer render
       } catch (e) {
-        alert(e.message || I18n.t('files.errorCreatingFile'));
+        await Dialog.alert(e.message || I18n.t('files.errorCreatingFile'));
       }
     });
 

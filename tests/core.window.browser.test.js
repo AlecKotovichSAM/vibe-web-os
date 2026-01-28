@@ -1,6 +1,12 @@
 // Browser-based tests for WindowManager module
 
-const { describe, it, expect, beforeEach } = window;
+// Wrap in IIFE to create isolated scope and avoid const redeclaration errors
+(function() {
+  'use strict';
+  const describe = window.describe;
+  const it = window.it;
+  const expect = window.expect;
+  const beforeEach = window.beforeEach;
 
 // Create WindowManager mock if not available
 if (!window.WindowManager) {
@@ -143,7 +149,7 @@ if (!window.WindowManager) {
   })();
 }
 
-describe('WindowManager', () => {
+  describe('WindowManager', () => {
   // Mock dependencies
   beforeEach(() => {
     // Clear any existing windows
@@ -458,4 +464,5 @@ describe('WindowManager', () => {
     window.WindowManager.closeWindow('test-window-17');
     expect(closeEmitted).toBe(true);
   });
-});
+  }); // Close describe block
+})(); // Close IIFE

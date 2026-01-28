@@ -95,7 +95,8 @@ window.I18n_EN = {
     errorCreatingFolder: 'Error creating folder',
     errorCreatingFile: 'Error creating file',
     fileAlreadyExists: 'A file named "{name}" already exists in this location.',
-    folderAlreadyExists: 'A folder named "{name}" already exists in this location.'
+    folderAlreadyExists: 'A folder named "{name}" already exists in this location.',
+    size: 'Size'
   },
 
   // Notes App
@@ -239,7 +240,9 @@ window.I18n_EN = {
     errorEmptyFilename: 'Error: Filename cannot be empty',
     saveAsPrompt: 'Enter filename:',
     openPrompt: 'Enter file path:',
-    opened: 'Opened: {name}'
+    opened: 'Opened: {name}',
+    selectFile: 'Please select a file',
+    fileName: 'File name:'
   },
 
   // Task Manager App
@@ -328,6 +331,17 @@ window.I18n_EN = {
       apps: 'apps, applist',
       appsDesc: 'List all available apps'
     }
+  },
+
+  // Dialog Framework
+  dialog: {
+    alert: 'Alert',
+    confirm: 'Confirm',
+    prompt: 'Prompt',
+    ok: 'OK',
+    cancel: 'Cancel',
+    yes: 'Yes',
+    no: 'No'
   },
 
   // Common

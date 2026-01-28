@@ -23,8 +23,47 @@ global.localStorage = dom.window.localStorage;
 const window = global.window;
 const document = global.document;
 
+// Mock KeyboardEvent for JSDOM (not available by default)
+if (!window.KeyboardEvent) {
+  window.KeyboardEvent = class KeyboardEvent extends window.Event {
+    constructor(type, init = {}) {
+      super(type, { bubbles: init.bubbles !== false, cancelable: true });
+      this.key = init.key || '';
+      this.code = init.code || '';
+      this.keyCode = init.keyCode || 0;
+      this.which = init.which || init.keyCode || 0;
+      this.ctrlKey = init.ctrlKey || false;
+      this.shiftKey = init.shiftKey || false;
+      this.altKey = init.altKey || false;
+      this.metaKey = init.metaKey || false;
+    }
+  };
+  // Also make it available globally
+  global.KeyboardEvent = window.KeyboardEvent;
+}
+
+// Mock MouseEvent for JSDOM (not available by default)
+if (!window.MouseEvent) {
+  window.MouseEvent = class MouseEvent extends window.Event {
+    constructor(type, init = {}) {
+      super(type, { bubbles: init.bubbles !== false, cancelable: init.cancelable !== false });
+      this.button = init.button || 0;
+      this.buttons = init.buttons || 0;
+      this.clientX = init.clientX || 0;
+      this.clientY = init.clientY || 0;
+      this.ctrlKey = init.ctrlKey || false;
+      this.shiftKey = init.shiftKey || false;
+      this.altKey = init.altKey || false;
+      this.metaKey = init.metaKey || false;
+    }
+  };
+  // Also make it available globally
+  global.MouseEvent = window.MouseEvent;
+}
+
 // Load and execute test files directly
 async function runTests() {
+  console.log('Starting test runner...');
   // Load test files - IMPORTANT: i18n.browser.test.js must load BEFORE core.apps
   // because it creates window.I18n mock that other tests might overwrite
   const testFiles = [
@@ -34,7 +73,10 @@ async function runTests() {
     'core.apps.browser.test.js',
     'core.window.browser.test.js',
     'core.folders.browser.test.js',
-    'core.filesave.browser.test.js'
+    'core.filesave.browser.test.js',
+    'core.dialog.browser.test.js',
+    'core.shell.browser.test.js',
+    'files.browser.test.js'
   ];
   
   // Set up test runner
@@ -148,17 +190,29 @@ async function runTests() {
       this.results = { total: 0, passed: 0, failed: 0 };
       const failures = [];
       
+      console.log(`Processing ${this.suites.length} suites with ${this.suites.reduce((sum, s) => sum + s.tests.length, 0)} total tests...`);
+      
+      let testCount = 0;
       for (const suite of this.suites) {
         for (const test of suite.tests) {
+          testCount++;
           this.results.total++;
           try {
             // Run beforeEach hooks
             for (const hook of suite.beforeEach) {
               await hook();
             }
-            // Run the test
-            await test.fn();
+            // Run the test with timeout protection
+            await Promise.race([
+              test.fn(),
+              new Promise((_, reject) => 
+                setTimeout(() => reject(new Error(`Test timeout after 30s: ${suite.name} > ${test.name}`)), 30000)
+              )
+            ]);
             this.results.passed++;
+            if (testCount % 20 === 0) {
+              console.log(`  Progress: ${testCount}/${this.suites.reduce((sum, s) => sum + s.tests.length, 0)} tests completed...`);
+            }
           } catch (error) {
             this.results.failed++;
             failures.push({
@@ -166,10 +220,13 @@ async function runTests() {
               test: test.name,
               error: error.message
             });
+            // Log failures immediately
+            console.log(`  FAILED: [${suite.name}] ${test.name} - ${error.message}`);
           }
         }
       }
       
+      console.log(`Test execution completed. Total: ${this.results.total}, Passed: ${this.results.passed}, Failed: ${this.results.failed}`);
       return failures;
     }
   };
@@ -179,25 +236,48 @@ async function runTests() {
   window.it = window.TestRunner.it.bind(window.TestRunner);
   window.beforeEach = window.TestRunner.beforeEach.bind(window.TestRunner);
   
+  // Suppress console.error for expected Bus handler errors during test loading and execution
+  const originalConsoleError = console.error;
+  let suppressBusErrors = true;
+  console.error = (...args) => {
+    const msg = args.join(' ');
+    // Suppress Bus handler errors (they're expected in tests)
+    if (msg.includes('Bus handler error')) {
+      return; // Always suppress - these are expected test outputs
+    }
+    originalConsoleError(...args);
+  };
+  
   // Load test files
   for (const testFile of testFiles) {
     const testPath = join(projectRoot, 'tests', testFile);
     const testCode = readFileSync(testPath, 'utf-8');
-    // Execute code with window, document, localStorage in scope
+    // Execute code with window, document, localStorage, KeyboardEvent, MouseEvent in scope
     // Use Function constructor with explicit parameter names
     try {
-      const func = new Function('window', 'document', 'localStorage', testCode);
-      func.call(global, global.window, global.document, global.localStorage);
+      const func = new Function('window', 'document', 'localStorage', 'KeyboardEvent', 'MouseEvent', testCode);
+      func.call(global, global.window, global.document, global.localStorage, global.window.KeyboardEvent, global.window.MouseEvent);
     } catch (err) {
       console.error(`Error loading ${testFile}:`, err.message);
       throw err;
     }
   }
   
-  // Run tests
-  const failures = await window.TestRunner.run();
+  // Run tests (Bus errors remain suppressed - they're expected test outputs)
+  console.log(`Running ${window.TestRunner.suites.length} test suites...`);
+  let failures = [];
+  try {
+    failures = await window.TestRunner.run();
+    console.log(`Tests completed. Processing results...`);
+  } catch (err) {
+    console.error('Error during test execution:', err);
+    throw err;
+  }
   
-  // Output results
+  // Restore console.error after tests complete
+  console.error = originalConsoleError;
+  
+  // Output results (use console.log for better compatibility)
   console.log(`\n=== Test Results ===`);
   console.log(`Total: ${window.TestRunner.results.total}`);
   console.log(`Passed: ${window.TestRunner.results.passed}`);
@@ -211,10 +291,23 @@ async function runTests() {
     });
   }
   
-  process.exit(failures.length > 0 ? 1 : 0);
+  // Exit with appropriate code
+  const exitCode = failures.length > 0 ? 1 : 0;
+  console.log(`Exiting with code ${exitCode}`);
+  process.exit(exitCode);
 }
 
 runTests().catch(err => {
-  console.error('Error running tests:', err);
+  // Output any partial results before exiting
+  if (global.window && global.window.TestRunner && global.window.TestRunner.results) {
+    process.stdout.write(`\n=== Test Results (Partial) ===\n`);
+    process.stdout.write(`Total: ${global.window.TestRunner.results.total}\n`);
+    process.stdout.write(`Passed: ${global.window.TestRunner.results.passed}\n`);
+    process.stdout.write(`Failed: ${global.window.TestRunner.results.failed}\n\n`);
+  }
+  process.stderr.write(`Error running tests: ${err.message}\n`);
+  if (err.stack) {
+    process.stderr.write(`${err.stack}\n`);
+  }
   process.exit(1);
 });

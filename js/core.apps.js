@@ -4,6 +4,10 @@ window.Apps = (() => {
 
   function register({ id, name, nameKey, icon, description = '', descriptionKey, category = '', singleton = true, hidden = false, launch }) {
     registry.set(id, { id, name, nameKey, icon, description, descriptionKey, category, singleton, hidden, launch });
+    // Emit event when app is registered (for Start menu updates)
+    if (window.Bus) {
+      Bus.emit('app:registered', { id });
+    }
   }
 
   // Get localized name for an app

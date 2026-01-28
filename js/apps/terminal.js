@@ -461,6 +461,12 @@ Apps.register({
               
               const targetPath = normalizePath(args[targetArgIndex], currentPath);
               
+              // Check if path is protected system path
+              if (FS.isSystemPath && FS.isSystemPath(targetPath)) {
+                addOutput(I18n.t('files.cannotDeleteDefault') || 'Cannot delete system folder or file: ' + targetPath, 'var(--danger)');
+                return;
+              }
+              
               // Check if both file and folder with same name exist (only if type not specified)
               const targetParentPath = targetPath.split('/').slice(0, -1).join('/') || FS.root;
               const targetName = targetPath.split('/').pop();
@@ -606,6 +612,12 @@ Apps.register({
               const srcPath = normalizePath(args[srcArgIndex], currentPath);
               const destPath = normalizePath(args[srcArgIndex + 1], currentPath);
               
+              // Check if source path is protected system path
+              if (FS.isSystemPath && FS.isSystemPath(srcPath)) {
+                addOutput(I18n.t('files.cannotRenameDefault') || 'Cannot rename system folder or file: ' + srcPath, 'var(--danger)');
+                return;
+              }
+              
               // Check if both file and folder with same name exist (only if type not specified)
               const srcParentPath = srcPath.split('/').slice(0, -1).join('/') || FS.root;
               const srcName = srcPath.split('/').pop();
@@ -652,6 +664,19 @@ Apps.register({
                 const destParts = destPath.split('/');
                 destName = destParts.pop();
                 destDir = destParts.join('/') || FS.root;
+              }
+              
+              // Check if destination path would be a system path
+              const finalDestPath = `${destDir}/${destName}`;
+              if (FS.isSystemPath && FS.isSystemPath(finalDestPath)) {
+                addOutput(I18n.t('files.cannotRenameDefault') || 'Cannot move to system folder or file: ' + finalDestPath, 'var(--danger)');
+                return;
+              }
+              
+              // Check if destination directory is a system path (cannot move into system folders)
+              if (FS.isSystemPath && FS.isSystemPath(destDir)) {
+                addOutput(I18n.t('files.cannotRenameDefault') || 'Cannot move into system folder: ' + destDir, 'var(--danger)');
+                return;
               }
               
               // Check if source and destination are in same directory (simple rename)

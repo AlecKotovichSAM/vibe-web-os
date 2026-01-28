@@ -1,6 +1,12 @@
 // Browser-based tests for Folders module
 
-const { describe, it, expect, beforeEach } = window;
+// Wrap in IIFE to create isolated scope and avoid const redeclaration errors
+(function() {
+  'use strict';
+  const describe = window.describe;
+  const it = window.it;
+  const expect = window.expect;
+  const beforeEach = window.beforeEach;
 
 // Create Folders mock if not available
 if (!window.Folders) {
@@ -116,7 +122,7 @@ if (!window.Folders) {
   })();
 }
 
-describe('Folders', () => {
+  describe('Folders', () => {
   beforeEach(() => {
     // Clear localStorage FIRST - this is critical for test isolation
     localStorage.clear();
@@ -486,4 +492,5 @@ describe('Folders', () => {
     window.WindowManager.findWindow = originalFindWindow;
     window.WindowManager.restoreWindow = originalRestoreWindow;
   });
-});
+  }); // Close describe block
+})(); // Close IIFE

@@ -288,7 +288,7 @@ Apps.register({
       });
       
       listDiv.querySelectorAll('.taskmanager-end').forEach(btn => {
-        btn.addEventListener('click', (e) => {
+        btn.addEventListener('click', async (e) => {
           e.preventDefault();
           e.stopPropagation();
           
@@ -312,7 +312,8 @@ Apps.register({
           }
           
           // Confirm before closing
-          if (confirm(I18n.t('taskmanager.endTaskConfirm', { title }))) {
+          const confirmed = await Dialog.confirm(I18n.t('taskmanager.endTaskConfirm', { title }));
+          if (confirmed) {
             WindowManager.closeWindow(winId);
             setTimeout(() => {
               isUserInteracting = false;
@@ -322,6 +323,8 @@ Apps.register({
           } else {
             setTimeout(() => {
               isUserInteracting = false;
+              renderWindowList();
+              renderSystemInfo();
             }, 100);
           }
         });

@@ -28,10 +28,14 @@ window.Bus = (() => {
   };
 })();
 
-// Use global TestRunner functions
-const { describe, it, expect } = window;
+// Wrap in IIFE to create isolated scope and avoid const redeclaration errors
+(function() {
+  'use strict';
+  const describe = window.describe;
+  const it = window.it;
+  const expect = window.expect;
 
-describe('Bus (Event System)', () => {
+  describe('Bus (Event System)', () => {
   it('should subscribe to events', () => {
     let received = null;
     window.Bus.on('test', (data) => {
@@ -102,4 +106,5 @@ describe('Bus (Event System)', () => {
     
     console.error = originalError;
   });
-});
+  }); // Close describe block
+})(); // Close IIFE

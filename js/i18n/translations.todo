@@ -173,6 +173,84 @@ These should be translated and added to all locale files later.
 - Shows system information (total windows, memory, uptime)
 - Allows switching to windows and ending tasks
 
+## Dialog Framework (js/core.dialog.js)
+
+### All translations added to en.js
+- File: `js/i18n/en.js` (lines 333-340)
+- Namespace: `dialog.*`
+- All user-facing strings are properly localized
+- No hardcoded strings found
+
+**Translation keys:**
+- `dialog.alert` - 'Alert' (default title for alert dialogs)
+- `dialog.confirm` - 'Confirm' (default title for confirmation dialogs)
+- `dialog.prompt` - 'Prompt' (default title for prompt dialogs)
+- `dialog.ok` - 'OK' (button label for OK/Confirm actions)
+- `dialog.cancel` - 'Cancel' (button label for Cancel actions)
+- `dialog.yes` - 'Yes' (button label, currently unused but available)
+- `dialog.no` - 'No' (button label, currently unused but available)
+
+**Context:**
+- Dialog framework replaces native browser `alert()`, `prompt()`, and `confirm()` dialogs
+- Used throughout the OS for user interactions (file operations, confirmations, input prompts)
+- All dialogs are Promise-based and async/await compatible
+- Keyboard shortcuts: Enter to confirm, Escape to cancel
+- Fully themed to match OS appearance
+- **NEW**: Added `Dialog.saveAs()` and `Dialog.open()` with file browser navigation
+
+**Files using dialog framework:**
+- `js/core.filesave.js` - Save As and Open dialogs (now with file browser), error alerts
+- `js/core.shell.js` - Desktop folder creation prompts and alerts
+- `js/apps/files.js` - File/folder operations, delete confirmations, error alerts
+- `js/apps/taskmanager.js` - End task confirmations
+- `js/apps/settings.js` - Reset file system confirmations, wallpaper error alerts
+- `js/apps/draw.js` - New drawing confirmations, about dialog
+
+## File Browser Component (js/core.filebrowser.js)
+
+### New reusable component
+- File: `js/core.filebrowser.js` (new)
+- Provides common file/folder navigation UI
+- Used by `Dialog.saveAs()` and `Dialog.open()` dialogs
+- Can be reused by Files app (future refactoring)
+
+**Translation keys used:**
+- `files.emptyFolder` - 'This folder is empty' (already exists)
+- `files.fileName` - 'File' (already exists, used as label)
+- `files.size` - 'Size' (added to `files.*` namespace)
+- `files.deleteFile` - 'Delete' (already exists)
+- `files.up` - 'Up' (already exists)
+- `common.error` - 'Error' (already exists)
+
+**Context:**
+- Common component for rendering file/folder lists
+- Supports list and grid view modes
+- Handles file icons, sizes, and selection
+- Supports filtering (files only, folders only, or both)
+- Used in Save As and Open dialogs for navigation
+
+## File Save Utility (js/core.filesave.js)
+
+### Updated translations
+- File: `js/i18n/en.js` (lines 235-243)
+- Namespace: `filesave.*`
+
+**Translation keys:**
+- `filesave.savedAt` - 'Saved at {time}' (with placeholder)
+- `filesave.modifiedNotSaved` - 'Modified - not saved'
+- `filesave.error` - 'Error: {message}' (with placeholder)
+- `filesave.errorEmptyFilename` - 'Error: Filename cannot be empty'
+- `filesave.saveAsPrompt` - 'Enter filename:' (legacy, now uses Dialog.saveAs())
+- `filesave.openPrompt` - 'Enter file path:' (legacy, now uses Dialog.open())
+- `filesave.opened` - 'Opened: {name}' (with placeholder)
+- `filesave.selectFile` - 'Please select a file' (NEW - for open dialog validation)
+
+**Context:**
+- Generic file save/open utility for apps
+- **UPDATED**: Now uses `Dialog.saveAs()` and `Dialog.open()` with file browser instead of simple prompts
+- Provides Save, Save As, and Open functionality
+- Handles window title updates and status bar messages
+
 ## Notes
 
 1. **Error messages from FS module**: Many error messages are thrown from `core.fs.js` and caught in other modules. These should be localized in the FS module itself, or we should create a `fs` namespace in i18n files.

@@ -97,12 +97,12 @@
       <span>Failed:</span>
       <span id="failed">0</span>
     </div>
-    <button onclick="runAllTests()">Run All Tests</button>
+  <button onclick="runAllTests()">Run All Tests</button>
   </div>
-
+  
   <div id="test-results"></div>
-
-  <script type="module">
+  
+  <script>
     // Simple test framework
     const TestRunner = {
       suites: [],
@@ -110,6 +110,12 @@
       results: { total: 0, passed: 0, failed: 0 },
       
       describe(name, fn) {
+        // Check if suite with same name already exists and remove it
+        // This prevents duplicate suites when scripts are reloaded
+        const existingIndex = this.suites.findIndex(s => s.name === name);
+        if (existingIndex !== -1) {
+          this.suites.splice(existingIndex, 1);
+        }
         this.currentSuite = { name, tests: [], beforeEach: [] };
         this.suites.push(this.currentSuite);
         fn();
@@ -240,6 +246,55 @@
         const container = document.getElementById('test-results');
         container.innerHTML = '';
         
+        // Clear localStorage before running tests to ensure clean state
+        // This is critical for tests that rely on localStorage (like FS tests)
+        try {
+          localStorage.clear();
+        } catch (e) {
+          console.warn('Could not clear localStorage:', e);
+        }
+        
+        // Clean up any existing dialogs
+        const dialogLayer = document.getElementById('dialog-layer');
+        if (dialogLayer) {
+          dialogLayer.innerHTML = '';
+          dialogLayer.style.display = 'none';
+        }
+        
+        // Suppress expected Bus handler errors during test execution
+        const originalConsoleError = console.error;
+        console.error = (...args) => {
+          const msg = args.join(' ');
+          // Suppress expected Bus handler errors (they're part of a test)
+          if (msg.includes('Bus handler error')) {
+            return; // Don't log expected errors
+          }
+          originalConsoleError(...args);
+        };
+        
+        // Auto-dismiss any dialogs that appear during tests
+        const autoDismissDialogs = () => {
+          const dialogLayer = document.getElementById('dialog-layer');
+          if (dialogLayer && dialogLayer.style.display !== 'none') {
+            const primaryBtn = dialogLayer.querySelector('.dialog-btn-primary');
+            const cancelBtn = dialogLayer.querySelector('.dialog-btn-secondary');
+            // For prompt dialogs, fill in default value and click OK
+            const input = dialogLayer.querySelector('input[type="text"]');
+            if (input) {
+              input.value = input.placeholder || input.value || 'test';
+            }
+            // Click primary button (OK) to dismiss
+            if (primaryBtn) {
+              setTimeout(() => primaryBtn.click(), 10);
+            } else if (cancelBtn) {
+              setTimeout(() => cancelBtn.click(), 10);
+            }
+          }
+        };
+        
+        // Set up interval to auto-dismiss dialogs during test execution
+        const dialogDismissInterval = setInterval(autoDismissDialogs, 50);
+        
         for (const suite of this.suites) {
           const suiteDiv = document.createElement('div');
           suiteDiv.className = 'test-suite';
@@ -260,15 +315,27 @@
               }
               // Run the test
               await test.fn();
+              // Auto-dismiss any dialogs after test
+              autoDismissDialogs();
               testDiv.classList.add('pass');
               this.results.passed++;
             } catch (error) {
+              // Auto-dismiss any dialogs on error
+              autoDismissDialogs();
               testDiv.classList.add('fail');
               testDiv.innerHTML += `<div class="test-error">${error.message}</div>`;
               this.results.failed++;
             }
           }
         }
+        
+        // Clear dialog dismissal interval
+        clearInterval(dialogDismissInterval);
+        // Final cleanup - dismiss any remaining dialogs
+        autoDismissDialogs();
+        
+        // Restore original console.error
+        console.error = originalConsoleError;
         
         this.updateSummary();
       },
@@ -285,29 +352,273 @@
     window.describe = TestRunner.describe.bind(TestRunner);
     window.it = TestRunner.it.bind(TestRunner);
     window.beforeEach = TestRunner.beforeEach.bind(TestRunner);
-    window.runAllTests = () => TestRunner.run();
+    window.runAllTests = async () => {
+      // Clear localStorage first to ensure clean state
+      try {
+        localStorage.clear();
+      } catch (e) {
+        console.warn('Could not clear localStorage:', e);
+      }
+      
+      // Reset test suites to ensure clean state
+      // Clear any existing suites to prevent accumulation
+      TestRunner.suites = [];
+      
+      // Reset global mocks that might have been modified by previous test runs
+      // This ensures clean state for each test run
+      if (window.FS) {
+        delete window.FS;
+      }
+      if (window.Apps) {
+        delete window.Apps;
+      }
+      if (window.Folders) {
+        delete window.Folders;
+      }
+      if (window.Dialog) {
+        delete window.Dialog;
+      }
+      if (window.WindowManager) {
+        delete window.WindowManager;
+      }
+      if (window.Bus) {
+        delete window.Bus;
+      }
+      if (window.I18n) {
+        delete window.I18n;
+      }
+      if (window.I18n_EN) {
+        delete window.I18n_EN;
+      }
+      
+      // Clean up DOM elements that might have been created by tests
+      const dialogLayer = document.getElementById('dialog-layer');
+      if (dialogLayer) {
+        dialogLayer.innerHTML = '';
+        dialogLayer.style.display = 'none';
+      }
+      
+      // Remove test-specific DOM elements
+      const testElements = ['start-apps', 'desktop-items', 'desktop-icons', 'start-menu', 'desktop'];
+      testElements.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.remove();
+        }
+      });
+      
+      // Reload test files before running
+      // This ensures fresh state for each test run
+      const testFiles = [
+        './core.bus.browser.test.js',
+        './core.fs.browser.test.js',
+        './i18n.browser.test.js',
+        './core.apps.browser.test.js',
+        './core.window.browser.test.js',
+        './core.folders.browser.test.js',
+        './core.filesave.browser.test.js',
+        './core.dialog.browser.test.js',
+        './core.shell.browser.test.js',
+        './files.browser.test.js'
+      ];
+      
+      // Remove existing scripts to force reload
+      const existingScripts = document.querySelectorAll('script[src*=".browser.test.js"]');
+      existingScripts.forEach(script => {
+        script.remove();
+      });
+      
+      // Also remove from head to ensure complete cleanup
+      const headScripts = document.head.querySelectorAll('script[src*=".browser.test.js"]');
+      headScripts.forEach(script => script.remove());
+      
+      // Wait a bit to ensure scripts are removed
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      // NOW clear test suites - right before reloading, after old scripts are removed
+      // This ensures we start with a clean slate
+      TestRunner.suites = [];
+      TestRunner.currentSuite = null;
+      
+      // Reload all test files with fresh cache-busting
+      await new Promise((resolve) => {
+        let loadedCount = 0;
+        const totalFiles = testFiles.length;
+        const timestamp = Date.now();
+        
+        function loadNext() {
+          if (loadedCount >= totalFiles) {
+            resolve();
+            return;
+          }
+          
+          const script = document.createElement('script');
+          // Use unique timestamp + index + random to ensure no caching
+          script.src = testFiles[loadedCount] + '?v=' + timestamp + '&i=' + loadedCount + '&r=' + Math.random();
+          
+          script.onload = () => {
+            loadedCount++;
+            // Small delay to ensure script execution completes
+            setTimeout(loadNext, 20);
+          };
+          
+          script.onerror = () => {
+            console.error(`Failed to reload ${testFiles[loadedCount]}`);
+            loadedCount++;
+            setTimeout(loadNext, 20);
+          };
+          
+          document.head.appendChild(script);
+        }
+        
+        loadNext();
+      });
+      
+      // Wait longer for tests to register (IIFEs need time to execute)
+      // Poll until tests are registered or timeout after 2 seconds
+      let attempts = 0;
+      const maxAttempts = 40; // 2 seconds total (40 * 50ms)
+      while (attempts < maxAttempts) {
+        const totalTests = TestRunner.suites.reduce((sum, s) => sum + s.tests.length, 0);
+        if (totalTests > 0) {
+          console.log(`Tests registered after ${attempts * 50}ms: ${TestRunner.suites.length} suites with ${totalTests} total tests`);
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+        attempts++;
+      }
+      
+      // Verify we have tests registered
+      const totalTests = TestRunner.suites.reduce((sum, s) => sum + s.tests.length, 0);
+      if (totalTests === 0) {
+        console.error('No tests registered after reload!');
+        alert('No tests were registered. Check console for errors.');
+        return;
+      }
+      
+      console.log(`Ready to run: ${TestRunner.suites.length} suites with ${totalTests} total tests`);
+      
+      // Now run the tests
+      await TestRunner.run();
+    };
     
-    // Load test files
-    async function loadTests() {
-      // Load all test files
+    // Load test files as scripts (not ES modules)
+    function loadTests() {
+      // Ensure TestRunner is ready
+      if (!window.TestRunner || !window.describe) {
+        console.error('TestRunner not ready!');
+        return;
+      }
+      // Load all test files in order
       // IMPORTANT: i18n.browser.test.js must load BEFORE core.apps.browser.test.js
       // because core.apps creates a minimal I18n mock that would overwrite the full mock
-      await import('./core.bus.browser.test.js');
-      await import('./core.fs.browser.test.js');
-      await import('./i18n.browser.test.js');  // Load BEFORE core.apps
-      await import('./core.apps.browser.test.js');
-      await import('./core.window.browser.test.js');
-      await import('./core.folders.browser.test.js');
-      await import('./core.filesave.browser.test.js');
-      // Tests will register themselves, now run them
-      await TestRunner.run();
+      const testFiles = [
+        './core.bus.browser.test.js',
+        './core.fs.browser.test.js',
+        './i18n.browser.test.js',  // Load BEFORE core.apps
+        './core.apps.browser.test.js',
+        './core.window.browser.test.js',
+        './core.folders.browser.test.js',
+        './core.filesave.browser.test.js',
+        './core.dialog.browser.test.js',
+        './core.shell.browser.test.js',
+        './files.browser.test.js'
+      ];
+      
+      let loadedCount = 0;
+      const totalFiles = testFiles.length;
+      const errors = [];
+      
+      function loadNext() {
+        if (loadedCount >= totalFiles) {
+          // All files loaded, check for errors
+          if (errors.length > 0) {
+            console.error('Errors loading test files:', errors);
+            const errorDiv = document.createElement('div');
+            errorDiv.style.cssText = 'background: #ff6b6b; color: white; padding: 10px; margin: 10px 0; border-radius: 4px;';
+            errorDiv.innerHTML = `<strong>Errors loading test files:</strong><ul>${errors.map(e => `<li>${e}</li>`).join('')}</ul>`;
+            document.getElementById('test-results').appendChild(errorDiv);
+          }
+          
+          // Log how many suites were registered
+          const totalTests = TestRunner.suites.reduce((sum, s) => sum + s.tests.length, 0);
+          console.log(`Loaded ${TestRunner.suites.length} test suites with ${totalTests} total tests`);
+          
+          if (totalTests === 0) {
+            const warningDiv = document.createElement('div');
+            warningDiv.style.cssText = 'background: #ffa500; color: white; padding: 10px; margin: 10px 0; border-radius: 4px;';
+            warningDiv.innerHTML = '<strong>Warning:</strong> No tests were registered. Check the browser console for errors.';
+            document.getElementById('test-results').appendChild(warningDiv);
+          }
+          
+          // Run tests
+          TestRunner.run().catch(console.error);
+          return;
+        }
+        
+        const script = document.createElement('script');
+        // Add cache-busting parameter to force reload
+        script.src = testFiles[loadedCount] + '?v=' + Date.now() + '&' + loadedCount;
+        
+        // Wrap script execution in try-catch to catch runtime errors
+        const originalOnError = window.onerror;
+        const originalConsoleError = console.error;
+        let scriptError = null;
+        window.onerror = (msg, url, line, col, error) => {
+          if (url.includes(testFiles[loadedCount])) {
+            scriptError = `Error in ${testFiles[loadedCount]}: ${msg} (line ${line})`;
+            // Don't log Bus handler errors as they're expected
+            if (!msg.includes('Bus handler error')) {
+              console.error(scriptError, error);
+            }
+            return true; // Prevent default error handling
+          }
+          if (originalOnError) return originalOnError(msg, url, line, col, error);
+        };
+        
+        script.onload = () => {
+          // Restore original error handler and console.error after a delay
+          setTimeout(() => {
+            window.onerror = originalOnError;
+            console.error = originalConsoleError;
+          }, 100);
+          
+          if (scriptError) {
+            errors.push(scriptError);
+            scriptError = null;
+          } else {
+            const testCount = TestRunner.suites.reduce((sum, s) => sum + s.tests.length, 0);
+            console.log(`✓ Loaded: ${testFiles[loadedCount]} (${TestRunner.suites.length} suites, ${testCount} total tests)`);
+          }
+          
+          // Give a small delay to ensure tests are registered
+          setTimeout(() => {
+            loadedCount++;
+            loadNext();
+          }, 10);
+        };
+        
+        script.onerror = (err) => {
+          window.onerror = originalOnError;
+          console.error = originalConsoleError;
+          const errorMsg = `Failed to load ${testFiles[loadedCount]}`;
+          console.error(errorMsg, err);
+          errors.push(errorMsg);
+          loadedCount++;
+          loadNext(); // Continue loading other files
+        };
+        
+        document.head.appendChild(script);
+      }
+      
+      loadNext();
     }
     
     // Wait for DOM to be ready
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', loadTests);
     } else {
-      loadTests().catch(console.error);
+      loadTests();
     }
   </script>
 </body>

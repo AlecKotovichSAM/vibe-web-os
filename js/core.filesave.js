@@ -94,7 +94,7 @@ window.FileMenuUtility = (() => {
         
         // Show alert for quota errors (critical)
         if (errorMsg.includes('quota') || errorMsg.includes('Quota') || errorMsg.includes('Storage quota')) {
-          alert(errorMsg);
+          Dialog.alert(errorMsg);
         }
         
         // Update status bar if it exists (only left side to preserve coordinates on right)
@@ -149,29 +149,28 @@ window.FileMenuUtility = (() => {
     }
 
     /**
-     * Save As action - prompts for new filename
+     * Save As action - shows file browser dialog
      */
-    function saveAs() {
+    async function saveAs() {
       const currentName = currentPath.split('/').pop() || defaultFileName;
       const nameWithoutExt = currentName.replace(/\.[^.]+$/, '');
       const suggestedName = nameWithoutExt + defaultExtension;
       
-      const name = prompt(I18n.t('filesave.saveAsPrompt'), suggestedName);
-      if (!name) return;
-
-      let newPath;
-      let finalName;
+      // Extract directory from current path
+      const currentDir = currentPath.includes('/') 
+        ? currentPath.split('/').slice(0, -1).join('/') || FS.root
+        : defaultPath;
       
-      // Check if user entered a full path (starts with /)
-      if (name.startsWith('/')) {
-        // User entered a full path - use it directly
-        newPath = name.endsWith(defaultExtension) ? name : name + defaultExtension;
-        finalName = newPath.split('/').pop();
-      } else {
-        // User entered just a filename - prepend defaultPath
-        finalName = name.endsWith(defaultExtension) ? name : name + defaultExtension;
-        newPath = `${defaultPath}/${finalName}`;
+      const fullPath = await Dialog.saveAs(currentDir, suggestedName);
+      if (!fullPath) return;
+
+      // Ensure extension is added if not present
+      let newPath = fullPath;
+      if (!newPath.endsWith(defaultExtension)) {
+        newPath = newPath + defaultExtension;
       }
+      
+      const finalName = newPath.split('/').pop();
 
       if (saveFile(newPath)) {
         // Update window title if needed
@@ -196,14 +195,14 @@ window.FileMenuUtility = (() => {
     }
 
     /**
-     * Open action - prompts for file path and loads file
+     * Open action - shows file browser dialog
      */
-    function open() {
-      const path = prompt(I18n.t('filesave.openPrompt'), defaultPath);
+    async function open() {
+      const path = await Dialog.open(defaultPath);
       if (!path) return;
 
       try {
-        // Normalize path: trim whitespace, ensure it starts with /
+        // Normalize path: ensure it starts with /
         let normalizedPath = path.trim();
         if (!normalizedPath.startsWith('/')) {
           normalizedPath = '/' + normalizedPath;
@@ -364,7 +363,7 @@ window.FileMenuUtility = (() => {
             URL.revokeObjectURL(url);
           })
           .catch(e => {
-            alert('Failed to download file: ' + e.message);
+            Dialog.alert('Failed to download file: ' + e.message);
           });
       } else {
         // Regular text content - determine MIME type
@@ -400,7 +399,7 @@ window.FileMenuUtility = (() => {
       return true;
     } catch (e) {
       const errorMsg = e.message || 'Failed to download file';
-      alert(errorMsg);
+      Dialog.alert(errorMsg);
       return false;
     }
   }

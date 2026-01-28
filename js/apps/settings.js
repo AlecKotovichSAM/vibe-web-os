@@ -281,7 +281,7 @@ Apps.register({
         }
       }
       
-      function applyWallpaper(pathOrUrl) {
+      async function applyWallpaper(pathOrUrl) {
         let imageUrl = pathOrUrl;
         
         // If it's a local path, read the file content (data URL) for applying
@@ -289,7 +289,7 @@ Apps.register({
           try {
             imageUrl = FS.read(pathOrUrl);
           } catch (error) {
-            alert(`Failed to load wallpaper from ${pathOrUrl}: ${error.message}`);
+            await Dialog.alert(`Failed to load wallpaper from ${pathOrUrl}: ${error.message}`);
             return;
           }
         }
@@ -346,10 +346,11 @@ Apps.register({
       }
     });    */
 
-    win.querySelector('#reset-fs').addEventListener('click', ()=>{
-      if (confirm(I18n.t('settings.resetConfirm'))) {
+    win.querySelector('#reset-fs').addEventListener('click', async ()=>{
+      const confirmed = await Dialog.confirm(I18n.t('settings.resetConfirm'));
+      if (confirmed) {
         FS.reset();
-        alert(I18n.t('settings.resetSuccess'));
+        await Dialog.alert(I18n.t('settings.resetSuccess'));
       }
     });
 
