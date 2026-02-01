@@ -1385,5 +1385,59 @@
       // Verify window is hidden
       expect(testWin.style.display).toBe('none');
     });
+    
+    it('should save and restore position correctly for minimized windows', () => {
+      // Bug fix: Minimized windows should preserve their position when saved and restored
+      // The issue was that getBoundingClientRect() returns zeros for minimized windows
+      
+      if (!window.StateManager || !window.StateManager.getState) {
+        // StateManager not available - skip test
+        expect(true).toBe(true);
+        return;
+      }
+      
+      const testWinId = 'test-minimized-position';
+      const testWin = window.WindowManager.makeWindow({
+        id: testWinId,
+        title: 'Test Window',
+        content: '<div>Content</div>',
+        width: 600,
+        height: 400
+      });
+      
+      // Set window position explicitly
+      testWin.style.left = '250px';
+      testWin.style.top = '300px';
+      
+      // Register window in windowAppMap (required for state saving)
+      if (!window.windowAppMap) {
+        window.windowAppMap = new Map();
+      }
+      window.windowAppMap.set(testWinId, {
+        appId: 'test-app',
+        titleKey: 'test.title'
+      });
+      
+      // Minimize the window (this should save position to dataset)
+      window.WindowManager.minimizeWindow(testWinId);
+      expect(testWin.style.display).toBe('none');
+      
+      // Verify position was saved to dataset
+      const savedPos = testWin.dataset.savedPosition ? JSON.parse(testWin.dataset.savedPosition) : null;
+      expect(savedPos).toBeDefined();
+      expect(savedPos.left).toBe(250);
+      expect(savedPos.top).toBe(300);
+      
+      // Save state (should use saved position, not getBoundingClientRect which returns zeros)
+      const state = window.StateManager.getState();
+      const savedWindow = state.windows.find(w => w.id === testWinId);
+      expect(savedWindow).toBeDefined();
+      expect(savedWindow.position.left).toBe(250);
+      expect(savedWindow.position.top).toBe(300);
+      expect(savedWindow.minimized).toBe(true);
+      
+      // Clean up
+      window.windowAppMap.delete(testWinId);
+    });
   });
 })();

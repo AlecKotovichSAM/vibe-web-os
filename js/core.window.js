@@ -380,6 +380,13 @@ window.WindowManager = (() => {
     if (!w) return;
     if (w.style.display !== 'none') {
       w.dataset.prevDisplay = 'flex';
+      // Store current position before minimizing (for state saving)
+      // This ensures position is preserved even when getBoundingClientRect() returns zeros
+      const currentLeft = parseInt(w.style.left) || 0;
+      const currentTop = parseInt(w.style.top) || 0;
+      if (currentLeft > 0 || currentTop > 0) {
+        w.dataset.savedPosition = JSON.stringify({ left: currentLeft, top: currentTop });
+      }
       w.style.display = 'none';
       Bus.emit('wm:minimized', { id });
     }

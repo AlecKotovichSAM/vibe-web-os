@@ -41,16 +41,41 @@ window.StateManager = (() => {
       const isFocused = win.classList.contains('focus');
       
       // Get position - use style if set, otherwise use getBoundingClientRect
-      // This handles windows that were just created and don't have explicit styles yet
+      // IMPORTANT: For minimized windows (display: none), getBoundingClientRect() returns zeros
+      // So we must check style values first and use saved position if available
       let left = parseInt(win.style.left);
       let top = parseInt(win.style.top);
       
-      // If style.left/top are not set or are 0, use actual position from DOM
-      if (isNaN(left) || left === 0) {
-        left = rect.left;
-      }
-      if (isNaN(top) || top === 0) {
-        top = rect.top;
+      // For minimized windows, getBoundingClientRect() returns incorrect values (0,0)
+      // So we must rely on style values or use saved position from dataset
+      if (isMinimized) {
+        // If style values are not set, try to get from dataset (saved during minimize)
+        if (isNaN(left) || left === 0) {
+          const savedPos = win.dataset.savedPosition ? JSON.parse(win.dataset.savedPosition) : null;
+          if (savedPos && savedPos.left) {
+            left = savedPos.left;
+          } else {
+            // Fall back to rect (might be 0, but better than nothing)
+            left = rect.left || 120; // Default to 120px if rect is 0
+          }
+        }
+        if (isNaN(top) || top === 0) {
+          const savedPos = win.dataset.savedPosition ? JSON.parse(win.dataset.savedPosition) : null;
+          if (savedPos && savedPos.top) {
+            top = savedPos.top;
+          } else {
+            // Fall back to rect (might be 0, but better than nothing)
+            top = rect.top || 120; // Default to 120px if rect is 0
+          }
+        }
+      } else {
+        // For visible windows, use rect as fallback
+        if (isNaN(left) || left === 0) {
+          left = rect.left;
+        }
+        if (isNaN(top) || top === 0) {
+          top = rect.top;
+        }
       }
       
       // Get size - prefer style, fall back to rect
