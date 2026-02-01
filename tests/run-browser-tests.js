@@ -77,7 +77,8 @@ async function runTests() {
     'core.dialog.browser.test.js',
     'core.shell.browser.test.js',
     'files.browser.test.js',
-    'terminal.browser.test.js'
+    'terminal.browser.test.js',
+    'core.state.browser.test.js'
   ];
   
   // Set up test runner

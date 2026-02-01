@@ -8,20 +8,23 @@ Apps.register({
   descriptionKey: 'games.folderDescription',
   category: '',
   singleton: true,
-  launch() {
+  launch(args = {}) {
     // Use fixed ID to prevent multiple instances
-    const id = 'games-folder';
+    const id = args.windowId || 'games-folder';
+    const restoreState = args.restoreState;
     
-    // Check if Games folder window already exists
-    const existingWin = WindowManager.findWindow(id);
-    if (existingWin) {
-      // If minimized, restore it; otherwise just focus it
-      if (existingWin.style.display === 'none') {
-        WindowManager.restoreWindow(id);
-      } else {
-        WindowManager.focusWindow(id);
+    // Check if Games folder window already exists (only if not restoring)
+    if (!restoreState) {
+      const existingWin = WindowManager.findWindow(id);
+      if (existingWin) {
+        // If minimized, restore it; otherwise just focus it
+        if (existingWin.style.display === 'none') {
+          WindowManager.restoreWindow(id);
+        } else {
+          WindowManager.focusWindow(id);
+        }
+        return;
       }
-      return;
     }
 
     const content = `
@@ -41,6 +44,18 @@ Apps.register({
       width: 500,
       height: 400
     });
+    
+    // Apply restore state if available (wait a bit for window to be rendered)
+    if (restoreState && window.StateManager && window.StateManager.applyWindowState) {
+      setTimeout(() => {
+        window.StateManager.applyWindowState(win, {
+          position: restoreState.position,
+          size: restoreState.size,
+          minimized: restoreState.minimized,
+          focused: false
+        });
+      }, 50);
+    }
 
     // Track parent-child relationships
     if (!window.WindowRelations) {

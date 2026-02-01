@@ -597,7 +597,8 @@ window.Shell = (() => {
         const btn = document.createElement('button');
         btn.innerHTML = `<div style="font-size:1.2rem">${folder.icon || '📁'}</div><div>${folder.name}</div>`;
         btn.addEventListener('click', ()=>{
-          Folders.open(folder.id);
+          // Open through Apps system (for state management)
+          Apps.open(folder.id);
           toggleStart(false);
         });
         startApps.appendChild(btn);
@@ -1463,8 +1464,8 @@ window.Shell = (() => {
                 // Check if folder app is registered
                 const registeredFolderApp = Apps.get(folderApp.id);
                 if (registeredFolderApp) {
-                  // Open as folder app
-                  Folders.open(folderApp.id);
+                  // Open as folder app through Apps system (for state management)
+                  Apps.open(folderApp.id);
                   return;
                 }
               }

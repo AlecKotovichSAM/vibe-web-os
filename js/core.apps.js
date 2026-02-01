@@ -78,7 +78,8 @@ window.Apps = (() => {
     if (!app) throw new Error('App not found: ' + id);
     
     // Check if app is singleton and already has an open window
-    if (app.singleton !== false) {
+    // Skip this check if we're restoring state (args.restoreState exists)
+    if (app.singleton !== false && !args.restoreState) {
       const existingWindow = findAppWindow(id);
       if (existingWindow) {
         const existingId = existingWindow.dataset.winId;

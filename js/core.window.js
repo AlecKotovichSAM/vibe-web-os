@@ -3,13 +3,23 @@ window.WindowManager = (() => {
   let z = 10;
   const layer = () => document.getElementById('window-layer');
 
-  function makeWindow({ id, title, content, width=520, height=360, menu, toolbar, statusBar }) {
+  function makeWindow({ id, title, content, width=520, height=360, menu, toolbar, statusBar, hidden=false }) {
     const win = document.createElement('div');
     win.className = 'window';
     win.style.width = width + 'px';
     win.style.height = height + 'px';
     win.dataset.winId = id;
     win.tabIndex = 0;
+    
+    // Hide window immediately if requested (before appending to DOM to prevent flash)
+    // Also check if this window is in the pending minimized set (for state restoration)
+    if (hidden || (window._pendingMinimizedWindows && window._pendingMinimizedWindows.has(id))) {
+      win.style.display = 'none';
+      // Remove from pending set once we've hidden it
+      if (window._pendingMinimizedWindows) {
+        window._pendingMinimizedWindows.delete(id);
+      }
+    }
 
     // Build menu bar HTML if provided
     let menuBarHTML = '';
@@ -378,8 +388,27 @@ window.WindowManager = (() => {
   function restoreWindow(id) {
     const w = findWindow(id);
     if (!w) return;
-    w.style.display = w.dataset.prevDisplay || 'block';
+    
+    // Use 'flex' as default (matching CSS .window { display: flex })
+    // prevDisplay is set when manually minimizing, but may not exist when restoring from state
+    w.style.display = w.dataset.prevDisplay || 'flex';
     w.dataset.prevDisplay = '';
+    
+    // Force full layout recalculation by ensuring window container is properly sized
+    // When restoring from display:none, flex layouts don't recalculate automatically
+    const winRect = w.getBoundingClientRect();
+    if (winRect.height === 0 || winRect.width === 0) {
+      // Force layout by temporarily setting explicit dimensions
+      const savedWidth = w.style.width;
+      const savedHeight = w.style.height;
+      w.style.width = w.style.width || '520px';
+      w.style.height = w.style.height || '360px';
+      void w.offsetHeight; // Force layout
+      w.style.width = savedWidth;
+      w.style.height = savedHeight;
+      void w.offsetHeight; // Force layout again
+    }
+    
     // Focus the window after restoring
     z += 1;
     w.style.zIndex = z;
@@ -387,6 +416,97 @@ window.WindowManager = (() => {
     w.classList.add('focus');
     Bus.emit('wm:restored', { id });
     Bus.emit('wm:focus', { id });
+    
+    // Force reflow to ensure flex layouts recalculate properly
+    // This ensures titlebar, content area, and scrollbars are all visible
+    void w.offsetHeight;
+    void w.offsetWidth;
+    
+    // Force reflow on all child elements to ensure they're properly laid out
+    const titlebar = w.querySelector('.win-titlebar');
+    if (titlebar) {
+      void titlebar.offsetHeight;
+      void titlebar.offsetWidth;
+    }
+    
+    const contentArea = w.querySelector('.win-content');
+    if (contentArea) {
+      void contentArea.offsetHeight;
+      void contentArea.offsetWidth;
+      // Force scrollbar recalculation
+      void contentArea.scrollHeight;
+      void contentArea.clientHeight;
+    }
+    
+    // Force reflow on any scrollable containers within the window
+    const scrollableElements = w.querySelectorAll('[style*="overflow"]');
+    scrollableElements.forEach(el => {
+      void el.offsetHeight;
+      void el.offsetWidth;
+      void el.scrollHeight;
+      void el.clientHeight;
+    });
+    
+    // Check dimensions after reflow and fix if content area is too small
+    setTimeout(() => {
+      const contentAreaAfter = w.querySelector('.win-content');
+      if (contentAreaAfter) {
+        void w.offsetHeight;
+        void contentAreaAfter.offsetHeight;
+        
+        const rect = contentAreaAfter.getBoundingClientRect();
+        const winRect = w.getBoundingClientRect();
+        
+        // If content area is too small, flex layout didn't recalculate properly
+        if (rect.height < winRect.height * 0.5) {
+          // Force window container layout recalculation
+          void w.offsetHeight;
+          void w.offsetWidth;
+          void w.scrollHeight;
+          void w.clientHeight;
+          void w.clientWidth;
+          
+          // Force content area recalculation
+          void contentAreaAfter.offsetHeight;
+          void contentAreaAfter.offsetWidth;
+          void contentAreaAfter.scrollHeight;
+          void contentAreaAfter.clientHeight;
+          
+          // If still too small, set explicit height as workaround
+          const newRect = contentAreaAfter.getBoundingClientRect();
+          if (newRect.height < winRect.height * 0.5) {
+            // Temporarily hide and show to force full layout recalculation
+            const originalDisplay = w.style.display;
+            w.style.display = 'none';
+            void w.offsetHeight;
+            w.style.display = originalDisplay;
+            void w.offsetHeight;
+            
+            // Calculate expected content height
+            const titlebar = w.querySelector('.win-titlebar');
+            const menuBar = w.querySelector('.win-menubar');
+            const toolbar = w.querySelector('.win-toolbar');
+            const statusBar = w.querySelector('.win-statusbar');
+            const titlebarHeight = titlebar ? titlebar.offsetHeight : 36;
+            const menuBarHeight = menuBar ? menuBar.offsetHeight : 0;
+            const toolbarHeight = toolbar ? toolbar.offsetHeight : 0;
+            const statusBarHeight = statusBar ? statusBar.offsetHeight : 0;
+            const padding = 20; // 10px top + 10px bottom
+            const expectedContentHeight = winRect.height - titlebarHeight - menuBarHeight - toolbarHeight - statusBarHeight - padding;
+            
+            // Set explicit height as workaround for flex layout issue
+            if (expectedContentHeight > 0 && newRect.height < expectedContentHeight * 0.8) {
+              contentAreaAfter.style.height = expectedContentHeight + 'px';
+              void contentAreaAfter.offsetHeight;
+            }
+          }
+        }
+      }
+      
+      // Trigger resize event to help content recalculate
+      const resizeEvent = new Event('resize');
+      w.dispatchEvent(resizeEvent);
+    }, 100);
   }
 
   function findWindow(id) {

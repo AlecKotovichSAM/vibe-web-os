@@ -91,8 +91,8 @@ window.Folders = (() => {
         description: `Custom folder: ${folder.name}`,
         category: '',
         singleton: true,
-        launch() {
-          return openFolder(folder.id);
+        launch(args = {}) {
+          return openFolder(folder.id, args);
         }
       });
     } else {
@@ -104,26 +104,31 @@ window.Folders = (() => {
         description: `Custom folder: ${folder.name}`,
         category: '',
         singleton: true,
-        launch() {
-          return openFolder(folder.id);
+        launch(args = {}) {
+          return openFolder(folder.id, args);
         }
       });
     }
   }
 
-  function openFolder(id) {
+  function openFolder(id, args = {}) {
     const folder = get(id);
     if (!folder) throw new Error('Folder not found: ' + id);
+    
+    const restoreState = args.restoreState;
+    const windowId = args.windowId || id;
 
-    // Check if folder window already exists
-    const existingWin = WindowManager.findWindow(id);
-    if (existingWin) {
-      if (existingWin.style.display === 'none') {
-        WindowManager.restoreWindow(id);
-      } else {
-        WindowManager.focusWindow(id);
+    // Check if folder window already exists (only if not restoring)
+    if (!restoreState) {
+      const existingWin = WindowManager.findWindow(id);
+      if (existingWin) {
+        if (existingWin.style.display === 'none') {
+          WindowManager.restoreWindow(id);
+        } else {
+          WindowManager.focusWindow(id);
+        }
+        return;
       }
-      return;
     }
 
     // Get apps for this folder
@@ -142,14 +147,26 @@ window.Folders = (() => {
       `;
 
       const win = WindowManager.makeWindow({
-        id,
+        id: windowId,
         title: folder.name,
         content,
         width: 400,
         height: 300
       });
+      
+      // Apply restore state if available (wait a bit for window to be rendered)
+      if (restoreState && window.StateManager && window.StateManager.applyWindowState) {
+        setTimeout(() => {
+          window.StateManager.applyWindowState(win, {
+            position: restoreState.position,
+            size: restoreState.size,
+            minimized: restoreState.minimized,
+            focused: false
+          });
+        }, 50);
+      }
 
-      Bus.emit('app:opened', { id, title: folder.name, icon: folder.icon });
+      Bus.emit('app:opened', { id: windowId, title: folder.name, icon: folder.icon, appId: folder.id });
       return;
     }
 
@@ -180,12 +197,22 @@ window.Folders = (() => {
     `;
 
     const win = WindowManager.makeWindow({
-      id,
+      id: windowId,
       title: folder.name,
       content,
       width: 500,
       height: 400
     });
+    
+    // Apply restore state if available
+    if (restoreState && window.StateManager) {
+      window.StateManager.applyWindowState(win, {
+        position: restoreState.position,
+        size: restoreState.size,
+        minimized: restoreState.minimized,
+        focused: false
+      });
+    }
 
     // Track parent-child relationships
     if (!window.WindowRelations) {
@@ -344,7 +371,7 @@ window.Folders = (() => {
       });
     });
 
-    Bus.emit('app:opened', { id, title: folder.name, icon: folder.icon });
+    Bus.emit('app:opened', { id: windowId, title: folder.name, icon: folder.icon, appId: folder.id });
   }
 
   // Initialize: Register all existing custom folders as apps

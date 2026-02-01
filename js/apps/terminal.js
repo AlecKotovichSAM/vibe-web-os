@@ -1,4 +1,155 @@
 // Terminal / Command Prompt App
+// Register state handlers for Terminal (once, when module loads)
+(function registerTerminalStateHandlers() {
+  if (window.StateManager) {
+    window.StateManager.registerStateSaver('terminal', (winId, winEl, appData) => {
+      // Find the terminal input and output for this specific window
+      const terminalInput = winEl.querySelector('#terminal-input');
+      const terminalOutput = winEl.querySelector('#terminal-output');
+      if (!terminalInput) return null;
+      
+      // Get command history from window dataset (stored by Terminal app)
+      const commandHistory = winEl.dataset.commandHistory ? JSON.parse(winEl.dataset.commandHistory) : [];
+      const currentPath = winEl.dataset.currentPath || FS.root;
+      
+      // Get output content (last N lines to avoid storing too much)
+      // Save outerHTML to preserve complete structure including element itself
+      // Use a special delimiter that won't appear in HTML
+      let outputContent = '';
+      if (terminalOutput) {
+        const allLines = Array.from(terminalOutput.children);
+        const lines = allLines.map(line => {
+          // Escape the delimiter if it somehow appears in the HTML
+          return line.outerHTML.replace(/\x01/g, '');
+        });
+        // Store last 100 lines of output (but keep all if less than 100)
+        const recentLines = lines.length > 100 ? lines.slice(-100) : lines;
+        // Use a delimiter that won't appear in HTML: \x01 (start of heading)
+        outputContent = recentLines.join('\x01');
+      }
+      
+      return {
+        commandHistory: commandHistory,
+        historyIndex: winEl.dataset.historyIndex ? parseInt(winEl.dataset.historyIndex) : -1,
+        currentPath: currentPath,
+        outputContent: outputContent
+      };
+    });
+    
+    window.StateManager.registerStateRestorer('terminal', async (winId, winEl, appState, extraData) => {
+      // Wait a bit to ensure window is fully initialized
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      const terminalInput = winEl.querySelector('#terminal-input');
+      const terminalOutput = winEl.querySelector('#terminal-output');
+      const promptPathSpan = winEl.querySelector('#terminal-prompt-path');
+      
+      if (!terminalInput || !terminalOutput) {
+        return;
+      }
+      
+      if (appState) {
+        // Restore command history - update dataset which will be read by handlers
+        if (appState.commandHistory && Array.isArray(appState.commandHistory)) {
+          winEl.dataset.commandHistory = JSON.stringify(appState.commandHistory);
+          winEl.dataset.historyIndex = (appState.historyIndex !== undefined ? appState.historyIndex : -1).toString();
+        }
+        
+        // Restore current path
+        if (appState.currentPath) {
+          winEl.dataset.currentPath = appState.currentPath;
+          if (promptPathSpan) {
+            promptPathSpan.textContent = appState.currentPath;
+          }
+        }
+        
+        // Restore output content (if available)
+        if (appState.outputContent) {
+          // Clear existing output and restore saved output
+          terminalOutput.innerHTML = '';
+          // Try new format first (with \x01 delimiter), fallback to old format (\n)
+          let lines;
+          if (appState.outputContent.includes('\x01')) {
+            lines = appState.outputContent.split('\x01');
+          } else {
+            // Old format - split by \n (backward compatibility)
+            lines = appState.outputContent.split('\n');
+          }
+          
+          // Restore each line
+          lines.forEach((line) => {
+            // Process non-empty lines
+            if (line && line.length > 0) {
+              try {
+                // Create a temporary container to parse the HTML
+                const temp = document.createElement('div');
+                temp.innerHTML = line;
+                // Get the first child (the actual element we saved)
+                const restoredEl = temp.firstElementChild;
+                if (restoredEl) {
+                  // Clone and append the restored element (deep clone to preserve all children)
+                  terminalOutput.appendChild(restoredEl.cloneNode(true));
+                } else {
+                  // If no element found but line has content, might be old text format
+                  // Create a simple output div
+                  const trimmedLine = line.trim();
+                  if (trimmedLine) {
+                    const lineEl = document.createElement('div');
+                    lineEl.style.color = 'var(--text)';
+                    lineEl.style.marginBottom = '4px';
+                    lineEl.style.fontFamily = "'Courier New', monospace";
+                    lineEl.style.fontSize = '14px';
+                    lineEl.style.whiteSpace = 'pre-wrap';
+                    lineEl.style.wordBreak = 'break-word';
+                    lineEl.textContent = trimmedLine;
+                    terminalOutput.appendChild(lineEl);
+                  }
+                }
+              } catch (e) {
+                // If parsing fails, try to create a simple text output
+                try {
+                  const trimmedLine = line.trim();
+                  if (trimmedLine) {
+                    const lineEl = document.createElement('div');
+                    lineEl.style.color = 'var(--text)';
+                    lineEl.style.marginBottom = '4px';
+                    lineEl.style.fontFamily = "'Courier New', monospace";
+                    lineEl.style.fontSize = '14px';
+                    lineEl.style.whiteSpace = 'pre-wrap';
+                    lineEl.style.wordBreak = 'break-word';
+                    // Try to extract text from HTML if present
+                    lineEl.textContent = trimmedLine.replace(/<[^>]*>/g, '').trim();
+                    if (lineEl.textContent) {
+                      terminalOutput.appendChild(lineEl);
+                    }
+                  }
+                } catch (e2) {
+                  // Skip this line if we can't restore it
+                }
+              }
+            }
+          });
+          
+          terminalOutput.scrollTop = terminalOutput.scrollHeight;
+        }
+        
+        // Trigger a custom event to notify Terminal that history was restored
+        // This allows the launch function to sync its internal variables if needed
+        winEl.dispatchEvent(new CustomEvent('terminal:historyRestored', {
+          detail: {
+            commandHistory: appState.commandHistory,
+            historyIndex: appState.historyIndex
+          }
+        }));
+      }
+    });
+  } else {
+    // Retry if StateManager not ready yet
+    setTimeout(registerTerminalStateHandlers, 100);
+  }
+})();
+
+// Register Terminal app first, then state handlers will be registered when StateManager is ready
 Apps.register({
   id: 'terminal',
   name: 'Terminal',
@@ -7,12 +158,23 @@ Apps.register({
   description: 'Command-line interface for executing commands.',
   descriptionKey: 'terminal.description',
   singleton: false,
-  launch() {
-    const id = 'terminal-' + Date.now();
+  launch(args = {}) {
+    // Check if restoring from saved state
+    const restoreState = args.restoreState || null;
+    // Use provided windowId if restoring, otherwise generate new one
+    const id = args.windowId || 'terminal-' + Date.now();
     
-    let currentPath = FS.root;
-    let commandHistory = [];
-    let historyIndex = -1;
+    // Determine initial values from restore state or defaults
+    let currentPath, commandHistory, historyIndex;
+    if (restoreState && restoreState.appState) {
+      currentPath = restoreState.appState.currentPath || FS.root;
+      commandHistory = restoreState.appState.commandHistory || [];
+      historyIndex = restoreState.appState.historyIndex !== undefined ? restoreState.appState.historyIndex : -1;
+    } else {
+      currentPath = FS.root;
+      commandHistory = [];
+      historyIndex = -1;
+    }
     
     const content = `
       <div style="display:flex; flex-direction:column; height:100%; background:var(--bg);">
@@ -141,8 +303,10 @@ Apps.register({
         return;
       }
       
+      // Update both local variable and dataset
       commandHistory.push(cmd);
       historyIndex = commandHistory.length;
+      syncHistoryToDataset();
       
       addPrompt();
       
@@ -315,9 +479,16 @@ Apps.register({
               }
               currentPath = newPath;
             }
+            // Store current path in window dataset for state saving
+            win.dataset.currentPath = currentPath;
             // Update prompt display in input area
             const promptPathSpan = win.querySelector('#terminal-prompt-path');
             if (promptPathSpan) promptPathSpan.textContent = currentPath;
+            
+            // Auto-save state when path changes
+            if (window.StateManager) {
+              window.StateManager.saveNow();
+            }
             break;
             
           case 'pwd':
@@ -732,6 +903,11 @@ Apps.register({
         addOutput(`${I18n.t('terminal.error')}: ${e.message}`, 'var(--danger)');
       }
       
+      // Auto-save state after command execution completes (so output is included)
+      if (window.StateManager) {
+        window.StateManager.saveNow();
+      }
+      
       input.value = '';
     }
     
@@ -741,14 +917,19 @@ Apps.register({
         input.value = ''; // Clear input after executing command
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
+        // Sync from dataset in case restorer updated it
+        syncHistoryFromDataset();
         if (commandHistory.length > 0) {
           if (historyIndex > 0) {
             historyIndex--;
           }
           input.value = commandHistory[historyIndex] || '';
+          syncHistoryToDataset();
         }
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
+        // Sync from dataset in case restorer updated it
+        syncHistoryFromDataset();
         if (historyIndex < commandHistory.length - 1) {
           historyIndex++;
           input.value = commandHistory[historyIndex] || '';
@@ -756,6 +937,7 @@ Apps.register({
           historyIndex = commandHistory.length;
           input.value = '';
         }
+        syncHistoryToDataset();
       }
     });
     
@@ -781,9 +963,48 @@ Apps.register({
       updateUIOnLocaleChange();
     });
     
+    // Helper functions to sync dataset with internal variables
+    function syncHistoryToDataset() {
+      win.dataset.commandHistory = JSON.stringify(commandHistory);
+      win.dataset.historyIndex = historyIndex.toString();
+    }
+    
+    function syncHistoryFromDataset() {
+      if (win.dataset.commandHistory) {
+        commandHistory = JSON.parse(win.dataset.commandHistory);
+      }
+      if (win.dataset.historyIndex) {
+        historyIndex = parseInt(win.dataset.historyIndex);
+      }
+    }
+    
+    // Store initial state in dataset
+    syncHistoryToDataset();
+    win.dataset.currentPath = currentPath;
+    
+    // Listen for history restoration event from restorer
+    win.addEventListener('terminal:historyRestored', (e) => {
+      if (e.detail) {
+        commandHistory = e.detail.commandHistory || [];
+        historyIndex = e.detail.historyIndex !== undefined ? e.detail.historyIndex : -1;
+        syncHistoryToDataset();
+      }
+    });
+    
+    // Auto-save state on window blur and close
+    win.addEventListener('blur', () => {
+      if (window.StateManager) {
+        window.StateManager.saveNow();
+      }
+    });
+    
     // Cleanup on window close
     Bus.once('wm:closed', ({ id: closedId }) => {
       if (closedId === id) {
+        // Save state one last time before closing
+        if (window.StateManager) {
+          window.StateManager.saveNow();
+        }
         unsubscribeLocale();
       }
     });

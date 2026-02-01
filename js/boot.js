@@ -24,6 +24,25 @@
     } else {
       boot.remove();
       Shell.initDesktop();
+      
+      // Restore saved window/app state after desktop initialization
+      // Wait a bit to ensure all apps are registered and can set up state handlers
+      setTimeout(async () => {
+        if (window.StateManager) {
+          try {
+            const savedState = window.StateManager.load();
+            if (savedState && savedState.windows && savedState.windows.length > 0) {
+              await window.StateManager.restore(savedState);
+            } else {
+            }
+          } catch (e) {
+            console.error('[StateManager] Error during restore:', e);
+          }
+        } else {
+          console.warn('[StateManager] StateManager not available');
+        }
+      }, 500); // Increased delay to ensure everything is ready
+      
       BSOD.startRandomSchedule(600, 1200); // 10-20 minutes
     }
   }

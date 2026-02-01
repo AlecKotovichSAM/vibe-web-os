@@ -4,10 +4,16 @@
 
 **Before completing any task:**
 1. Make code changes
-2. **Run `npm test` to verify all tests pass**
-3. Check console output for test results
-4. Fix any failing tests before considering the task complete
-5. If tests pass, proceed with commit/push
+2. **MANDATORY: If fixing a bug, add a test for the bugfix** (see Bugfix Testing Policy below)
+3. **Run `npm test` to verify all tests pass**
+4. Check console output for test results
+5. Fix any failing tests before considering the task complete
+6. If tests pass, proceed with commit/push
+
+**CRITICAL RULE: Every bugfix MUST include a test. No exceptions.**
+- If you fix a bug without adding a test, the task is NOT complete
+- The test must verify the bug is fixed AND doesn't break existing behavior
+- See "Bugfix Testing Policy" section below for details
 
 **Test Command:**
 ```bash
@@ -58,8 +64,9 @@ node tests/run-browser-tests.js
 - The test runner outputs a summary with Total/Passed/Failed counts and lists all failed tests
 
 **Test Coverage:**
-- Current: 157 tests covering core modules
+- Current: 225+ tests covering core modules
 - See `tests/COVERAGE.md` for detailed coverage report
+- **Every bugfix adds at least one new test** - test count should increase with each bugfix
 
 **Manual Testing:**
 - Test apps by clicking desktop icons or using the start menu
@@ -315,41 +322,70 @@ BSOD.startRandomSchedule(60, 300); // 1-5 minutes
 
 ### Bugfix Testing Policy
 
-**REQUIRED: Every bugfix MUST include a test.**
+**🚨 MANDATORY: Every bugfix MUST include a test. This is NON-NEGOTIABLE.**
 
-When fixing a bug:
-1. **Write a test first** that reproduces the bug (it should fail)
-2. **Fix the bug** so the test passes
-3. **Run `npm test` to ensure all existing tests still pass**
+**Workflow when fixing a bug:**
+1. **Identify the bug** - understand what's broken
+2. **Write a test FIRST** that reproduces the bug (it should fail initially)
+   - Test name should clearly describe the bug: `it('should fix [specific bug description]', ...)`
+   - Test should be in the appropriate `tests/*.browser.test.js` file
+3. **Fix the bug** so the test passes
+4. **Run `npm test`** to ensure:
+   - The new test passes (bug is fixed)
+   - All existing tests still pass (no regressions)
+5. **Verify test count increased** - if test count didn't increase, the test wasn't added properly
 
 **Test Requirements:**
-- Test should be in the appropriate `tests/*.browser.test.js` file
-- Test should clearly describe the bug being fixed
-- Test should verify both the bug is fixed AND the fix doesn't break existing behavior
-- If the bug affects multiple modules, add tests to all affected modules
+- ✅ Test must be in the appropriate `tests/*.browser.test.js` file
+- ✅ Test name must clearly describe the bug being fixed
+- ✅ Test must verify the bug is fixed (positive case)
+- ✅ Test should verify the fix doesn't break existing behavior (regression prevention)
+- ✅ If the bug affects multiple modules, add tests to all affected modules
+- ✅ Test must be isolated and order-independent (use `beforeEach` for setup)
 
 **Example:**
 ```javascript
-// Before fixing: Test fails
-it('should handle empty folder name gracefully', () => {
-  expect(() => {
-    Folders.create({ name: '' });
-  }).toThrow('Folder name is required');
+// Test added for bugfix
+it('should restore window position correctly (not 0,0) when window is freshly opened', async () => {
+  // Test that verifies the bug is fixed
+  const savedState = {
+    windows: [{
+      id: 'test-window',
+      appId: 'test-app',
+      position: { left: 250, top: 300 }, // Not 0,0
+      size: { width: 600, height: 400 },
+      minimized: false,
+      focused: false
+    }]
+  };
+  
+  await StateManager.restore(savedState);
+  await new Promise(resolve => setTimeout(resolve, 200));
+  
+  const restoredWin = document.querySelector('.window[data-win-id="test-window"]');
+  expect(restoredWin.style.left).toBe('250px');
+  expect(restoredWin.style.top).toBe('300px');
+  expect(restoredWin.style.left).not.toBe('0px'); // Bug fix verification
 });
-
-// After fixing: Test passes
 ```
 
-**Exceptions:**
-- UI-only changes (pure CSS/styling) may not require tests
+**Exceptions (rare):**
+- UI-only changes (pure CSS/styling with no logic) may not require tests
 - Documentation-only changes don't require tests
 - When in doubt, add a test - it's better to have too many tests than too few
 
-**Test Isolation:**
-- Tests must be isolated and order-independent
-- Use `beforeEach` to set up clean state
-- Clear localStorage, reset mocks, and clean up DOM between tests
-- Never rely on test execution order
+**Enforcement:**
+- Before marking any bugfix task as complete, verify:
+  1. ✅ Test file was created/modified
+  2. ✅ Test name clearly describes the bug
+  3. ✅ Test passes (`npm test` shows it in the results)
+  4. ✅ Test count increased (or at least one new test exists)
+  5. ✅ All existing tests still pass
+
+**If you forget to add a test:**
+- The task is NOT complete
+- Go back and add the test immediately
+- Do not proceed until the test is added and passing
 
 ### Internationalization (i18n) Workflow
 

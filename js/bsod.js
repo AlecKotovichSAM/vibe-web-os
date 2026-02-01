@@ -101,7 +101,6 @@ window.BSOD = (() => {
     }
     
     // Log BSOD trigger info
-    console.log(`[BSOD] Triggered at ${currentTime} | Time since last: ${timeSinceLast}`);
     
     // Update last trigger time
     lastTriggerTime = now;

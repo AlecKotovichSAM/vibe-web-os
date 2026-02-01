@@ -1,13 +1,152 @@
+// Register state handlers for Files app (once, when module loads)
+(function registerFilesStateHandlers() {
+  if (window.StateManager) {
+    // Register state saver for Files app windows
+    window.StateManager.registerStateSaver('files', (winId, winEl, appData) => {
+      // Handle Viewer windows (ID starts with 'viewer-')
+      if (winId && winId.startsWith('viewer-')) {
+        // Get file info from windowAppMap extraData
+        const fileName = appData.extraData?.name || 'unknown';
+        // Try multiple ways to get filePath (dataset might not work reliably)
+        const filePath = winEl.getAttribute('data-file-path') || 
+                         winEl.dataset?.filePath || 
+                         appData.extraData?.filePath || 
+                         null;
+        
+        // Try to get content from the window
+        const img = winEl.querySelector('img');
+        const pre = winEl.querySelector('pre');
+        
+        let content = null;
+        let isImage = false;
+        
+        if (img && img.src) {
+          // Image viewer - get the src (could be data URL or file path)
+          content = img.src;
+          isImage = true;
+          
+          // If it's a data URL, we have the content
+          // If it's a file path, we need to read it from FS
+          if (!content.startsWith('data:') && filePath && window.FS) {
+            try {
+              content = window.FS.read(filePath, 'file');
+            } catch (e) {
+              // Fall back to using the src as-is (might be a relative path)
+            }
+          }
+        } else if (pre) {
+          // Text viewer - get text content
+          content = pre.textContent || pre.innerText || '';
+          isImage = false;
+          
+          // If we have a file path, try to read fresh content from FS
+          // (in case file was modified)
+          if (filePath && window.FS) {
+            try {
+              content = window.FS.read(filePath, 'file');
+            } catch (e) {
+              // Fall back to displayed content
+            }
+          }
+        }
+        
+        if (content === null) {
+          return null;
+        }
+        
+        return {
+          filePath: filePath,
+          fileName: fileName,
+          content: content,
+          isImage: isImage
+        };
+      }
+      
+      // Handle Files app main window (not Viewer)
+      // Get current directory from path input
+      const pathInput = winEl.querySelector('#path');
+      const currentPath = pathInput ? pathInput.value || FS.root : FS.root;
+      
+      // Get view mode from view toggle button
+      const viewToggleBtn = winEl.querySelector('#btn-view-toggle');
+      let viewMode = 'list'; // default
+      if (viewToggleBtn) {
+        const viewModeData = viewToggleBtn.getAttribute('data-view');
+        viewMode = viewModeData === 'grid' ? 'grid' : 'list';
+      }
+      
+      return {
+        currentPath: currentPath,
+        viewMode: viewMode
+      };
+    });
+    
+    // Register state restorer for Files app
+    window.StateManager.registerStateRestorer('files', async (winId, winEl, appState, extraData) => {
+      // Only restore Files app main window (not Viewer windows)
+      if (winId && winId.startsWith('viewer-')) {
+        return; // Viewer windows are handled separately
+      }
+      
+      if (!appState || !appState.currentPath) {
+        return;
+      }
+      
+      // Wait a bit for window to be fully initialized
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Navigate to saved directory
+      const pathInput = winEl.querySelector('#path');
+      const listDiv = winEl.querySelector('#list');
+      
+      if (!pathInput || !listDiv) {
+        return;
+      }
+      
+      // Set the path and trigger navigation
+      try {
+        // Verify path exists
+        const items = FS.ls(appState.currentPath);
+        
+        // Update path input
+        pathInput.value = appState.currentPath;
+        
+        // Trigger render by emitting navigation event or calling render directly
+        // We'll need to access the render function - let's use a custom event
+        Bus.emit('files:navigate', { path: appState.currentPath, winId: winId });
+        
+        // Restore view mode if different
+        if (appState.viewMode) {
+          const viewToggleBtn = winEl.querySelector('#btn-view-toggle');
+          if (viewToggleBtn) {
+            const currentView = viewToggleBtn.getAttribute('data-view');
+            if (currentView !== appState.viewMode) {
+              viewToggleBtn.click(); // Toggle to the saved view mode
+            }
+          }
+        }
+      } catch (e) {
+        // Path doesn't exist, fall back to root
+        console.warn(`[Files] Could not restore path ${appState.currentPath}:`, e);
+      }
+    });
+  } else {
+    // StateManager not ready yet, try again after a short delay
+    setTimeout(registerFilesStateHandlers, 100);
+  }
+})();
+
 Apps.register({
-  id: 'files',
-  name: 'Files',
-  nameKey: 'files.title',
-  icon: '📁',
-  description: 'Browse and manage your virtual file system. Create folders, files, and organize your documents.',
-  descriptionKey: 'files.description',
-  singleton: true,
-  launch() {
-    const id = 'files-' + Date.now();
+    id: 'files',
+    name: 'Files',
+    nameKey: 'files.title',
+    icon: '📁',
+    description: 'Browse and manage your virtual file system. Create folders, files, and organize your documents.',
+    descriptionKey: 'files.description',
+    singleton: true,
+    launch(args = {}) {
+    const id = args.windowId || 'files-' + Date.now();
+    const restoreState = args.restoreState;
 
     const content = `
       <div style="display:flex; gap:8px; margin-bottom:8px; align-items:center; flex-wrap:wrap;">
@@ -25,8 +164,17 @@ Apps.register({
     const pathInput = win.querySelector('#path');
     const listDiv = win.querySelector('#list');
 
-    let cwd = FS.root;
-    let viewMode = 'list'; // 'grid' or 'list' - default to list view
+    // Initialize from restoreState if available
+    let cwd = restoreState?.appState?.currentPath || FS.root;
+    let viewMode = restoreState?.appState?.viewMode || 'list'; // 'grid' or 'list' - default to list view
+    
+    // Function to save Files app state
+    function saveFilesState() {
+      if (window.StateManager && window.StateManager.saveNow) {
+        window.StateManager.saveNow();
+      }
+    }
+    
     let renamingPath = null; // Track which item is being renamed
     let renamingType = null; // Track type of item being renamed
     let selectedPath = null; // Track selected file/folder path for F2 and context menu
@@ -369,6 +517,8 @@ Apps.register({
       if (type === 'dir') {
         cwd = path;
         render();
+        // Save state after navigation
+        setTimeout(saveFilesState, 100);
       } else if (type === 'file') {
         const fileName = path.split('/').pop();
         const id2 = 'viewer-' + Date.now();
@@ -392,13 +542,13 @@ Apps.register({
           viewerWidth = 800;
           viewerHeight = 600;
           viewerContent = `
-            <div style="display:flex; justify-content:center; align-items:center; height:100%; background:var(--bg); overflow:auto;">
+            <div style="display:flex; justify-content:center; align-items:center; flex:1; width:100%; min-height:100%; background:var(--bg); overflow:auto;">
               <img src="${content}" style="max-width:100%; max-height:100%; object-fit:contain;" alt="${fileName}" />
             </div>
           `;
         } else {
           // Display as text
-          viewerContent = `<pre style="white-space:pre-wrap; margin:0; padding:10px; color:var(--text);">${content.replace(/[&<>]/g, (m)=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m]))}</pre>`;
+          viewerContent = `<pre style="white-space:pre-wrap; margin:0; padding:10px; color:var(--text); flex:1; width:100%; min-height:100%;">${content.replace(/[&<>]/g, (m)=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m]))}</pre>`;
         }
 
         const win2 = WindowManager.makeWindow({
@@ -406,6 +556,10 @@ Apps.register({
           content: viewerContent,
           width: viewerWidth, height: viewerHeight
         });
+        
+        // Store file path on window element for state saving (use both methods for reliability)
+        win2.dataset.filePath = path;
+        win2.setAttribute('data-file-path', path);
         
         // Function to update viewer window title on locale change
         function updateViewerTitle() {
@@ -441,7 +595,7 @@ Apps.register({
           icon: viewerIcon,
           appId: 'files',
           titleKey: 'files.viewer',
-          extraData: { name: fileName }
+          extraData: { name: fileName, filePath: path }
         });
       }
     }
@@ -702,7 +856,10 @@ Apps.register({
 
     win.querySelector('#btn-up').addEventListener('click', ()=>{
       if (cwd === FS.root) return;
-      cwd = cwd.split('/').slice(0,-1).join('/') || FS.root; render();
+      cwd = cwd.split('/').slice(0,-1).join('/') || FS.root;
+      render();
+      // Save state after navigation
+      setTimeout(saveFilesState, 100);
     });
 
     win.querySelector('#btn-mkdir').addEventListener('click', async ()=>{
@@ -740,6 +897,8 @@ Apps.register({
     });
 
     win.querySelector('#btn-view-toggle').addEventListener('click', ()=>{
+      // Save state after view mode change
+      setTimeout(saveFilesState, 100);
       viewMode = viewMode === 'grid' ? 'list' : 'grid';
       saveCurrentViewMode(viewMode);
       updateViewToggleButton();
@@ -767,14 +926,20 @@ Apps.register({
       updateUIOnLocaleChange();
     });
     
-    // Listen for navigation events (e.g., from desktop items)
-    const unsubscribeNavigate = Bus.on('files:navigate', ({ path }) => {
+    // Listen for navigation events (e.g., from desktop items or state restoration)
+    const unsubscribeNavigate = Bus.on('files:navigate', ({ path, winId: navWinId }) => {
+      // Only handle navigation for this window instance
+      if (navWinId && navWinId !== id) {
+        return;
+      }
       if (path) {
         try {
           const target = FS.find(path);
           if (target && target.type === 'dir') {
             cwd = path;
             render();
+            // Save state after navigation
+            setTimeout(saveFilesState, 100);
           }
         } catch (e) {
           console.error('Failed to navigate:', e);
@@ -788,10 +953,27 @@ Apps.register({
         unsubscribeLocale();
         unsubscribeNavigate();
         document.removeEventListener('click', handleContextMenuClick);
+        // Save state before closing
+        saveFilesState();
       }
     });
+    
+    // Save state on window blur
+    win.addEventListener('blur', () => {
+      setTimeout(saveFilesState, 100);
+    });
 
+    // Initial render
     render();
+    
+    // If restoring, navigate to saved directory after initial render
+    if (restoreState && restoreState.appState && restoreState.appState.currentPath && restoreState.appState.currentPath !== FS.root) {
+      // Wait a bit for window to be fully initialized, then navigate
+      setTimeout(() => {
+        Bus.emit('files:navigate', { path: restoreState.appState.currentPath, winId: id });
+      }, 200);
+    }
+    
     Bus.emit('app:opened', { id, title: I18n.t('files.title'), icon:'📁', appId: 'files', titleKey: 'files.title' });
   }
 });

@@ -592,11 +592,13 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
 }
 
 .win-content { 
-  flex:1; 
+  flex:1 1 0%; 
   padding:10px; 
   overflow:auto; 
   background:var(--bg);
   min-height:0; /* Allow content to shrink when menu/toolbar/statusbar are present */
+  display:flex; /* Enable flexbox for direct children */
+  flex-direction:column; /* Stack children vertically */
 }
 .win-content h3 {
   color: var(--text);

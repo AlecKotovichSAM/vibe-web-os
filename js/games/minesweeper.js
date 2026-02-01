@@ -1,3 +1,24 @@
+// Register state handlers for Minesweeper (once, when module loads)
+(function registerMinesweeperStateHandlers() {
+  if (window.StateManager) {
+    // Register state saver for Minesweeper
+    window.StateManager.registerStateSaver('minesweeper', (winId, winEl, appData) => {
+      // Get game state from window element's dataset (set by saveGameState)
+      const stateData = winEl.dataset.minesweeperState;
+      if (!stateData) return null;
+      
+      try {
+        return JSON.parse(stateData);
+      } catch (e) {
+        return null;
+      }
+    });
+  } else {
+    // StateManager not ready yet, try again after a short delay
+    setTimeout(registerMinesweeperStateHandlers, 100);
+  }
+})();
+
 Apps.register({
   id: 'minesweeper',
   name: 'Minesweeper',
@@ -7,8 +28,9 @@ Apps.register({
   descriptionKey: 'games.minesweeper.description',
   category: 'games',
   singleton: true,
-  launch() {
-    const id = 'minesweeper-' + Date.now();
+  launch(args = {}) {
+    const id = args.windowId || 'minesweeper-' + Date.now();
+    const restoreState = args.restoreState;
 
     const DIFFICULTIES = {
       beginner: { rows: 9, cols: 9, mines: 10 },
@@ -16,16 +38,17 @@ Apps.register({
       expert: { rows: 16, cols: 30, mines: 99 }
     };
 
-    let currentDifficulty = 'beginner';
-    let grid = [];
-    let revealed = [];
-    let flagged = [];
-    let gameStarted = false;
-    let gameOver = false;
+    // Initialize state from restoreState if available
+    let currentDifficulty = restoreState?.appState?.currentDifficulty || 'beginner';
+    let grid = restoreState?.appState?.grid || [];
+    let revealed = restoreState?.appState?.revealed || [];
+    let flagged = restoreState?.appState?.flagged || [];
+    let gameStarted = restoreState?.appState?.gameStarted || false;
+    let gameOver = restoreState?.appState?.gameOver || false;
     let timer = null;
-    let seconds = 0;
-    let minesRemaining = 0;
-    let firstClick = true;
+    let seconds = restoreState?.appState?.seconds || 0;
+    let minesRemaining = restoreState?.appState?.minesRemaining || 0;
+    let firstClick = restoreState?.appState?.firstClick !== undefined ? restoreState.appState.firstClick : true;
 
     function createContent() {
       const difficulty = DIFFICULTIES[currentDifficulty];
@@ -136,6 +159,10 @@ Apps.register({
         }
         seconds++;
         updateTimer();
+        // Save state every 5 seconds during gameplay
+        if (seconds % 5 === 0) {
+          saveGameState();
+        }
       }, 1000);
     }
 
@@ -204,6 +231,7 @@ Apps.register({
 
       if (grid[row][col] === -1) {
         gameOverLose();
+        saveGameState();
         return;
       }
 
@@ -215,6 +243,7 @@ Apps.register({
 
       renderGrid();
       updateUI();
+      saveGameState();
     }
 
     function handleRightClick(row, col, e) {
@@ -228,6 +257,7 @@ Apps.register({
 
       renderGrid();
       updateUI();
+      saveGameState();
     }
 
     function reveal(row, col) {
@@ -270,6 +300,7 @@ Apps.register({
       }
 
       renderGrid();
+      saveGameState();
     }
 
     function gameOverWin() {
@@ -296,6 +327,7 @@ Apps.register({
       minesRemaining = 0;
       updateUI();
       renderGrid();
+      saveGameState();
     }
 
     function checkWin() {
@@ -316,6 +348,7 @@ Apps.register({
 
     function resetGame() {
       initGame(currentDifficulty);
+      saveGameState();
     }
 
     function changeDifficulty(newDifficulty) {
@@ -328,6 +361,7 @@ Apps.register({
       }
 
       initGame(newDifficulty);
+      saveGameState();
     }
 
     win.querySelector('#minesweeper-difficulty').addEventListener('change', (e) => {
@@ -364,7 +398,93 @@ Apps.register({
       }
     });
 
-    initGame(currentDifficulty);
+    // Function to save game state
+    function saveGameState() {
+      const state = {
+        currentDifficulty,
+        grid: grid.map(row => [...row]), // Deep copy
+        revealed: revealed.map(row => [...row]), // Deep copy
+        flagged: flagged.map(row => [...row]), // Deep copy
+        gameStarted,
+        gameOver,
+        seconds,
+        minesRemaining,
+        firstClick
+      };
+      
+      // Store in window dataset for state saver
+      win.dataset.minesweeperState = JSON.stringify(state);
+      
+      // Trigger state save
+      if (window.StateManager && window.StateManager.saveNow) {
+        window.StateManager.saveNow();
+      }
+    }
+    
+    // Initialize game - if restoring, don't reset, just render
+    if (restoreState && restoreState.appState && restoreState.appState.grid && restoreState.appState.grid.length > 0) {
+      // Restore game state - render grid with current state
+      renderGrid();
+      updateUI();
+      
+      // Restart timer if game was in progress
+      if (gameStarted && !gameOver && timer === null) {
+        startTimer();
+      }
+      
+      // Update status emoji based on game state
+      const statusEl = win.querySelector('#minesweeper-status');
+      if (statusEl) {
+        if (gameOver) {
+          // Check if won or lost by checking if all mines are flagged
+          const difficulty = DIFFICULTIES[currentDifficulty];
+          let allMinesFlagged = true;
+          for (let r = 0; r < difficulty.rows; r++) {
+            for (let c = 0; c < difficulty.cols; c++) {
+              if (grid[r][c] === -1 && !flagged[r][c]) {
+                allMinesFlagged = false;
+                break;
+              }
+            }
+            if (!allMinesFlagged) break;
+          }
+          statusEl.textContent = allMinesFlagged ? '😎' : '😵';
+        } else {
+          statusEl.textContent = '😊';
+        }
+      }
+      
+      // Update difficulty selector
+      const difficultySelect = win.querySelector('#minesweeper-difficulty');
+      if (difficultySelect) {
+        difficultySelect.value = currentDifficulty;
+      }
+      
+      // Save initial state after restore
+      setTimeout(saveGameState, 100);
+    } else {
+      // New game - initialize normally
+      initGame(currentDifficulty);
+      // Save initial state
+      setTimeout(saveGameState, 100);
+    }
+    
+    // Save on window blur
+    win.addEventListener('blur', () => {
+      setTimeout(saveGameState, 100);
+    });
+    
+    // Save before window closes
+    Bus.once('wm:closed', ({ id: closedId }) => {
+      if (closedId === id) {
+        if (timer) {
+          clearInterval(timer);
+          timer = null;
+        }
+        unsubscribeLocale();
+        saveGameState();
+      }
+    });
 
     Bus.emit('app:opened', { id, title: I18n.t('games.minesweeper.title'), icon:'💣', appId: 'minesweeper', titleKey: 'games.minesweeper.title' });
     

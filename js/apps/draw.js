@@ -1,25 +1,162 @@
 // Draw App - Lightweight Paint-like application
+
+// Register state handlers for Draw app (once, when module loads)
+(function registerDrawStateHandlers() {
+  if (window.StateManager) {
+    window.StateManager.registerStateSaver('draw', (winId, winEl, appData) => {
+      const canvas = winEl.querySelector('#draw-canvas');
+      const colorInput = winEl.querySelector('#draw-color-input');
+      const lineWidthSlider = winEl.querySelector('#draw-linewidth');
+      if (!canvas) return null;
+      
+      // Get canvas content as data URL
+      const canvasDataUrl = canvas.toDataURL('image/png');
+      
+      // Get canvas dimensions from canvas element
+      const canvasWidth = canvas.width || 800;
+      const canvasHeight = canvas.height || 600;
+      
+      // Get current settings
+      const currentColor = colorInput ? colorInput.value : '#000000';
+      const lineWidth = lineWidthSlider ? parseInt(lineWidthSlider.value) : 2;
+      
+      // Get current file path if available
+      const currentPath = winEl.dataset.currentPath || `${FS.root}/Pictures`;
+      
+      return {
+        canvasDataUrl: canvasDataUrl,
+        canvasWidth: canvasWidth,
+        canvasHeight: canvasHeight,
+        currentColor: currentColor,
+        lineWidth: lineWidth,
+        filePath: currentPath
+      };
+    });
+    
+    window.StateManager.registerStateRestorer('draw', async (winId, winEl, appState, extraData) => {
+      // Wait a bit to ensure window is fully initialized
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const canvas = winEl.querySelector('#draw-canvas');
+      const ctx = canvas ? canvas.getContext('2d') : null;
+      const colorInput = winEl.querySelector('#draw-color-input');
+      const lineWidthSlider = winEl.querySelector('#draw-linewidth');
+      const lineWidthValue = winEl.querySelector('#draw-linewidth-value');
+      const colorPickerBtn = winEl.querySelector('#draw-color-picker');
+      
+      if (!canvas || !ctx) {
+        console.warn(`[Draw] Restorer: canvas not found for ${winId}`);
+        return;
+      }
+      
+      if (appState) {
+        // Restore canvas dimensions first
+        if (appState.canvasWidth && appState.canvasHeight) {
+          canvas.width = appState.canvasWidth;
+          canvas.height = appState.canvasHeight;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          
+          // Update canvas style
+          canvas.style.width = appState.canvasWidth + 'px';
+          canvas.style.height = appState.canvasHeight + 'px';
+          
+          // Update resize handle position
+          const resizeHandle = winEl.querySelector('#draw-resize-handle');
+          if (resizeHandle) {
+            resizeHandle.style.left = (appState.canvasWidth - 4) + 'px';
+            resizeHandle.style.top = (appState.canvasHeight - 4) + 'px';
+          }
+        }
+        
+        // Restore canvas content
+        if (appState.canvasDataUrl) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            console.log(`[Draw] Restored canvas content (${canvas.width}x${canvas.height})`);
+          };
+          img.onerror = () => {
+            console.error(`[Draw] Failed to restore canvas content`);
+          };
+          img.src = appState.canvasDataUrl;
+        }
+        
+        // Restore color
+        if (appState.currentColor && colorInput) {
+          colorInput.value = appState.currentColor;
+          if (colorPickerBtn) {
+            colorPickerBtn.style.background = appState.currentColor;
+            // Update contrast color
+            const r = parseInt(appState.currentColor.slice(1, 3), 16);
+            const g = parseInt(appState.currentColor.slice(3, 5), 16);
+            const b = parseInt(appState.currentColor.slice(5, 7), 16);
+            const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+            colorPickerBtn.style.color = brightness > 128 ? '#000000' : '#ffffff';
+          }
+          // Update drawing settings
+          if (ctx) {
+            ctx.strokeStyle = appState.currentColor;
+          }
+        }
+        
+        // Restore line width
+        if (appState.lineWidth && lineWidthSlider) {
+          lineWidthSlider.value = appState.lineWidth;
+          if (lineWidthValue) {
+            lineWidthValue.textContent = appState.lineWidth;
+          }
+          if (ctx) {
+            ctx.lineWidth = appState.lineWidth;
+          }
+        }
+        
+        // Store file path on window element
+        if (appState.filePath) {
+          winEl.dataset.currentPath = appState.filePath;
+        }
+      }
+    });
+  } else {
+    // StateManager not ready yet, try again after a short delay
+    setTimeout(registerDrawStateHandlers, 100);
+  }
+})();
+
 Apps.register({
-  id: 'draw',
-  name: 'Draw',
-  nameKey: 'draw.title',
-  icon: '🎨',
-  description: 'Create and edit drawings. A lightweight paint application.',
-  descriptionKey: 'draw.description',
-  category: '',
-  singleton: true,
-  launch() {
-    const id = 'draw-' + Date.now();
+    id: 'draw',
+    name: 'Draw',
+    nameKey: 'draw.title',
+    icon: '🎨',
+    description: 'Create and edit drawings. A lightweight paint application.',
+    descriptionKey: 'draw.description',
+    category: '',
+    singleton: true,
+    launch(args = {}) {
+      // Check if restoring from saved state
+      const restoreState = args.restoreState || null;
+      // Use provided windowId if restoring, otherwise generate new one
+      const id = args.windowId || 'draw-' + Date.now();
     
     let isDrawing = false;
     let currentTool = 'pencil';
-    let currentColor = '#000000';
-    let lineWidth = 2;
+    // Determine initial values from restore state or defaults
+    let currentColor = (restoreState?.appState?.currentColor) || '#000000';
+    let lineWidth = (restoreState?.appState?.lineWidth) || 2;
     let fileMenuUtility = null; // Will be initialized after window is created
     
-    // Canvas size (resizable, starts at 800x600)
-    let canvasWidth = 800;
-    let canvasHeight = 600;
+    // Determine initial values from restore state or defaults
+    let canvasWidth, canvasHeight, initialCanvasDataUrl;
+    if (restoreState && restoreState.appState) {
+      canvasWidth = restoreState.appState.canvasWidth || 800;
+      canvasHeight = restoreState.appState.canvasHeight || 600;
+      initialCanvasDataUrl = restoreState.appState.canvasDataUrl || null;
+    } else {
+      canvasWidth = 800;
+      canvasHeight = 600;
+      initialCanvasDataUrl = null;
+    }
     
     // Menu structure - use standardized File menu builder to prevent errors
     const menu = [
@@ -72,8 +209,8 @@ Apps.register({
     `;
 
     // Simple window size: canvas size + extra space for chrome and padding
-    const windowWidth = 870; // 800 canvas + 70px extra
-    const windowHeight = 835; // 600 canvas + 235px extra for chrome and controls
+    const windowWidth = (restoreState?.size?.width) || (canvasWidth + 70); // canvas + 70px extra
+    const windowHeight = (restoreState?.size?.height) || (canvasHeight + 235); // canvas + 235px extra
     
     const win = WindowManager.makeWindow({
       id,
@@ -85,6 +222,21 @@ Apps.register({
       toolbar,
       statusBar
     });
+    
+    // Apply restored position if available
+    if (restoreState?.position) {
+      win.style.left = restoreState.position.left + 'px';
+      win.style.top = restoreState.position.top + 'px';
+    }
+    
+    // Apply restored minimized state if available
+    if (restoreState?.minimized) {
+      win.style.display = 'none';
+    }
+    
+    // Store current path on window element for state saving
+    const initialPath = restoreState?.appState?.filePath || `${FS.root}/Pictures`;
+    win.dataset.currentPath = initialPath;
 
     const canvas = win.querySelector('#draw-canvas');
     const ctx = canvas.getContext('2d');
@@ -107,10 +259,12 @@ Apps.register({
       },
       defaultFileName: `drawing-${Date.now()}`,
       defaultExtension: '.png',
-      defaultPath: `${FS.root}/Pictures`,
+      defaultPath: initialPath,
       onSave: (path, name) => {
         // Update window title
         fileMenuUtility.updateWindowTitle(name);
+        // Store current path on window element for state saving
+        win.dataset.currentPath = path;
         // Update save status after FileMenuUtility's temporary "Saved at..." message (2 seconds)
         setTimeout(() => {
           currentSaveStatusKey = 'window.statusBar.ready';
@@ -123,6 +277,8 @@ Apps.register({
       onOpen: (content, path, name) => {
         // Update save status immediately - file is opened from disk, so it's saved
         currentSaveStatusKey = 'window.statusBar.ready';
+        // Store current path on window element for state saving
+        win.dataset.currentPath = path;
         // Load image data URL into logical canvas
         const img = new Image();
         img.onload = () => {
@@ -164,6 +320,20 @@ Apps.register({
     canvas.height = canvasHeight;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    
+    // Restore initial canvas content if available (from restoreState)
+    if (initialCanvasDataUrl) {
+      const img = new Image();
+      img.onload = () => {
+        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+        ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
+        console.log(`[Draw] Launch: Restored initial canvas content (${canvasWidth}x${canvasHeight})`);
+      };
+      img.onerror = () => {
+        console.error(`[Draw] Failed to restore initial canvas content`);
+      };
+      img.src = initialCanvasDataUrl;
+    }
     
     // Position canvas at top-left
     function positionCanvas() {
@@ -207,6 +377,14 @@ Apps.register({
       if (fileMenuUtility) {
         fileMenuUtility.markUnsaved();
         currentSaveStatusKey = 'filesave.modifiedNotSaved';
+      }
+      
+      // Auto-save state when canvas is resized
+      if (window.StateManager) {
+        setTimeout(() => {
+          console.log('[Draw] Auto-saving state after canvas resize');
+          window.StateManager.saveNow();
+        }, 500);
       }
       
       // Update position and resize handle
@@ -329,6 +507,13 @@ Apps.register({
           if (fileMenuUtility) {
             fileMenuUtility.markUnsaved();
           }
+          // Auto-save state after canvas resize completes
+          if (window.StateManager) {
+            setTimeout(() => {
+              console.log('[Draw] Auto-saving state after canvas resize complete');
+              window.StateManager.saveNow();
+            }, 300);
+          }
         }
       });
     }
@@ -342,6 +527,9 @@ Apps.register({
       updateStatusBar(coords.x, coords.y);
     }
 
+    // Auto-save state when drawing (debounced)
+    let drawSaveTimeout = null;
+    
     function draw(e) {
       if (!isDrawing) {
         updateStatusBarFromEvent(e);
@@ -358,6 +546,16 @@ Apps.register({
         // Update save status
         currentSaveStatusKey = 'filesave.modifiedNotSaved';
       }
+      
+      // Auto-save state when drawing (debounced)
+      if (window.StateManager) {
+        if (drawSaveTimeout) clearTimeout(drawSaveTimeout);
+        drawSaveTimeout = setTimeout(() => {
+          console.log('[Draw] Auto-saving state after drawing');
+          window.StateManager.saveNow();
+        }, 1000); // Save 1 second after user stops drawing
+      }
+      
       updateStatusBar(coords.x, coords.y);
     }
 
@@ -452,6 +650,14 @@ Apps.register({
       lineWidth = parseInt(e.target.value);
       lineWidthValue.textContent = lineWidth;
       updateDrawingSettings();
+      
+      // Auto-save state when line width changes
+      if (window.StateManager) {
+        setTimeout(() => {
+          console.log('[Draw] Auto-saving state after line width change');
+          window.StateManager.saveNow();
+        }, 500);
+      }
     });
 
     // Color picker
@@ -465,6 +671,14 @@ Apps.register({
       // Update button icon to show current color
       colorPickerBtn.style.background = currentColor;
       colorPickerBtn.style.color = getContrastColor(currentColor);
+      
+      // Auto-save state when color changes
+      if (window.StateManager) {
+        setTimeout(() => {
+          console.log('[Draw] Auto-saving state after color change');
+          window.StateManager.saveNow();
+        }, 500);
+      }
     });
 
     function getContrastColor(hex) {
@@ -479,6 +693,23 @@ Apps.register({
     updateDrawingSettings();
     colorPickerBtn.style.background = currentColor;
     colorPickerBtn.style.color = getContrastColor(currentColor);
+    
+    // Restore color and line width from restoreState if available
+    if (restoreState && restoreState.appState) {
+      if (restoreState.appState.currentColor) {
+        currentColor = restoreState.appState.currentColor;
+        colorInput.value = currentColor;
+        colorPickerBtn.style.background = currentColor;
+        colorPickerBtn.style.color = getContrastColor(currentColor);
+        ctx.strokeStyle = currentColor;
+      }
+      if (restoreState.appState.lineWidth) {
+        lineWidth = restoreState.appState.lineWidth;
+        lineWidthSlider.value = lineWidth;
+        lineWidthValue.textContent = lineWidth;
+        ctx.lineWidth = lineWidth;
+      }
+    }
 
     // Tool selection
     pencilBtn.addEventListener('click', () => {
@@ -687,6 +918,15 @@ Apps.register({
     // Clean up listeners when window is closed
     Bus.once('wm:closed', (payload) => {
       if (payload.id === id) {
+        // Clear draw save timeout
+        if (drawSaveTimeout) {
+          clearTimeout(drawSaveTimeout);
+        }
+        // Save state one last time before closing
+        if (window.StateManager) {
+          console.log('[Draw] Saving state before window close');
+          window.StateManager.saveNow();
+        }
         unsubscribeMenu();
         unsubscribeToolbar();
         unsubscribeLocale();
@@ -696,5 +936,20 @@ Apps.register({
         // Note: window.removeEventListener for resize is handled by the anonymous function
       }
     });
+    
+    // Save state when window loses focus
+    win.addEventListener('blur', () => {
+      if (window.StateManager) {
+        // Clear any pending timeout and save immediately
+        if (drawSaveTimeout) {
+          clearTimeout(drawSaveTimeout);
+          drawSaveTimeout = null;
+        }
+        setTimeout(() => {
+          console.log('[Draw] Auto-saving state on window blur');
+          window.StateManager.saveNow();
+        }, 100);
+      }
+    }, true); // Use capture phase
   }
 });
