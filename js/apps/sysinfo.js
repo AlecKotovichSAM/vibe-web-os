@@ -1,4 +1,37 @@
 // System Information App
+// Register state handlers for System Information (once, when module loads)
+(function registerSysInfoStateHandlers() {
+  if (window.StateManager) {
+    window.StateManager.registerStateSaver('sysinfo', (winId, winEl, appData) => {
+      // Get current tab from window dataset or default to 'overview'
+      const currentTab = winEl.dataset.currentTab || 'overview';
+      return {
+        currentTab: currentTab
+      };
+    });
+    
+    window.StateManager.registerStateRestorer('sysinfo', async (winId, winEl, appState, extraData) => {
+      // Wait a bit to ensure window is fully initialized
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      if (appState && appState.currentTab) {
+        // Store current tab in dataset
+        winEl.dataset.currentTab = appState.currentTab;
+        
+        // Find and click the tab button to switch to saved tab
+        const tabButton = winEl.querySelector(`.sysinfo-tab[data-tab="${appState.currentTab}"]`);
+        if (tabButton) {
+          // Trigger click to switch tab and render content
+          tabButton.click();
+        }
+      }
+    });
+  } else {
+    // StateManager not ready yet, try again after a short delay
+    setTimeout(registerSysInfoStateHandlers, 100);
+  }
+})();
+
 Apps.register({
   id: 'sysinfo',
   name: 'System Information',
@@ -458,6 +491,225 @@ Apps.register({
           `;
           break;
           
+        case 'account':
+          if (!window.Auth || !window.Auth.isLoggedIn()) {
+            content.innerHTML = `
+              <div class="sysinfo-section">
+                <p style="color: var(--muted); text-align: center; padding: 40px 20px;">
+                  ${I18n.t('account.noAccount')}
+                </p>
+              </div>
+            `;
+          } else {
+            const account = window.Auth.getAccount();
+            let privateKeyVisible = false;
+            let privateKeyValue = '';
+            
+            // Render account info
+            const renderAccountInfo = () => {
+              let avatarHtml = '';
+              if (account.avatar) {
+                try {
+                  const avatarContent = window.FS.read(account.avatar, 'file');
+                  // Check if it's already a data URL or needs to be read
+                  const avatarSrc = avatarContent.startsWith('data:') ? avatarContent : avatarContent;
+                  avatarHtml = `
+                    <div class="sysinfo-section">
+                      <h3>${I18n.t('account.avatar')}</h3>
+                      <div style="margin-top: 8px;">
+                        <img src="${avatarSrc}" style="max-width: 100px; max-height: 100px; border-radius: 4px;" />
+                      </div>
+                    </div>
+                  `;
+                } catch (e) {
+                  console.error('Error loading avatar:', e);
+                  // Avatar not found or error - skip avatar display
+                }
+              }
+              
+              content.innerHTML = `
+                ${avatarHtml}
+                <div class="sysinfo-section">
+                  <h3>${I18n.t('account.title')}</h3>
+                  <div class="sysinfo-row"><span>${I18n.t('account.username')}:</span><span>${account.username}</span></div>
+                  ${account.firstName ? `<div class="sysinfo-row"><span>${I18n.t('account.firstName')}:</span><span>${account.firstName}</span></div>` : ''}
+                  ${account.lastName ? `<div class="sysinfo-row"><span>${I18n.t('account.lastName')}:</span><span>${account.lastName}</span></div>` : ''}
+                  ${account.email ? `<div class="sysinfo-row"><span>${I18n.t('account.email')}:</span><span>${account.email}</span></div>` : ''}
+                  <div class="sysinfo-row"><span>${I18n.t('account.guid')}:</span><span style="font-family: monospace; font-size: 0.9rem;">${account.guid}</span></div>
+                  <div class="sysinfo-row"><span>${I18n.t('account.createdAt')}:</span><span>${new Date(account.createdAt).toLocaleString()}</span></div>
+                </div>
+                <div class="sysinfo-section">
+                  <h3>${I18n.t('account.publicKey')}</h3>
+                  <div style="display: flex; gap: 8px; align-items: center; margin-top: 8px;">
+                    <code style="flex: 1; padding: 8px; background: var(--bg); border: 1px solid var(--panel-2); border-radius: 4px; font-size: 0.85rem; word-break: break-all; font-family: monospace;">${account.publicKey}</code>
+                    <button id="copy-public-key" class="auth-button-secondary" style="flex-shrink: 0;">
+                      ${I18n.t('account.copyPublicKey')}
+                    </button>
+                  </div>
+                </div>
+                <div class="sysinfo-section">
+                  <h3>${I18n.t('account.privateKey')}</h3>
+                  <div style="display: flex; gap: 8px; align-items: center; margin-top: 8px;">
+                    <code id="private-key-display" style="flex: 1; padding: 8px; background: var(--bg); border: 1px solid var(--panel-2); border-radius: 4px; font-size: 0.85rem; word-break: break-all; font-family: monospace;">
+                      ${privateKeyVisible ? privateKeyValue : '••••••••••••••••••••••••••••••••'}
+                    </code>
+                    <button id="toggle-private-key" class="auth-button-secondary" style="flex-shrink: 0;">
+                      ${privateKeyVisible ? I18n.t('account.hidePrivateKey') : I18n.t('account.showPrivateKey')}
+                    </button>
+                  </div>
+                  ${!privateKeyVisible ? `
+                    <div id="private-key-password-prompt" style="margin-top: 12px; padding: 12px; background: var(--bg); border: 1px solid var(--panel-2); border-radius: 4px;">
+                      <input type="password" id="private-key-password" placeholder="${I18n.t('account.privateKeyPassword')}" style="width: 100%; padding: 8px; margin-bottom: 8px; background: var(--panel); border: 1px solid var(--panel-2); border-radius: 4px; color: var(--text);" />
+                      <button id="view-private-key-btn" class="auth-button-primary" style="width: 100%;">
+                        ${I18n.t('account.viewPrivateKey')}
+                      </button>
+                    </div>
+                  ` : ''}
+                </div>
+                <div class="sysinfo-section" style="border-top: 2px solid var(--danger); margin-top: 24px; padding-top: 24px;">
+                  <h3 style="color: var(--danger); margin-bottom: 8px;">${I18n.t('auth.dangerousZone')}</h3>
+                  <p style="color: var(--muted); font-size: 0.9rem; margin-bottom: 16px;">${I18n.t('auth.dangerousZoneDescription')}</p>
+                  <div id="dangerous-zone-delete" style="display: none;">
+                    <div style="margin-bottom: 12px;">
+                      <p style="color: var(--text); margin-bottom: 8px;">${I18n.t('auth.deleteAccountConfirm')}</p>
+                      <input type="password" id="dangerous-delete-password" placeholder="${I18n.t('auth.deleteAccountPassword')}" style="width: 100%; padding: 8px; margin-bottom: 8px; background: var(--panel); border: 1px solid var(--panel-2); border-radius: 4px; color: var(--text);" />
+                      <div id="dangerous-delete-error" style="color: var(--danger); font-size: 0.85rem; margin-bottom: 8px;"></div>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                      <button id="dangerous-delete-cancel-btn" class="auth-button-secondary" style="flex: 1;">
+                        ${I18n.t('auth.cancelButton')}
+                      </button>
+                      <button id="dangerous-delete-confirm-btn" class="auth-button-primary" style="flex: 1; background: var(--danger);">
+                        ${I18n.t('auth.deleteAccountButton')}
+                      </button>
+                    </div>
+                  </div>
+                  <button id="dangerous-delete-toggle-btn" class="auth-button-primary" style="width: 100%; background: var(--danger);">
+                    ${I18n.t('auth.deleteAccountButton')}
+                  </button>
+                </div>
+              `;
+              
+              // Dangerous Zone - Delete Account
+              const dangerousDeleteToggle = content.querySelector('#dangerous-delete-toggle-btn');
+              const dangerousDeleteSection = content.querySelector('#dangerous-zone-delete');
+              const dangerousDeleteCancel = content.querySelector('#dangerous-delete-cancel-btn');
+              const dangerousDeleteConfirm = content.querySelector('#dangerous-delete-confirm-btn');
+              const dangerousDeletePassword = content.querySelector('#dangerous-delete-password');
+              const dangerousDeleteError = content.querySelector('#dangerous-delete-error');
+              
+              if (dangerousDeleteToggle) {
+                dangerousDeleteToggle.addEventListener('click', () => {
+                  dangerousDeleteSection.style.display = 'block';
+                  dangerousDeleteToggle.style.display = 'none';
+                  dangerousDeletePassword.focus();
+                });
+              }
+              
+              if (dangerousDeleteCancel) {
+                dangerousDeleteCancel.addEventListener('click', () => {
+                  dangerousDeleteSection.style.display = 'none';
+                  dangerousDeleteToggle.style.display = 'block';
+                  dangerousDeletePassword.value = '';
+                  dangerousDeleteError.textContent = '';
+                });
+              }
+              
+              if (dangerousDeleteConfirm) {
+                dangerousDeleteConfirm.addEventListener('click', async () => {
+                  const password = dangerousDeletePassword.value;
+                  if (!password) {
+                    dangerousDeleteError.textContent = I18n.t('auth.passwordRequired');
+                    return;
+                  }
+                  
+                  dangerousDeleteError.textContent = '';
+                  dangerousDeleteConfirm.disabled = true;
+                  dangerousDeleteConfirm.textContent = 'Deleting...';
+                  
+                  try {
+                    // Use common deleteAccount function
+                    await window.Auth.deleteAccount(password);
+                    
+                    // Success - reload page (will go to anonymous mode)
+                    alert(I18n.t('auth.accountDeleted'));
+                    location.reload();
+                  } catch (error) {
+                    dangerousDeleteError.textContent = error.message || I18n.t('auth.invalidPassword');
+                    dangerousDeleteConfirm.disabled = false;
+                    dangerousDeleteConfirm.textContent = I18n.t('auth.deleteAccountButton');
+                  }
+                });
+              }
+              
+              // Copy public key button
+              const copyBtn = content.querySelector('#copy-public-key');
+              if (copyBtn) {
+                copyBtn.addEventListener('click', () => {
+                  navigator.clipboard.writeText(account.publicKey).then(() => {
+                    copyBtn.textContent = I18n.t('account.publicKeyCopied');
+                    setTimeout(() => {
+                      copyBtn.textContent = I18n.t('account.copyPublicKey');
+                    }, 2000);
+                  });
+                });
+              }
+              
+              // Toggle private key button
+              const toggleBtn = content.querySelector('#toggle-private-key');
+              if (toggleBtn) {
+                toggleBtn.addEventListener('click', async () => {
+                  if (!privateKeyVisible) {
+                    // Need password to decrypt
+                    const passwordInput = content.querySelector('#private-key-password');
+                    if (passwordInput) {
+                      const password = passwordInput.value;
+                      if (!password) {
+                        alert('Please enter password');
+                        return;
+                      }
+                      try {
+                        privateKeyValue = await window.Auth.getPrivateKey(password);
+                        privateKeyVisible = true;
+                        renderAccountInfo();
+                      } catch (error) {
+                        alert(error.message || 'Failed to decrypt private key');
+                      }
+                    }
+                  } else {
+                    privateKeyVisible = false;
+                    privateKeyValue = '';
+                    renderAccountInfo();
+                  }
+                });
+              }
+              
+              // View private key button (in password prompt)
+              const viewBtn = content.querySelector('#view-private-key-btn');
+              if (viewBtn) {
+                viewBtn.addEventListener('click', async () => {
+                  const passwordInput = content.querySelector('#private-key-password');
+                  if (!passwordInput) return;
+                  const password = passwordInput.value;
+                  if (!password) {
+                    alert('Please enter password');
+                    return;
+                  }
+                  try {
+                    privateKeyValue = await window.Auth.getPrivateKey(password);
+                    privateKeyVisible = true;
+                    renderAccountInfo();
+                  } catch (error) {
+                    alert(error.message || 'Failed to decrypt private key');
+                  }
+                });
+              }
+            };
+            
+            renderAccountInfo();
+          }
+          break;
+          
         case 'about':
           content.innerHTML = `
             <div style="display:flex; flex-direction:column; align-items:center; margin-bottom:32px;">
@@ -499,6 +751,7 @@ Apps.register({
           <button class="sysinfo-tab ${currentTab === 'network' ? 'active' : ''}" data-tab="network">${I18n.t('sysinfo.tab.network')}</button>
           <button class="sysinfo-tab ${currentTab === 'display' ? 'active' : ''}" data-tab="display">${I18n.t('sysinfo.tab.display')}</button>
           <button class="sysinfo-tab ${currentTab === 'performance' ? 'active' : ''}" data-tab="performance">${I18n.t('sysinfo.tab.performance')}</button>
+          ${window.Auth && window.Auth.isLoggedIn() ? `<button class="sysinfo-tab ${currentTab === 'account' ? 'active' : ''}" data-tab="account">${I18n.t('account.title')}</button>` : ''}
           <button class="sysinfo-tab ${currentTab === 'about' ? 'active' : ''}" data-tab="about">${I18n.t('sysinfo.tab.about')}</button>
         </div>
         <div id="sysinfo-content" style="flex:1; overflow:auto; padding:16px;">
@@ -515,13 +768,23 @@ Apps.register({
       height: 500
     });
     
+    // Store initial tab in dataset
+    win.dataset.currentTab = currentTab;
+    
     // Tab switching
     win.querySelectorAll('.sysinfo-tab').forEach(tab => {
       tab.addEventListener('click', () => {
         currentTab = tab.dataset.tab;
+        // Update dataset for state saving
+        win.dataset.currentTab = currentTab;
         win.querySelectorAll('.sysinfo-tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         renderTabContent();
+        
+        // Auto-save state when tab changes
+        if (window.StateManager) {
+          window.StateManager.saveNow();
+        }
       });
     });
     

@@ -15,36 +15,75 @@
     'Finalizing…'
   ];
 
-  let i = 0; function next(){
+  let i = 0; 
+  async function next(){
     if (i < steps.length) {
       hint.textContent = steps[i];
       bar.style.width = Math.round(((i+1)/steps.length)*100) + '%';
       i++;
       setTimeout(next, 450);
     } else {
-      boot.remove();
-      Shell.initDesktop();
-      
-      // Restore saved window/app state after desktop initialization
-      // Wait a bit to ensure all apps are registered and can set up state handlers
-      setTimeout(async () => {
-        if (window.StateManager) {
+      // Check for account and show login if needed
+      if (window.Auth && window.AuthUI) {
+        const account = window.Auth.getAccount();
+        const isLoggedIn = window.Auth.isLoggedIn();
+        
+        if (account !== null && !isLoggedIn) {
+          // Account exists but user is not logged in - show login form (mandatory)
+          boot.remove();
           try {
-            const savedState = window.StateManager.load();
-            if (savedState && savedState.windows && savedState.windows.length > 0) {
-              await window.StateManager.restore(savedState);
+            const loginResult = await window.AuthUI.showLoginForm();
+            // loginResult is true if login successful, false if account was reset/deleted
+            if (loginResult === true) {
+              // Login successful - continue to desktop
+              Shell.initDesktop();
+              initDesktopComplete();
             } else {
+              // Account was reset/deleted - show desktop in anonymous mode
+              Shell.initDesktop();
+              initDesktopComplete();
             }
           } catch (e) {
-            console.error('[StateManager] Error during restore:', e);
+            console.error('[Boot] Login error:', e);
+            // Still show desktop (anonymous mode, but account exists)
+            Shell.initDesktop();
+            initDesktopComplete();
           }
         } else {
-          console.warn('[StateManager] StateManager not available');
+          // No account or already logged in - go to desktop
+          boot.remove();
+          Shell.initDesktop();
+          initDesktopComplete();
         }
-      }, 500); // Increased delay to ensure everything is ready
-      
-      BSOD.startRandomSchedule(600, 1200); // 10-20 minutes
+      } else {
+        // Auth modules not loaded - anonymous mode
+        boot.remove();
+        Shell.initDesktop();
+        initDesktopComplete();
+      }
     }
+  }
+  
+  function initDesktopComplete() {
+    // Restore saved window/app state after desktop initialization
+    // Wait a bit to ensure all apps are registered and can set up state handlers
+    setTimeout(async () => {
+      if (window.StateManager) {
+        try {
+          const savedState = window.StateManager.load();
+          if (savedState && savedState.windows && savedState.windows.length > 0) {
+            await window.StateManager.restore(savedState);
+          } else {
+          }
+        } catch (e) {
+          console.error('[StateManager] Error during restore:', e);
+        }
+      } else {
+        console.warn('[StateManager] StateManager not available');
+      }
+    }, 500); // Increased delay to ensure everything is ready
+    
+    BSOD.startRandomSchedule(600, 1200); // 10-20 minutes
   }
 
   next();

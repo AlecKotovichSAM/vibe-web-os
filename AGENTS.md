@@ -411,6 +411,18 @@ it('should restore window position correctly (not 0,0) when window is freshly op
 - Use placeholders: `{name}`, `{path}`, `{count}` for dynamic values
 - Use `I18n.t('namespace.key', { placeholder: value })` in code
 
+### Utility Scripts (DO NOT DELETE)
+
+**Important:** These utility scripts are part of the project and should be preserved:
+
+- `rsa-encryption-example.js` - Example script demonstrating RSA encryption/decryption with account keys
+- `view-account-data.js` - Utility to view account data from localStorage in browser console
+- `encrypt-decrypt-example.js` - Simple encryption/decryption examples
+- `cleanup-folders.js` - Utility for cleaning up folders
+- `clear-terminal-history.js` - Utility to clear terminal history
+
+These scripts are useful for development, testing, and understanding the authentication system. They are committed to git and should not be removed during cleanup.
+
 ### .continue Rules Summary
 
 - ES modules only (use `const`/`let`, explicit imports)

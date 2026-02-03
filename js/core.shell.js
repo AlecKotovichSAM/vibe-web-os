@@ -26,6 +26,7 @@ window.Shell = (() => {
 
     const startBtn = document.getElementById('btn-start');
     const startMenu = document.getElementById('start-menu');
+    const startAuthActions = document.getElementById('start-auth-actions');
     const startApps = document.getElementById('start-apps');
     const desktop = document.getElementById('desktop');
 
@@ -529,6 +530,109 @@ window.Shell = (() => {
     // Populate launcher
     function renderStart() {
       startApps.innerHTML = '';
+      
+      // Render auth actions block (between title and apps)
+      if (startAuthActions) {
+        startAuthActions.innerHTML = '';
+        
+        if (window.Auth && window.AuthUI) {
+          if (window.Auth.isLoggedIn()) {
+            // User is logged in - show account info + Sign Out button
+            const account = window.Auth.getAccount();
+            const accountInfo = document.createElement('div');
+            accountInfo.className = 'start-auth-account-info';
+            
+            // Account icon and name (left side)
+            const accountDisplay = document.createElement('div');
+            accountDisplay.className = 'start-auth-account-display';
+            
+            // Try to load avatar if available
+            let avatarHtml = '<div style="font-size:1.2rem">👤</div>';
+            if (account.avatar) {
+              try {
+                const avatarContent = window.FS.read(account.avatar, 'file');
+                const avatarSrc = avatarContent.startsWith('data:') ? avatarContent : avatarContent;
+                avatarHtml = `<img src="${avatarSrc}" style="width:24px; height:24px; border-radius:50%; object-fit:cover;" />`;
+              } catch (e) {
+                // Fallback to emoji if avatar fails to load
+              }
+            }
+            
+            accountDisplay.innerHTML = `
+              ${avatarHtml}
+              <span class="start-auth-username">${account.username}</span>
+            `;
+            
+            // Sign Out button (right side, smaller)
+            const signOutBtn = document.createElement('button');
+            signOutBtn.className = 'start-auth-signout-btn';
+            signOutBtn.innerHTML = I18n.t('auth.signOut');
+            signOutBtn.title = I18n.t('auth.signOut');
+            signOutBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              if (confirm('Are you sure you want to sign out?')) {
+                window.Auth.signOut(); // Sign out but keep account
+                location.reload();
+              }
+              toggleStart(false);
+            });
+            
+            // Add Edit Account button (click on account display)
+            accountDisplay.style.cursor = 'pointer';
+            accountDisplay.addEventListener('click', () => {
+              window.AuthUI.showEditAccountDialog();
+              toggleStart(false);
+            });
+            
+            accountInfo.appendChild(accountDisplay);
+            accountInfo.appendChild(signOutBtn);
+            startAuthActions.appendChild(accountInfo);
+          } else {
+            // User is anonymous - check if account exists
+            const account = window.Auth.getAccount();
+            if (account) {
+              // Account exists but user is not logged in - show Switch to account and Delete account
+              const accountActions = document.createElement('div');
+              accountActions.className = 'start-auth-anonymous-actions';
+              
+              const switchBtn = document.createElement('button');
+              switchBtn.className = 'start-auth-btn';
+              switchBtn.innerHTML = `<div style="font-size:1.2rem">👤</div><div>${I18n.t('auth.switchToAccount')}</div>`;
+              switchBtn.addEventListener('click', () => {
+                // Show login form
+                window.AuthUI.showLoginForm().then(() => {
+                  location.reload();
+                }).catch(() => {
+                  // Login cancelled or failed
+                });
+                toggleStart(false);
+              });
+              
+              const deleteBtn = document.createElement('button');
+              deleteBtn.className = 'start-auth-btn start-auth-delete-btn';
+              deleteBtn.innerHTML = `<div style="font-size:1.2rem">🗑️</div><div>${I18n.t('auth.deleteAccount')}</div>`;
+              deleteBtn.addEventListener('click', () => {
+                window.AuthUI.showDeleteAccountDialog();
+                toggleStart(false);
+              });
+              
+              accountActions.appendChild(switchBtn);
+              accountActions.appendChild(deleteBtn);
+              startAuthActions.appendChild(accountActions);
+            } else {
+              // No account - show Create Account button
+              const createAccountBtn = document.createElement('button');
+              createAccountBtn.className = 'start-auth-btn';
+              createAccountBtn.innerHTML = `<div style="font-size:1.2rem">👤</div><div>${I18n.t('auth.createAccount')}</div>`;
+              createAccountBtn.addEventListener('click', () => {
+                window.AuthUI.showRegistrationDialog();
+                toggleStart(false);
+              });
+              startAuthActions.appendChild(createAccountBtn);
+            }
+          }
+        }
+      }
       
       // Group apps by category
       const categories = Apps.getCategories();
