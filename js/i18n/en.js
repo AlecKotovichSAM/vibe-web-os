@@ -536,7 +536,12 @@ window.I18n_EN = {
     checking: 'Checking...',
     available: 'Available',
     unavailable: 'Unavailable',
-    notChecked: 'Not checked'
+    notChecked: 'Not checked',
+    priority: 'Priority',
+    priorityHigh: 'High',
+    priorityNormal: 'Normal',
+    priorityLow: 'Low',
+    priorityBackup: 'Backup'
   },
 
   // Account Information
@@ -559,5 +564,6 @@ window.I18n_EN = {
     viewPrivateKey: 'View Private Key',
     notAvailable: 'Not available',
     noAccount: 'No account information available'
-  }
+  },
+
 };
