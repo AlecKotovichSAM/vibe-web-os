@@ -5,10 +5,14 @@
 **Before completing any task:**
 1. Make code changes
 2. **MANDATORY: If fixing a bug, add a test for the bugfix** (see Bugfix Testing Policy below)
-3. **Run `npm test` to verify all tests pass**
-4. Check console output for test results
-5. Fix any failing tests before considering the task complete
-6. If tests pass, proceed with commit/push
+3. **If creating a new test file (`*.browser.test.js`), add it to `tests/run-browser-tests.js`** in the `testFiles` array
+4. **Run `npm test` to verify all tests pass**
+5. Check console output for test results - verify:
+   - Total test count (should be 240+)
+   - All tests passed (0 failed)
+   - If you added a test, verify the count increased
+6. Fix any failing tests before considering the task complete
+7. If tests pass, proceed with commit/push
 
 **CRITICAL RULE: Every bugfix MUST include a test. No exceptions.**
 - If you fix a bug without adding a test, the task is NOT complete
@@ -20,7 +24,15 @@
 npm test
 ```
 
-This will run all browser tests via Node.js and exit with code 1 if any tests fail, making it suitable for automated workflows.
+This will run all browser tests via Node.js (`tests/run-browser-tests.js`) and exit with code 1 if any tests fail, making it suitable for automated workflows.
+
+**Verifying Test Count:**
+- After adding a new test, run `npm test` and verify the total test count increased
+- Current baseline: 231 tests across 29 test suites
+- If test count didn't increase, check that:
+  1. Test file is named `*.browser.test.js`
+  2. Test file is added to `testFiles` array in `tests/run-browser-tests.js`
+  3. Test uses correct format: `(function() { const describe = window.describe; ... })()`
 
 ## Build & Testing
 
@@ -34,15 +46,23 @@ This is a **pure HTML/CSS/JS** project with no build system.
 ### Testing
 
 **Test Framework:**
-- Browser-based test runner: `tests/test-runner.html` (open in browser for visual debugging)
-- Node.js test runner: `tests/run-browser-tests.js` (for automated testing)
-- Custom test framework with `describe`, `it`, `expect`, `beforeEach`
+- **Browser-based test runner** (primary): `tests/run-browser-tests.js` (runs via Node.js with JSDOM)
+- **Browser UI test runner**: `tests/test-runner.html` (open in browser for visual debugging)
+- Custom test framework with `window.describe`, `window.it`, `window.expect`, `window.beforeEach`
 - Tests located in `tests/*.browser.test.js`
+- **IMPORTANT**: All `.browser.test.js` files must be added to the `testFiles` array in `tests/run-browser-tests.js`
+
+**Test Types:**
+- **Browser tests** (`*.browser.test.js`): Run via `npm test`, use custom test framework
+- **Vitest tests** (`*.test.js` without `.browser`): Run via `npm run test:watch` or `npm run test:ui`, use Vitest framework
+- **Node tests** (`*.node.test.js`): Run via `npm run test:node`, use Node.js built-in test runner
 
 **Running Tests:**
 ```bash
 # Primary method: Run via npm (automated, checks console output)
 npm test
+# Outputs: Total: 240, Passed: 240, Failed: 0
+# Exit code: 0 if all pass, 1 if any fail
 
 # Save test output to file for analysis
 npm run test:save
@@ -54,6 +74,11 @@ npm run test:browser-ui
 
 # Direct Node.js execution (same as npm test)
 node tests/run-browser-tests.js
+
+# Other test types (not browser tests):
+npm run test:watch    # Run Vitest tests in watch mode
+npm run test:ui       # Run Vitest tests with UI
+npm run test:node     # Run Node.js tests (*.node.test.js)
 ```
 
 **Test Policy:**
@@ -63,10 +88,18 @@ node tests/run-browser-tests.js
 - **To analyze test output:** Run `npm run test:save` to save results to `test-results.txt`, then read the file to see detailed results
 - The test runner outputs a summary with Total/Passed/Failed counts and lists all failed tests
 
+**Verifying All Tests Are Included:**
+- After creating a new `*.browser.test.js` file, verify it's added to `tests/run-browser-tests.js`
+- Check the `testFiles` array in `tests/run-browser-tests.js` - all `.browser.test.js` files should be listed
+- Current test files (14 total): core.bus, core.fs, i18n, core.apps, core.window, core.folders, core.filesave, core.dialog, core.shell, files, terminal, core.state, core.auth, telecom
+- If a test file exists but isn't in the list, add it to the `testFiles` array
+- Run `npm test` and verify the test count matches expected number of tests
+
 **Test Coverage:**
-- Current: 225+ tests covering core modules
+- Current: 231+ tests covering core modules (29 test suites)
 - See `tests/COVERAGE.md` for detailed coverage report
 - **Every bugfix adds at least one new test** - test count should increase with each bugfix
+- **All browser tests must be added to `tests/run-browser-tests.js`** - check that new test files are included in the `testFiles` array
 
 **Manual Testing:**
 - Test apps by clicking desktop icons or using the start menu
@@ -103,6 +136,7 @@ vibe-web-os/
 │   │   ├── notes.js
 │   │   ├── settings.js
 │   │   ├── sysinfo.js
+│   │   ├── telecom.js
 │   │   ├── terminal.js
 │   │   └── test.js
 │   ├── games/          # Game modules
@@ -269,6 +303,8 @@ All scripts loaded via `<script>` tags in `index.html` in dependency order:
 2. Use `Apps.register({ id, name, icon, description, launch })`
 3. Add icon to `index.html` in `#desktop-icons`
 4. Add script tag in `index.html` before `boot.js`: `<script src="js/apps/yourapp.js"></script>`
+5. Add translations to `js/i18n/en.js` under appropriate namespace (e.g., `yourapp: { ... }`)
+6. **If app has significant functionality, consider adding tests** in `tests/yourapp.browser.test.js` and add to `tests/run-browser-tests.js`
 
 ### BSOD (Blue Screen of Death)
 
@@ -308,8 +344,9 @@ BSOD.startRandomSchedule(60, 300); // 1-5 minutes
 ### Storage
 
 - **File System:** JSON tree in localStorage (`webos.fs.v1`)
-- **App Data:** Use localStorage with app-specific keys (e.g., `webos.notes.v1`)
+- **App Data:** Use localStorage with app-specific keys (e.g., `webos.notes.v1`, `webos.telecom.v1`)
 - **Settings:** Use localStorage with `webos.theme` key
+- **Account Data:** Use localStorage with `webos.account.v1` (managed by `core.auth.js`)
 
 ### Code Quality
 
@@ -337,11 +374,13 @@ BSOD.startRandomSchedule(60, 300); // 1-5 minutes
 
 **Test Requirements:**
 - ✅ Test must be in the appropriate `tests/*.browser.test.js` file
+- ✅ **NEW test files must be added to `tests/run-browser-tests.js`** in the `testFiles` array
 - ✅ Test name must clearly describe the bug being fixed
 - ✅ Test must verify the bug is fixed (positive case)
 - ✅ Test should verify the fix doesn't break existing behavior (regression prevention)
 - ✅ If the bug affects multiple modules, add tests to all affected modules
 - ✅ Test must be isolated and order-independent (use `beforeEach` for setup)
+- ✅ After adding a test, verify test count increased: run `npm test` and check the total count
 
 **Example:**
 ```javascript
@@ -377,15 +416,18 @@ it('should restore window position correctly (not 0,0) when window is freshly op
 **Enforcement:**
 - Before marking any bugfix task as complete, verify:
   1. ✅ Test file was created/modified
-  2. ✅ Test name clearly describes the bug
-  3. ✅ Test passes (`npm test` shows it in the results)
-  4. ✅ Test count increased (or at least one new test exists)
-  5. ✅ All existing tests still pass
+  2. ✅ **If new test file created, it's added to `tests/run-browser-tests.js`** in the `testFiles` array
+  3. ✅ Test name clearly describes the bug
+  4. ✅ Test passes (`npm test` shows it in the results)
+  5. ✅ **Test count increased** - verify by running `npm test` and checking the total count (should be 231+)
+  6. ✅ All existing tests still pass (no regressions)
 
 **If you forget to add a test:**
 - The task is NOT complete
 - Go back and add the test immediately
-- Do not proceed until the test is added and passing
+- **If you created a new test file, ensure it's added to `tests/run-browser-tests.js`**
+- Do not proceed until the test is added, included in test runner, and passing
+- Verify test count increased by running `npm test` (should be 240+)
 
 ### Internationalization (i18n) Workflow
 

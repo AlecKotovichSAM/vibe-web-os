@@ -462,14 +462,8 @@ window.Auth = (() => {
       account.email = updates.email ? updates.email.trim() : null;
     }
     if (updates.avatar !== undefined) {
-      // Delete old avatar if exists and is different
-      if (account.avatar && account.avatar !== updates.avatar && window.FS) {
-        try {
-          window.FS.rm(account.avatar);
-        } catch (e) {
-          console.warn('[Auth] Error deleting old avatar:', e);
-        }
-      }
+      // Note: We don't delete the old avatar file - just unlink it from the account
+      // The file remains in the file system and can be reused or manually deleted by the user
       account.avatar = updates.avatar || null;
     }
     
@@ -485,13 +479,8 @@ window.Auth = (() => {
    */
   function resetAccount() {
     const account = getAccount();
-    if (account && account.avatar && window.FS) {
-      try {
-        window.FS.rm(account.avatar);
-      } catch (e) {
-        console.warn('[Auth] Error deleting avatar:', e);
-      }
-    }
+    // Note: We don't delete the avatar file when resetting account
+    // The file remains in the file system and can be manually deleted by the user if needed
     localStorage.removeItem(STORAGE_KEY);
   }
   

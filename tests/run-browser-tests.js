@@ -64,6 +64,11 @@ if (!window.MouseEvent) {
 // Load and execute test files directly
 async function runTests() {
   console.log('Starting test runner...');
+  
+  // Note: Telecom module is not loaded here because it requires many dependencies
+  // (Bus, FS, WindowManager, Apps, I18n, etc.) that are already mocked in tests
+  // Tests use mocks which is the correct approach for unit testing
+  
   // Load test files - IMPORTANT: i18n.browser.test.js must load BEFORE core.apps
   // because it creates window.I18n mock that other tests might overwrite
   const testFiles = [
@@ -78,7 +83,9 @@ async function runTests() {
     'core.shell.browser.test.js',
     'files.browser.test.js',
     'terminal.browser.test.js',
-    'core.state.browser.test.js'
+    'core.state.browser.test.js',
+    'core.auth.browser.test.js',
+    'telecom.browser.test.js'
   ];
   
   // Set up test runner

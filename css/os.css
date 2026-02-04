@@ -66,6 +66,7 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
 #taskbar {
   position:absolute; left:0; right:0; bottom:0; height:44px; background:var(--panel);
   display:flex; align-items:center; gap:8px; padding:0 8px; box-shadow: 0 -4px 20px rgba(0,0,0,.35);
+  z-index: 15000; /* Above windows, below start menu */
 }
 #btn-start { 
   height:32px; 
@@ -335,6 +336,7 @@ html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,s
 #start-menu {
   position:absolute; left:8px; bottom:52px; width:max-content; min-width:320px; max-width:450px; background:var(--panel);
   border-radius:10px; box-shadow:var(--shadow); padding:10px; display:none;
+  z-index: 20000; /* Always above everything - windows, dialogs, taskbar */
 }
 #start-menu[aria-hidden="false"] { display:block; }
 .start-title { font-weight:600; margin-bottom:8px; }
@@ -1646,7 +1648,7 @@ html:not([data-theme]) #datetime-digital-clock {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10000;
+  z-index: 9998; /* Lower than dialog-layer (10000) so file picker can appear above */
 }
 
 .auth-dialog-content {
@@ -1808,6 +1810,226 @@ html:not([data-theme]) #datetime-digital-clock {
   box-shadow: var(--shadow);
   width: 90%;
   max-width: 400px;
-argin-top: 6px;
+  padding: 32px;
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.login-logo {
+  font-size: 2.5rem;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: var(--text);
+}
+
+.login-logo span {
+  color: var(--accent);
+}
+
+.login-header h2 {
+  margin: 0 0 8px 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.login-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.login-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.login-form-group label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.login-form-group input {
+  width: 100%;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--panel-2);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.95rem;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, outline 0.2s ease;
+}
+
+.login-form-group input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  border-color: var(--accent);
+}
+
+.login-error {
+  color: var(--danger);
+  font-size: 0.85rem;
+  min-height: 20px;
+  padding: 8px 0;
+}
+
+.login-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.login-link {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 8px 0;
+  text-decoration: underline;
+  transition: color 0.2s ease;
+}
+
+.login-link:hover {
+  color: var(--text);
+}
+
+.login-button {
+  padding: 12px 24px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.login-button:hover {
+  background: #3d6bff;
+  transform: translateY(-1px);
+}
+
+.login-button:active {
+  transform: translateY(0);
+}
+
+/* Telecom Messenger - Basic Structural Styles */
+.telecom-main {
+  height: 100%;
+  overflow: hidden;
+}
+
+.telecom-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.telecom-chats-list {
+  overflow-y: auto;
+}
+
+.telecom-chats-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.telecom-chats-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.telecom-chats-list::-webkit-scrollbar-thumb {
+  background: var(--panel-2);
+  border-radius: 3px;
+}
+
+.telecom-chats-list::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+.telecom-messages {
+  overflow-y: auto;
+}
+
+.telecom-messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.telecom-messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.telecom-messages::-webkit-scrollbar-thumb {
+  background: var(--panel-2);
+  border-radius: 3px;
+}
+
+.telecom-messages::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+.telecom-hamburger:hover {
+  background: var(--panel-2);
+  border-radius: 4px;
+}
+
+.telecom-input-area textarea {
+  font-family: inherit;
+}
+
+.telecom-input-area textarea::placeholder {
+  color: var(--muted);
+}
+
+/* Telecom Menu Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.telecom-menu-item:hover {
+  background: var(--panel-2);
+}
+
+/* Telecom Profile - Crossed eye icon */
+.telecom-profile-toggle-visibility.telecom-eye-crossed::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--danger);
+  transform: rotate(-45deg) translateY(-50%);
+  transform-origin: center;
+  pointer-events: none;
 }
 

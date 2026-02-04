@@ -416,9 +416,16 @@ window.AuthUI = (() => {
             
             <div class="auth-form-group">
               <label for="auth-edit-avatar">${I18n.t('auth.avatar')}</label>
-              <button type="button" id="auth-edit-select-avatar" class="auth-button-secondary">
-                ${I18n.t('auth.selectAvatar')}
-              </button>
+              <div style="display: flex; gap: 8px; align-items: flex-start;">
+                <button type="button" id="auth-edit-select-avatar" class="auth-button-secondary">
+                  ${I18n.t('auth.selectAvatar')}
+                </button>
+                ${account.avatar ? `
+                  <button type="button" id="auth-edit-delete-avatar" class="auth-button-secondary" style="background: var(--danger); color: white;">
+                    ${I18n.t('auth.deleteAvatar')}
+                  </button>
+                ` : ''}
+              </div>
               <div id="auth-edit-avatar-preview" style="margin-top: 8px;">
                 ${(() => {
                   if (account.avatar) {
@@ -483,8 +490,35 @@ window.AuthUI = (() => {
         } catch (e) {
           console.error('Error loading avatar:', e);
         }
+        // Show delete button if it doesn't exist
+        const deleteBtn = document.getElementById('auth-edit-delete-avatar');
+        if (!deleteBtn) {
+          const selectBtn = document.getElementById('auth-edit-select-avatar');
+          const deleteButton = document.createElement('button');
+          deleteButton.type = 'button';
+          deleteButton.id = 'auth-edit-delete-avatar';
+          deleteButton.className = 'auth-button-secondary';
+          deleteButton.style.cssText = 'background: var(--danger); color: white;';
+          deleteButton.textContent = I18n.t('auth.deleteAvatar');
+          deleteButton.addEventListener('click', () => {
+            document.getElementById('auth-edit-avatar-path').value = '';
+            document.getElementById('auth-edit-avatar-preview').innerHTML = '';
+            deleteButton.remove();
+          });
+          selectBtn.parentNode.insertBefore(deleteButton, selectBtn.nextSibling);
+        }
       }
     });
+
+    // Delete avatar button
+    const deleteAvatarBtn = dialog.querySelector('#auth-edit-delete-avatar');
+    if (deleteAvatarBtn) {
+      deleteAvatarBtn.addEventListener('click', () => {
+        document.getElementById('auth-edit-avatar-path').value = '';
+        document.getElementById('auth-edit-avatar-preview').innerHTML = '';
+        deleteAvatarBtn.remove();
+      });
+    }
     
     // Form submission
     dialog.querySelector('#auth-edit-form').addEventListener('submit', async (e) => {
@@ -496,7 +530,8 @@ window.AuthUI = (() => {
       const firstName = document.getElementById('auth-edit-first-name').value.trim() || null;
       const lastName = document.getElementById('auth-edit-last-name').value.trim() || null;
       const email = document.getElementById('auth-edit-email').value.trim() || null;
-      const avatar = document.getElementById('auth-edit-avatar-path').value || null;
+      const avatarPath = document.getElementById('auth-edit-avatar-path').value.trim();
+      const avatar = avatarPath || null; // Empty string becomes null
       
       // Disable submit button
       const submitBtn = document.getElementById('auth-edit-save-btn');
