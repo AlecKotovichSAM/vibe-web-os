@@ -499,6 +499,46 @@ window.I18n_EN = {
     invalidPassword: 'Invalid password'
   },
 
+  // Network
+  network: {
+    title: 'Network',
+    description: 'P2P network configuration and STUN server settings',
+    stunServers: 'STUN Servers',
+    stunServersDescription: 'STUN servers are used to discover your public IP address and establish peer-to-peer connections. You can add, edit, or remove servers.',
+    addServer: 'Add Server',
+    serverUrl: 'Server URL',
+    serverUrlPlaceholder: 'stun:stun.example.com:3478',
+    serverUrlHint: 'Format: stun:hostname:port or turn:hostname:port',
+    username: 'Username (optional)',
+    credential: 'Credential (optional)',
+    save: 'Save',
+    cancel: 'Cancel',
+    delete: 'Delete',
+    edit: 'Edit',
+    reset: 'Reset to Defaults',
+    resetConfirm: 'Reset all STUN servers to default values?',
+    saved: 'STUN servers saved successfully',
+    error: 'Error saving STUN servers',
+    invalidFormat: 'Invalid server URL format',
+    connections: 'Active Connections',
+    noConnections: 'No active connections',
+    peerId: 'Peer ID',
+    state: 'State',
+    role: 'Role',
+    disconnect: 'Disconnect',
+    connecting: 'Connecting',
+    connected: 'Connected',
+    disconnected: 'Disconnected',
+    failed: 'Failed',
+    initiator: 'Initiator',
+    receiver: 'Receiver',
+    checkServers: 'Check Availability',
+    checking: 'Checking...',
+    available: 'Available',
+    unavailable: 'Unavailable',
+    notChecked: 'Not checked'
+  },
+
   // Account Information
   account: {
     title: 'Account',
