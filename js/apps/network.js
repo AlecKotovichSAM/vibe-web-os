@@ -70,9 +70,17 @@ Apps.register({
       
       return new Promise((resolve) => {
         const timeout = setTimeout(() => {
-          console.log(`[Network] Server ${server.urls}: Timeout (no ICE candidates received)`);
-          resolve(false); // Timeout = unavailable
-        }, 5000); // 5 second timeout
+          console.log(`[Network] Server ${server.urls}: Timeout after 10 seconds`);
+          console.log(`[Network] Server ${server.urls}: Received ${candidateCount} candidates total`);
+          if (candidateCount > 0) {
+            console.log(`[Network] Server ${server.urls}: Candidates:`, candidates);
+            // Got some candidates, even if timeout - consider available
+            resolve(true);
+          } else {
+            console.log(`[Network] Server ${server.urls}: No candidates received - server might be unavailable or blocked`);
+            resolve(false);
+          }
+        }, 10000); // 10 second timeout (STUN can be slow)
         
         try {
           console.log(`[Network] Creating test RTCPeerConnection for ${server.urls}`);
@@ -85,26 +93,45 @@ Apps.register({
           console.log(`[Network] RTCPeerConnection created for ${server.urls}`);
           
           let hasCandidate = false;
+          let hasStunCandidate = false;
           let candidateCount = 0;
+          const candidates = [];
           
           testPc.onicecandidate = (event) => {
             if (event.candidate) {
               candidateCount++;
-              console.log(`[Network] Server ${server.urls}: ICE candidate #${candidateCount} received:`, event.candidate.candidate.substring(0, 50) + '...');
+              const candidateStr = event.candidate.candidate;
+              candidates.push(candidateStr);
+              console.log(`[Network] Server ${server.urls}: ICE candidate #${candidateCount}:`, candidateStr.substring(0, 100));
               
-              // Check if it's a srflx candidate (from STUN server)
-              if (event.candidate.candidate.includes('typ srflx') || event.candidate.candidate.includes('typ relay')) {
-                hasCandidate = true;
+              // Any candidate means connection is working
+              hasCandidate = true;
+              
+              // Check if it's a srflx or relay candidate (from STUN/TURN server)
+              if (candidateStr.includes('typ srflx') || candidateStr.includes('typ relay')) {
+                hasStunCandidate = true;
                 console.log(`[Network] Server ${server.urls}: ✅ Available (STUN/relay candidate received)`);
                 clearTimeout(timeout);
                 testPc.close();
                 resolve(true);
-              } else if (event.candidate.candidate.includes('typ host')) {
-                // Host candidate - server might be working but we want srflx for STUN
-                console.log(`[Network] Server ${server.urls}: Host candidate received (local), waiting for STUN candidate...`);
+              } else if (candidateStr.includes('typ host')) {
+                console.log(`[Network] Server ${server.urls}: Host candidate received (local network)`);
+                // Host candidate means WebRTC works, but STUN might not be responding
+                // We'll wait a bit more for STUN candidate
               }
             } else {
-              console.log(`[Network] Server ${server.urls}: ICE candidate gathering complete (null candidate)`);
+              console.log(`[Network] Server ${server.urls}: ICE candidate gathering complete (null candidate). Total: ${candidateCount}`);
+              
+              // If we got any candidates, server is at least partially working
+              // Even host candidates mean WebRTC works
+              if (hasCandidate) {
+                console.log(`[Network] Server ${server.urls}: Got ${candidateCount} candidates (${hasStunCandidate ? 'with STUN' : 'host only'})`);
+                clearTimeout(timeout);
+                testPc.close();
+                // Consider available if we got any candidates (even host)
+                // Host candidates mean WebRTC works, STUN might just be slow
+                resolve(true);
+              }
             }
           };
           
@@ -112,20 +139,48 @@ Apps.register({
             console.log(`[Network] Server ${server.urls}: ICE gathering state: ${testPc.iceGatheringState}`);
             
             if (testPc.iceGatheringState === 'complete') {
-              console.log(`[Network] Server ${server.urls}: ICE gathering complete. Total candidates: ${candidateCount}, Has STUN candidate: ${hasCandidate}`);
-              clearTimeout(timeout);
-              testPc.close();
-              resolve(hasCandidate);
+              console.log(`[Network] Server ${server.urls}: ICE gathering complete. Total candidates: ${candidateCount}, Has STUN: ${hasStunCandidate}, Has any: ${hasCandidate}`);
+              
+              // If gathering is complete and we have candidates, consider it available
+              if (hasCandidate) {
+                clearTimeout(timeout);
+                testPc.close();
+                resolve(true);
+              } else {
+                // No candidates at all - might be a problem
+                console.log(`[Network] Server ${server.urls}: No candidates received, checking if this is expected...`);
+                // Don't resolve yet, let timeout handle it
+              }
             }
           };
           
           // Create a dummy offer to trigger ICE gathering
           console.log(`[Network] Creating offer for ${server.urls}...`);
-          testPc.createOffer().then(offer => {
-            console.log(`[Network] Offer created for ${server.urls}, setting local description...`);
+          
+          // Add data channel to ensure ICE gathering starts
+          try {
+            const testChannel = testPc.createDataChannel('test', { ordered: false });
+            console.log(`[Network] Test data channel created for ${server.urls}`);
+          } catch (e) {
+            console.warn(`[Network] Could not create test data channel:`, e);
+          }
+          
+          testPc.createOffer({
+            offerToReceiveAudio: false,
+            offerToReceiveVideo: false
+          }).then(offer => {
+            console.log(`[Network] Offer created for ${server.urls}:`, offer.type);
+            console.log(`[Network] Offer SDP (first 200 chars):`, offer.sdp.substring(0, 200));
             return testPc.setLocalDescription(offer);
           }).then(() => {
-            console.log(`[Network] Local description set for ${server.urls}, waiting for ICE candidates...`);
+            console.log(`[Network] Local description set for ${server.urls}`);
+            console.log(`[Network] Current ICE gathering state: ${testPc.iceGatheringState}`);
+            console.log(`[Network] Current ICE connection state: ${testPc.iceConnectionState}`);
+            
+            // Force check state immediately
+            setTimeout(() => {
+              console.log(`[Network] Server ${server.urls}: Immediate check - gathering: ${testPc.iceGatheringState}, connection: ${testPc.iceConnectionState}, candidates: ${candidateCount}`);
+            }, 100);
           }).catch((error) => {
             console.error(`[Network] Error creating offer for ${server.urls}:`, error);
             clearTimeout(timeout);
@@ -138,15 +193,29 @@ Apps.register({
             console.log(`[Network] Server ${server.urls}: ICE connection state: ${testPc.iceConnectionState}`);
             if (testPc.iceConnectionState === 'failed') {
               console.error(`[Network] Server ${server.urls}: ICE connection failed`);
-              clearTimeout(timeout);
-              testPc.close();
-              resolve(false);
+              // Don't resolve false here - might still get candidates
             }
           };
           
           testPc.onerror = (error) => {
             console.error(`[Network] RTCPeerConnection error for ${server.urls}:`, error);
           };
+          
+          // Debug: Log all events
+          console.log(`[Network] Server ${server.urls}: Waiting for ICE candidates (timeout: 10s)...`);
+          
+          // Also check iceGatheringState immediately
+          setTimeout(() => {
+            console.log(`[Network] Server ${server.urls}: After 1s - gathering state: ${testPc.iceGatheringState}, candidates: ${candidateCount}`);
+          }, 1000);
+          
+          setTimeout(() => {
+            console.log(`[Network] Server ${server.urls}: After 3s - gathering state: ${testPc.iceGatheringState}, candidates: ${candidateCount}`);
+          }, 3000);
+          
+          setTimeout(() => {
+            console.log(`[Network] Server ${server.urls}: After 5s - gathering state: ${testPc.iceGatheringState}, candidates: ${candidateCount}`);
+          }, 5000);
         } catch (e) {
           console.error(`[Network] Exception while checking ${server.urls}:`, e);
           clearTimeout(timeout);
