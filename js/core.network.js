@@ -6,10 +6,10 @@ window.Network = (() => {
   
   // Default ICE servers (STUN)
   const DEFAULT_ICE_SERVERS = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:freestun.net:3478' }
+    { urls: 'stun:stun.l.google.com:19302', priority: 'high' },
+    { urls: 'stun:stun1.l.google.com:19302', priority: 'high' },
+    { urls: 'stun:stun2.l.google.com:19302', priority: 'high' },
+    { urls: 'stun:freestun.net:3478', priority: 'low' }
   ];
   
   // Active connections: Map<peerId, RTCPeerConnection>
@@ -39,7 +39,11 @@ window.Network = (() => {
       if (saved) {
         const config = JSON.parse(saved);
         if (config.iceServers && Array.isArray(config.iceServers) && config.iceServers.length > 0) {
-          return config.iceServers;
+          // Ensure all servers have priority field (backward compatibility)
+          return config.iceServers.map(server => ({
+            ...server,
+            priority: server.priority || 'normal'
+          }));
         }
       }
     } catch (e) {

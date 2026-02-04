@@ -4,6 +4,9 @@
   "description": "A browser-based operating system built with pure HTML, CSS, and JavaScript",
   "type": "module",
   "scripts": {
+    "dev": "npx --yes serve -p 8000",
+    "serve": "npx --yes serve -p 8000",
+    "dev:python": "python -m http.server 8000",
     "test": "node tests/run-browser-tests.js 2>&1 | tee test-results.txt || (cat test-results.txt 2>/dev/null || type test-results.txt 2>nul) && exit 1",
     "test:save": "node tests/run-tests-and-save.js",
     "test:browser": "node tests/run-browser-tests.js",

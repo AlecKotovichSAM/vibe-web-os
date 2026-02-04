@@ -60,49 +60,36 @@ Apps.register({
      * Check if STUN server is available
      */
     async function checkServerAvailability(server) {
-      console.log(`[Network] Checking server availability: ${server.urls}`);
-      
       // Check if WebRTC is available
       if (!isWebRTCAvailable()) {
-        console.warn(`[Network] Cannot check server ${server.urls}: WebRTC not available (file:// protocol or other restrictions)`);
         return false;
       }
       
       return new Promise((resolve) => {
+        // Declare variables before timeout so they're accessible
+        let hasCandidate = false;
+        let hasStunCandidate = false;
+        let candidateCount = 0;
+        let testPc = null;
+        
         const timeout = setTimeout(() => {
-          console.log(`[Network] Server ${server.urls}: Timeout after 10 seconds`);
-          console.log(`[Network] Server ${server.urls}: Received ${candidateCount} candidates total`);
-          if (candidateCount > 0) {
-            console.log(`[Network] Server ${server.urls}: Candidates:`, candidates);
-            // Got some candidates, even if timeout - consider available
-            resolve(true);
-          } else {
-            console.log(`[Network] Server ${server.urls}: No candidates received - server might be unavailable or blocked`);
-            resolve(false);
-          }
+          // Got some candidates, even if timeout - consider available
+          // Even host candidates mean WebRTC works and server configuration is valid
+          // STUN might be slow or unavailable, but server can still be used
+          if (testPc) testPc.close();
+          resolve(candidateCount > 0);
         }, 10000); // 10 second timeout (STUN can be slow)
         
         try {
-          console.log(`[Network] Creating test RTCPeerConnection for ${server.urls}`);
-          
           // Create a test RTCPeerConnection with only this server
-          const testPc = new RTCPeerConnection({
+          testPc = new RTCPeerConnection({
             iceServers: [server]
           });
-          
-          console.log(`[Network] RTCPeerConnection created for ${server.urls}`);
-          
-          let hasCandidate = false;
-          let hasStunCandidate = false;
-          let candidateCount = 0;
-          const candidates = [];
           
           testPc.onicecandidate = (event) => {
             if (event.candidate) {
               candidateCount++;
               const candidateStr = event.candidate.candidate;
-              candidates.push(candidateStr);
-              console.log(`[Network] Server ${server.urls}: ICE candidate #${candidateCount}:`, candidateStr.substring(0, 100));
               
               // Any candidate means connection is working
               hasCandidate = true;
@@ -110,22 +97,14 @@ Apps.register({
               // Check if it's a srflx or relay candidate (from STUN/TURN server)
               if (candidateStr.includes('typ srflx') || candidateStr.includes('typ relay')) {
                 hasStunCandidate = true;
-                console.log(`[Network] Server ${server.urls}: ✅ Available (STUN/relay candidate received)`);
                 clearTimeout(timeout);
                 testPc.close();
                 resolve(true);
-              } else if (candidateStr.includes('typ host')) {
-                console.log(`[Network] Server ${server.urls}: Host candidate received (local network)`);
-                // Host candidate means WebRTC works, but STUN might not be responding
-                // We'll wait a bit more for STUN candidate
               }
             } else {
-              console.log(`[Network] Server ${server.urls}: ICE candidate gathering complete (null candidate). Total: ${candidateCount}`);
-              
               // If we got any candidates, server is at least partially working
               // Even host candidates mean WebRTC works
               if (hasCandidate) {
-                console.log(`[Network] Server ${server.urls}: Got ${candidateCount} candidates (${hasStunCandidate ? 'with STUN' : 'host only'})`);
                 clearTimeout(timeout);
                 testPc.close();
                 // Consider available if we got any candidates (even host)
@@ -136,63 +115,39 @@ Apps.register({
           };
           
           testPc.onicegatheringstatechange = () => {
-            console.log(`[Network] Server ${server.urls}: ICE gathering state: ${testPc.iceGatheringState}`);
-            
             if (testPc.iceGatheringState === 'complete') {
-              console.log(`[Network] Server ${server.urls}: ICE gathering complete. Total candidates: ${candidateCount}, Has STUN: ${hasStunCandidate}, Has any: ${hasCandidate}`);
-              
               // If gathering is complete and we have candidates, consider it available
+              // Even host candidates mean WebRTC works and server configuration is valid
               if (hasCandidate) {
                 clearTimeout(timeout);
                 testPc.close();
                 resolve(true);
-              } else {
-                // No candidates at all - might be a problem
-                console.log(`[Network] Server ${server.urls}: No candidates received, checking if this is expected...`);
-                // Don't resolve yet, let timeout handle it
               }
             }
           };
           
-          // Create a dummy offer to trigger ICE gathering
-          console.log(`[Network] Creating offer for ${server.urls}...`);
-          
           // Add data channel to ensure ICE gathering starts
           try {
-            const testChannel = testPc.createDataChannel('test', { ordered: false });
-            console.log(`[Network] Test data channel created for ${server.urls}`);
+            testPc.createDataChannel('test', { ordered: false });
           } catch (e) {
-            console.warn(`[Network] Could not create test data channel:`, e);
+            // Ignore data channel creation errors
           }
           
           testPc.createOffer({
             offerToReceiveAudio: false,
             offerToReceiveVideo: false
           }).then(offer => {
-            console.log(`[Network] Offer created for ${server.urls}:`, offer.type);
-            console.log(`[Network] Offer SDP (first 200 chars):`, offer.sdp.substring(0, 200));
             return testPc.setLocalDescription(offer);
-          }).then(() => {
-            console.log(`[Network] Local description set for ${server.urls}`);
-            console.log(`[Network] Current ICE gathering state: ${testPc.iceGatheringState}`);
-            console.log(`[Network] Current ICE connection state: ${testPc.iceConnectionState}`);
-            
-            // Force check state immediately
-            setTimeout(() => {
-              console.log(`[Network] Server ${server.urls}: Immediate check - gathering: ${testPc.iceGatheringState}, connection: ${testPc.iceConnectionState}, candidates: ${candidateCount}`);
-            }, 100);
           }).catch((error) => {
-            console.error(`[Network] Error creating offer for ${server.urls}:`, error);
+            console.error(`[Network] Error checking server ${server.urls}:`, error);
             clearTimeout(timeout);
-            testPc.close();
+            if (testPc) testPc.close();
             resolve(false);
           });
           
           // Also check for errors
           testPc.oniceconnectionstatechange = () => {
-            console.log(`[Network] Server ${server.urls}: ICE connection state: ${testPc.iceConnectionState}`);
             if (testPc.iceConnectionState === 'failed') {
-              console.error(`[Network] Server ${server.urls}: ICE connection failed`);
               // Don't resolve false here - might still get candidates
             }
           };
@@ -200,22 +155,6 @@ Apps.register({
           testPc.onerror = (error) => {
             console.error(`[Network] RTCPeerConnection error for ${server.urls}:`, error);
           };
-          
-          // Debug: Log all events
-          console.log(`[Network] Server ${server.urls}: Waiting for ICE candidates (timeout: 10s)...`);
-          
-          // Also check iceGatheringState immediately
-          setTimeout(() => {
-            console.log(`[Network] Server ${server.urls}: After 1s - gathering state: ${testPc.iceGatheringState}, candidates: ${candidateCount}`);
-          }, 1000);
-          
-          setTimeout(() => {
-            console.log(`[Network] Server ${server.urls}: After 3s - gathering state: ${testPc.iceGatheringState}, candidates: ${candidateCount}`);
-          }, 3000);
-          
-          setTimeout(() => {
-            console.log(`[Network] Server ${server.urls}: After 5s - gathering state: ${testPc.iceGatheringState}, candidates: ${candidateCount}`);
-          }, 5000);
         } catch (e) {
           console.error(`[Network] Exception while checking ${server.urls}:`, e);
           clearTimeout(timeout);
@@ -228,13 +167,8 @@ Apps.register({
      * Check all servers availability
      */
     async function checkAllServers() {
-      console.log('[Network] Starting server availability check...');
-      console.log('[Network] Current protocol:', window.location.protocol);
-      console.log('[Network] Current URL:', window.location.href);
-      
       // Check WebRTC availability first
       if (!isWebRTCAvailable()) {
-        console.warn('[Network] WebRTC not available - cannot check servers (file:// mode)');
         showMessage('Server availability check requires HTTPS or localhost. Servers are configured and will work on GitHub Pages.', 'error');
         
         // Mark all as "not checked" instead of unavailable
@@ -247,24 +181,19 @@ Apps.register({
       }
       
       const servers = window.Network.getIceServersConfig();
-      console.log(`[Network] Checking ${servers.length} servers...`);
       
       for (const server of servers) {
         const serverUrl = server.urls;
-        console.log(`[Network] Starting check for: ${serverUrl}`);
         serverStatuses.set(serverUrl, 'checking');
         renderStunServers(); // Update UI to show "checking"
         
         const isAvailable = await checkServerAvailability(server);
-        console.log(`[Network] Server ${serverUrl} check result: ${isAvailable ? 'AVAILABLE' : 'UNAVAILABLE'}`);
         serverStatuses.set(serverUrl, isAvailable ? 'available' : 'unavailable');
         renderStunServers(); // Update UI with result
         
         // Small delay between checks
         await new Promise(resolve => setTimeout(resolve, 500));
       }
-      
-      console.log('[Network] Server availability check complete');
     }
     
     // Render STUN servers list
@@ -280,7 +209,17 @@ Apps.register({
         return;
       }
       
-      servers.forEach((server, index) => {
+      // Sort servers by priority: high -> normal -> low
+      const sortedServers = [...servers].sort((a, b) => {
+        const priorityOrder = { high: 0, normal: 1, low: 2 };
+        const aPriority = priorityOrder[a.priority] ?? 1;
+        const bPriority = priorityOrder[b.priority] ?? 1;
+        return aPriority - bPriority;
+      });
+      
+      sortedServers.forEach((server, sortedIndex) => {
+        // Find original index for editing/deleting
+        const originalIndex = servers.indexOf(server);
         const serverDiv = document.createElement('div');
         serverDiv.className = 'network-server-item';
         serverDiv.style.cssText = 'display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--panel); border: 1px solid var(--panel-2); border-radius: 6px; margin-bottom: 8px;';
@@ -321,11 +260,21 @@ Apps.register({
         
         const authDiv = document.createElement('div');
         authDiv.style.cssText = 'font-size: 0.85rem; color: var(--muted);';
+        const authInfo = [];
         if (server.username || server.credential) {
-          authDiv.textContent = `Username: ${server.username || '(none)'}`;
+          authInfo.push(`Username: ${server.username || '(none)'}`);
         } else {
-          authDiv.textContent = 'No authentication';
+          authInfo.push('No authentication');
         }
+        
+        // Add priority label
+        if (server.priority === 'low') {
+          authInfo.push(`• ${I18n.t('network.priorityBackup')}`);
+        } else if (server.priority === 'high') {
+          authInfo.push(`• ${I18n.t('network.priorityHigh')}`);
+        }
+        
+        authDiv.textContent = authInfo.join(' ');
         
         serverInfo.appendChild(urlDiv);
         serverInfo.appendChild(authDiv);
@@ -345,7 +294,7 @@ Apps.register({
         deleteBtn.addEventListener('click', () => {
           if (confirm(`Delete server "${server.urls}"?`)) {
             const servers = window.Network.getIceServersConfig();
-            servers.splice(index, 1);
+            servers.splice(originalIndex, 1);
             serverStatuses.delete(serverUrl);
             try {
               window.Network.updateIceServers(servers);
@@ -400,6 +349,16 @@ Apps.register({
                 <span class="auth-error" id="server-credential-error"></span>
               </div>
               
+              <div class="auth-form-group">
+                <label for="server-priority">${I18n.t('network.priority')}</label>
+                <select id="server-priority">
+                  <option value="high" ${server?.priority === 'high' ? 'selected' : ''}>${I18n.t('network.priorityHigh')}</option>
+                  <option value="normal" ${!server?.priority || server?.priority === 'normal' ? 'selected' : ''}>${I18n.t('network.priorityNormal')}</option>
+                  <option value="low" ${server?.priority === 'low' ? 'selected' : ''}>${I18n.t('network.priorityLow')}</option>
+                </select>
+                <span class="auth-hint">${I18n.t('network.priorityBackup')} servers are used as fallback when primary servers are unavailable</span>
+              </div>
+              
               <div class="auth-error" id="server-form-error"></div>
               
               <div class="auth-dialog-actions">
@@ -430,6 +389,7 @@ Apps.register({
         const url = document.getElementById('server-url').value.trim();
         const username = document.getElementById('server-username').value.trim() || undefined;
         const credential = document.getElementById('server-credential').value.trim() || undefined;
+        const priority = document.getElementById('server-priority').value || 'normal';
         
         // Validate URL format
         if (!url.match(/^(stun|turn):\/\/[^\s]+:\d+$/)) {
@@ -443,7 +403,7 @@ Apps.register({
         
         try {
           const servers = window.Network.getIceServersConfig();
-          const newServer = { urls: url };
+          const newServer = { urls: url, priority: priority };
           if (username) newServer.username = username;
           if (credential) newServer.credential = credential;
           
@@ -587,8 +547,6 @@ Apps.register({
     // Auto-check servers on load (only if WebRTC is available)
     if (webrtcAvailable) {
       checkAllServers();
-    } else {
-      console.log('[Network] Running in file:// mode - server availability check disabled. Servers will work on HTTPS (GitHub Pages).');
     }
     
     // Add server button
@@ -617,10 +575,10 @@ Apps.register({
       if (confirm(I18n.t('network.resetConfirm'))) {
         try {
           window.Network.updateIceServers([
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:freestun.net:3478' }
+            { urls: 'stun:stun.l.google.com:19302', priority: 'high' },
+            { urls: 'stun:stun1.l.google.com:19302', priority: 'high' },
+            { urls: 'stun:stun2.l.google.com:19302', priority: 'high' },
+            { urls: 'stun:freestun.net:3478', priority: 'low' }
           ]);
           serverStatuses.clear(); // Clear status cache
           renderStunServers();
