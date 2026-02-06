@@ -590,4 +590,143 @@
       // and could be reused or manually deleted by user via Files app
     });
   });
+
+  describe('Telecom - processIncomingSignaling orphaned answer cleanup', () => {
+    beforeEach(() => {
+      // Clear localStorage
+      localStorage.clear();
+      
+      // Mock Network module
+      if (!window.Network) {
+        window.Network = {
+          getConnections: () => [],
+          createOffer: async () => ({}),
+          processAnswer: async () => {},
+          addIceCandidate: async () => {},
+          disconnect: async () => {}
+        };
+      }
+
+      // Mock isWebRTCAvailable
+      window.isWebRTCAvailable = () => true;
+
+      // Load Telecom module if available
+      if (typeof require !== 'undefined') {
+        try {
+          const fs = require('fs');
+          const path = require('path');
+          const telecomPath = path.join(__dirname, '..', 'js', 'apps', 'telecom.js');
+          const telecomCode = fs.readFileSync(telecomPath, 'utf-8');
+          eval(telecomCode);
+        } catch (e) {
+          console.warn('Could not load Telecom module:', e.message);
+        }
+      }
+    });
+
+    it('should remove orphaned answers that do not match any current invites', async () => {
+      const effectiveGuid = 'test-guid-123';
+      const peerId = 'peer-guid-456';
+      const orphanedInviteId = 'invite-orphaned-999';
+      const validInviteId = 'invite-valid-001';
+
+      // Set up sent invites with only one valid invite
+      const sentInvites = [{
+        id: validInviteId,
+        toGuid: peerId,
+        status: 'pending',
+        webrtcOffer: { sdp: 'test-offer-sdp' }
+      }];
+      localStorage.setItem(`webos.telecom.sent_invites.guid_from.${effectiveGuid}`, JSON.stringify(sentInvites));
+
+      // Set up signaling data with orphaned answer (inviteId doesn't match any current invite)
+      const signalingData = {
+        [peerId]: {
+          answers: [
+            {
+              inviteId: orphanedInviteId, // This invite doesn't exist in sentInvites
+              sdp: 'test-answer-sdp'
+            },
+            {
+              inviteId: validInviteId, // This invite exists in sentInvites
+              sdp: 'test-answer-sdp-valid'
+            }
+          ]
+        }
+      };
+      localStorage.setItem(`webos.telecom.webrtc_signaling.${effectiveGuid}.v1`, JSON.stringify(signalingData));
+
+      // Get Telecom's processIncomingSignaling function
+      // Note: This function is internal, so we need to access it via the Telecom module
+      // Since it's not exported, we'll test it indirectly by checking localStorage changes
+      if (window.Telecom && typeof window.Telecom.processIncomingSignaling === 'function') {
+        await window.Telecom.processIncomingSignaling(effectiveGuid, {});
+      } else {
+        // If function is not accessible, try to find it in the global scope
+        // This is a workaround - in a real scenario, we'd need to export it or test via public API
+        throw new Error('processIncomingSignaling function not accessible for testing');
+      }
+
+      // Verify orphaned answer was removed, but valid answer remains
+      const updatedSignaling = JSON.parse(localStorage.getItem(`webos.telecom.webrtc_signaling.${effectiveGuid}.v1`));
+      
+      if (!updatedSignaling || !updatedSignaling[peerId] || !updatedSignaling[peerId].answers) {
+        throw new Error('Signaling data was not found or answers array is missing');
+      }
+
+      const remainingAnswers = updatedSignaling[peerId].answers;
+      const orphanedAnswerExists = remainingAnswers.some(a => a.inviteId === orphanedInviteId);
+      const validAnswerExists = remainingAnswers.some(a => a.inviteId === validInviteId);
+
+      if (orphanedAnswerExists) {
+        throw new Error(`Orphaned answer with inviteId ${orphanedInviteId} was not removed`);
+      }
+
+      if (!validAnswerExists) {
+        throw new Error(`Valid answer with inviteId ${validInviteId} was incorrectly removed`);
+      }
+
+      // Verify only the valid answer remains
+      if (remainingAnswers.length !== 1) {
+        throw new Error(`Expected 1 answer to remain, but found ${remainingAnswers.length}`);
+      }
+    });
+
+    it('should not process answers when no invites exist', async () => {
+      const effectiveGuid = 'test-guid-789';
+      const peerId = 'peer-guid-999';
+
+      // Set up sent invites as empty array
+      localStorage.setItem(`webos.telecom.sent_invites.guid_from.${effectiveGuid}`, JSON.stringify([]));
+
+      // Set up signaling data with answers
+      const signalingData = {
+        [peerId]: {
+          answers: [
+            {
+              inviteId: 'some-invite-id',
+              sdp: 'test-answer-sdp'
+            }
+          ]
+        }
+      };
+      localStorage.setItem(`webos.telecom.webrtc_signaling.${effectiveGuid}.v1`, JSON.stringify(signalingData));
+
+      // Call processIncomingSignaling
+      if (window.Telecom && typeof window.Telecom.processIncomingSignaling === 'function') {
+        await window.Telecom.processIncomingSignaling(effectiveGuid, {});
+      }
+
+      // Verify function returns early (no processing when no invites)
+      // Since there are no invites, the function should return early and not process answers
+      // The answers should remain (they're not orphaned if there are no invites to compare against)
+      const updatedSignaling = JSON.parse(localStorage.getItem(`webos.telecom.webrtc_signaling.${effectiveGuid}.v1`));
+      
+      // Function should return early, so answers should still exist
+      // (This tests the early return when peerToInvites.size === 0)
+      if (!updatedSignaling || !updatedSignaling[peerId] || !updatedSignaling[peerId].answers) {
+        throw new Error('Signaling data was unexpectedly modified when no invites exist');
+      }
+    });
+  });
 })();

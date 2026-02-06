@@ -453,17 +453,48 @@ it('should restore window position correctly (not 0,0) when window is freshly op
 - Use placeholders: `{name}`, `{path}`, `{count}` for dynamic values
 - Use `I18n.t('namespace.key', { placeholder: value })` in code
 
-### Utility Scripts (DO NOT DELETE)
+### Debug Scripts
 
-**Important:** These utility scripts are part of the project and should be preserved:
+**🚨 CRITICAL RULE: All debug/utility scripts MUST be placed in `js/debug/` directory.**
 
-- `rsa-encryption-example.js` - Example script demonstrating RSA encryption/decryption with account keys
-- `view-account-data.js` - Utility to view account data from localStorage in browser console
-- `encrypt-decrypt-example.js` - Simple encryption/decryption examples
-- `cleanup-folders.js` - Utility for cleaning up folders
-- `clear-terminal-history.js` - Utility to clear terminal history
+**Location:** `js/debug/`
 
-These scripts are useful for development, testing, and understanding the authentication system. They are committed to git and should not be removed during cleanup.
+**Purpose:** Debug scripts are utility scripts for development, testing, debugging, and data management. They are designed to be run in the browser console.
+
+**When creating debug scripts:**
+1. **MANDATORY: Always place them in `js/debug/`** - NEVER in the root directory or other locations
+2. Use descriptive names (e.g., `list-localstorage-keys.js`, `cleanup-telecom-localstorage.js`)
+3. Include a header comment explaining what the script does
+4. Make scripts self-contained (IIFE pattern) that can be copied/pasted into browser console
+5. Update `js/debug/README.md` with documentation for new scripts
+
+**If you create a debug script in the wrong location:**
+- The task is NOT complete
+- Move the script to `js/debug/` immediately
+- Update `js/debug/README.md` to document the new script
+
+**Existing debug scripts (in `js/debug/`):**
+- `list-localstorage-keys.js` - List all localStorage keys with sizes and grouping
+- `cleanup-telecom-localstorage.js` - Clean up orphaned Telecom data from localStorage
+- `cleanup-telecom-storage.js` - Clean up all Telecom app data
+- `cleanup-folders.js` - Clean up folder structure data
+- `clear-terminal-history.js` - Clear terminal command history
+- `debug-invites.js` - View and manage Telecom contact invites
+- `test-invites.js` - Test script for Telecom invite functionality
+- `view-account-data.js` - View system account data
+- `encrypt-decrypt-example.js` - Encryption/decryption examples
+- `rsa-encryption-example.js` - RSA encryption examples
+
+See `js/debug/README.md` for detailed documentation of each script.
+
+**Usage:** Copy script content and paste into browser console, or load via fetch:
+```javascript
+fetch('js/debug/script-name.js')
+  .then(r => r.text())
+  .then(eval);
+```
+
+See `js/debug/README.md` for detailed documentation of each script.
 
 ### .continue Rules Summary
 

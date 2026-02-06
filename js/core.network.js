@@ -4,12 +4,16 @@
 window.Network = (() => {
   const STORAGE_KEY = 'webos.network.v1';
   
-  // Default ICE servers (STUN)
+  // Default ICE servers (STUN + TURN)
+  // Note: Google doesn't provide public TURN servers without credentials
+  // Using Metered.ca free TURN server for NAT traversal
+  // Limited to 4 servers to avoid WebRTC performance warnings
   const DEFAULT_ICE_SERVERS = [
     { urls: 'stun:stun.l.google.com:19302', priority: 'high' },
     { urls: 'stun:stun1.l.google.com:19302', priority: 'high' },
-    { urls: 'stun:stun2.l.google.com:19302', priority: 'high' },
-    { urls: 'stun:freestun.net:3478', priority: 'low' }
+    // TURN server for NAT traversal (free tier from Metered.ca)
+    { urls: 'turn:a.relay.metered.ca:80', username: 'free', credential: 'free', priority: 'high' },
+    { urls: 'turn:a.relay.metered.ca:443?transport=tcp', username: 'free', credential: 'free', priority: 'high' }
   ];
   
   // Active connections: Map<peerId, RTCPeerConnection>
@@ -20,6 +24,9 @@ window.Network = (() => {
   
   // Message queues: Map<peerId, message[]>
   const messageQueues = new Map();
+  
+  // ICE candidate queues: Map<peerId, candidate[]> (for candidates received before remote description is set)
+  const iceCandidateQueues = new Map();
   
   // Event handlers
   const eventHandlers = {
@@ -57,15 +64,375 @@ window.Network = (() => {
    */
   function saveIceServers(iceServers) {
     try {
-      const config = {
-        iceServers: iceServers,
-        updatedAt: Date.now()
-      };
+      const saved = localStorage.getItem(STORAGE_KEY);
+      let config = {};
+      if (saved) {
+        config = JSON.parse(saved);
+      }
+      config.iceServers = iceServers;
+      config.updatedAt = Date.now();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
       Bus.emit('network:configUpdated', { iceServers });
     } catch (e) {
       console.error('[Network] Error saving ICE servers:', e);
       throw e;
+    }
+  }
+
+  // WebSocket connection for signaling
+  let signalingWebSocket = null;
+  let signalingReconnectTimeout = null;
+  const SIGNALING_RECONNECT_DELAY = 3000; // 3 seconds
+
+  /**
+   * Get signaling server URL from config
+   */
+  function getSignalingServerUrl() {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const config = JSON.parse(saved);
+        // Check for custom URL first, then public service
+        return config.signalingServerUrl || config.usePublicSignaling ? 'public' : null;
+      }
+    } catch (e) {
+      console.warn('[Network] Error loading signaling server URL:', e);
+    }
+    // Default to public signaling service
+    return 'public';
+  }
+
+  /**
+   * Set signaling server URL
+   */
+  function setSignalingServerUrl(url) {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      let config = {};
+      if (saved) {
+        config = JSON.parse(saved);
+      }
+      if (url === 'public' || url === null) {
+        config.signalingServerUrl = null;
+        config.usePublicSignaling = (url === 'public');
+      } else {
+        config.signalingServerUrl = url;
+        config.usePublicSignaling = false;
+      }
+      config.updatedAt = Date.now();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+      Bus.emit('network:configUpdated', { signalingServerUrl: url });
+      
+      // Reconnect WebSocket if needed
+      if (signalingWebSocket) {
+        disconnectSignaling();
+      }
+      if (url !== null) {
+        connectSignaling();
+      }
+    } catch (e) {
+      console.error('[Network] Error saving signaling server URL:', e);
+      throw e;
+    }
+  }
+
+  /**
+   * Get public signaling service URL
+   * 
+   * Note: STUN servers cannot be used as signaling servers.
+   * STUN is for NAT traversal (finding public IP), signaling is for exchanging WebRTC metadata.
+   * 
+   * Options for signaling:
+   * 1. Deploy your own signaling server (recommended for production)
+   * 2. Use a public WebSocket relay service (for testing)
+   * 3. Use localStorage (same origin only, no server needed)
+   */
+  function getPublicSignalingUrl() {
+    // Check if user has configured a public service URL
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const config = JSON.parse(saved);
+        if (config.publicSignalingUrl) {
+          return config.publicSignalingUrl;
+        }
+      }
+    } catch (e) {
+      console.warn('[Network] Error loading public signaling URL:', e);
+    }
+
+    // No default public service - user must configure
+    // Public signaling servers are rare because they require resources and can be abused
+    // Recommended: Deploy your own simple signaling server
+    return null;
+  }
+
+  /**
+   * Set public signaling service URL
+   */
+  function setPublicSignalingUrl(url) {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      let config = {};
+      if (saved) {
+        config = JSON.parse(saved);
+      }
+      config.publicSignalingUrl = url || null;
+      config.usePublicSignaling = !!url;
+      config.updatedAt = Date.now();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+      Bus.emit('network:configUpdated', { publicSignalingUrl: url });
+      
+      // Reconnect if using public signaling
+      if (getSignalingServerUrl() === 'public') {
+        if (signalingWebSocket) {
+          disconnectSignaling();
+        }
+        if (url) {
+          connectSignaling();
+        }
+      }
+    } catch (e) {
+      console.error('[Network] Error saving public signaling URL:', e);
+      throw e;
+    }
+  }
+
+  /**
+   * Connect to signaling server via WebSocket
+   */
+  function connectSignaling() {
+    const signalingUrl = getSignalingServerUrl();
+    if (!signalingUrl) {
+      return; // No signaling server configured
+    }
+
+    // Close existing connection
+    if (signalingWebSocket) {
+      disconnectSignaling();
+    }
+
+    try {
+      let wsUrl = null;
+      
+      if (signalingUrl === 'public') {
+        wsUrl = getPublicSignalingUrl();
+        if (!wsUrl) {
+          // Public signaling enabled but no URL - silently return (user hasn't configured it yet)
+          return;
+        }
+      } else if (signalingUrl.startsWith('ws://') || signalingUrl.startsWith('wss://')) {
+        wsUrl = signalingUrl;
+      } else {
+        // Convert HTTP URL to WebSocket URL
+        wsUrl = signalingUrl.replace(/^http/, 'ws').replace(/\/$/, '') + '/ws';
+      }
+      
+      if (!wsUrl) {
+        console.warn('[Network] No WebSocket URL available for signaling');
+        return;
+      }
+
+      const peerId = getPeerId();
+      const ws = new WebSocket(`${wsUrl}?peerId=${encodeURIComponent(peerId)}`);
+      
+      ws.onopen = () => {
+        console.log('[Network] Signaling WebSocket connected');
+        signalingWebSocket = ws;
+        Bus.emit('network:signalingConnected');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          handleSignalingMessage(message);
+        } catch (e) {
+          console.error('[Network] Error parsing signaling message:', e);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('[Network] Signaling WebSocket error:', error);
+        Bus.emit('network:signalingError', { error });
+      };
+
+      ws.onclose = () => {
+        console.log('[Network] Signaling WebSocket closed');
+        signalingWebSocket = null;
+        Bus.emit('network:signalingDisconnected');
+        
+        // Attempt to reconnect
+        if (signalingReconnectTimeout) {
+          clearTimeout(signalingReconnectTimeout);
+        }
+        signalingReconnectTimeout = setTimeout(() => {
+          connectSignaling();
+        }, SIGNALING_RECONNECT_DELAY);
+      };
+    } catch (e) {
+      console.error('[Network] Error connecting to signaling server:', e);
+    }
+  }
+
+  /**
+   * Disconnect from signaling server
+   */
+  function disconnectSignaling() {
+    if (signalingReconnectTimeout) {
+      clearTimeout(signalingReconnectTimeout);
+      signalingReconnectTimeout = null;
+    }
+    
+    if (signalingWebSocket) {
+      signalingWebSocket.close();
+      signalingWebSocket = null;
+    }
+  }
+
+  /**
+   * Handle incoming signaling message from WebSocket
+   */
+  function handleSignalingMessage(message) {
+    const { type, from, to, data } = message;
+    const peerId = getPeerId();
+    
+    // Only process messages intended for us
+    if (to && to !== peerId) {
+      return;
+    }
+
+    // Emit event for other modules to handle
+    Bus.emit('network:signalingMessage', { from, data });
+  }
+
+  /**
+   * Send signaling data to server (for cross-origin communication)
+   */
+  async function sendSignalingData(targetPeerId, data) {
+    const signalingUrl = getSignalingServerUrl();
+    if (!signalingUrl) {
+      // No signaling server configured - use localStorage (same origin only)
+      return false;
+    }
+
+    // Try WebSocket first (if connected)
+    if (signalingWebSocket && signalingWebSocket.readyState === WebSocket.OPEN) {
+      try {
+        const peerId = getPeerId();
+        signalingWebSocket.send(JSON.stringify({
+          type: 'signaling',
+          from: peerId,
+          to: targetPeerId,
+          data: data,
+          timestamp: Date.now()
+        }));
+        return true;
+      } catch (e) {
+        console.error('[Network] Error sending via WebSocket:', e);
+        // Fall through to HTTP fallback
+      }
+    }
+
+    // Fallback to HTTP API
+    try {
+      const peerId = getPeerId();
+      const httpUrl = signalingUrl === 'public' ? getPublicSignalingUrl() : signalingUrl;
+      if (!httpUrl || httpUrl.startsWith('ws://') || httpUrl.startsWith('wss://')) {
+        // WebSocket-only URL, can't use HTTP
+        return false;
+      }
+
+      const response = await fetch(`${httpUrl}/signaling`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          from: peerId,
+          to: targetPeerId,
+          data: data,
+          timestamp: Date.now()
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Signaling server returned ${response.status}`);
+      }
+
+      return true;
+    } catch (e) {
+      console.error('[Network] Error sending signaling data:', e);
+      return false;
+    }
+  }
+
+  /**
+   * Poll for signaling data from server (HTTP fallback when WebSocket not available)
+   */
+  async function pollSignalingData() {
+    const signalingUrl = getSignalingServerUrl();
+    if (!signalingUrl) {
+      return null;
+    }
+
+    // If WebSocket is connected, messages come via WebSocket events
+    // This is only for HTTP polling fallback
+    if (signalingWebSocket && signalingWebSocket.readyState === WebSocket.OPEN) {
+      return null; // WebSocket handles messages via events
+    }
+
+    try {
+      const peerId = getPeerId();
+      const httpUrl = signalingUrl === 'public' ? getPublicSignalingUrl() : signalingUrl;
+      if (!httpUrl || httpUrl.startsWith('ws://') || httpUrl.startsWith('wss://')) {
+        return null; // WebSocket-only, can't poll via HTTP
+      }
+
+      const response = await fetch(`${httpUrl}/signaling/${peerId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          return null; // No data available
+        }
+        throw new Error(`Signaling server returned ${response.status}`);
+      }
+
+      const messages = await response.json();
+      return Array.isArray(messages) ? messages : [];
+    } catch (e) {
+      console.error('[Network] Error polling signaling data:', e);
+      return null;
+    }
+  }
+
+  /**
+   * Initialize signaling connection on module load (only if configured)
+   */
+  function initSignaling() {
+    const signalingUrl = getSignalingServerUrl();
+    if (signalingUrl && signalingUrl !== 'public') {
+      // Only connect if a specific URL is configured (not just 'public' without URL)
+      const publicUrl = getPublicSignalingUrl();
+      if (signalingUrl === 'public' && !publicUrl) {
+        // Public signaling enabled but no URL - don't connect, don't warn
+        return;
+      }
+      connectSignaling();
+    }
+  }
+
+  // Auto-connect on module load (only if properly configured)
+  if (typeof window !== 'undefined') {
+    // Wait for DOM to be ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initSignaling);
+    } else {
+      initSignaling();
     }
   }
   
@@ -196,9 +563,16 @@ window.Network = (() => {
     
     // ICE connection state
     pc.oniceconnectionstatechange = () => {
-      console.log(`[Network] ICE connection state for ${peerId}:`, pc.iceConnectionState);
+      const iceState = pc.iceConnectionState;
+      console.log(`[Network] ICE connection state for ${peerId}:`, iceState);
       
-      if (pc.iceConnectionState === 'failed') {
+      if (iceState === 'connected' || iceState === 'completed') {
+        // Emit event when ICE connection is established (more reliable than connectionState)
+        console.log(`[Network] Emitting network:iceConnected for ${peerId}`);
+        Bus.emit('network:iceConnected', { peerId });
+      }
+      
+      if (iceState === 'failed') {
         console.warn(`[Network] ICE connection failed for ${peerId}`);
         eventHandlers.error.forEach(handler => {
           try {
@@ -215,10 +589,14 @@ window.Network = (() => {
     if (dataChannel) {
       dataChannel.onopen = () => {
         console.log(`[Network] Data channel opened for ${peerId}`);
+        // Emit event when data channel opens (more reliable than connectionState)
+        Bus.emit('network:dataChannelOpen', { peerId });
       };
       
       dataChannel.onclose = () => {
         console.log(`[Network] Data channel closed for ${peerId}`);
+        // Emit event when data channel closes
+        Bus.emit('network:dataChannelClose', { peerId });
       };
       
       dataChannel.onerror = (error) => {
@@ -257,6 +635,13 @@ window.Network = (() => {
       const channel = event.channel;
       console.log(`[Network] Incoming data channel for ${peerId}:`, channel.label);
       
+      // Store data channel in connection object
+      const conn = connections.get(peerId);
+      if (conn) {
+        conn.dataChannel = channel;
+        console.log(`[Network] Stored incoming data channel for ${peerId}`);
+      }
+      
       setupDataChannelHandlers(channel, peerId);
     };
   }
@@ -267,6 +652,8 @@ window.Network = (() => {
   function setupDataChannelHandlers(channel, peerId) {
     channel.onopen = () => {
       console.log(`[Network] Incoming data channel opened for ${peerId}`);
+      // Emit event when incoming data channel opens
+      Bus.emit('network:dataChannelOpen', { peerId });
     };
     
     channel.onmessage = (event) => {
@@ -285,6 +672,12 @@ window.Network = (() => {
       } catch (e) {
         console.error('[Network] Error parsing message:', e);
       }
+    };
+    
+    channel.onclose = () => {
+      console.log(`[Network] Incoming data channel closed for ${peerId}`);
+      // Emit event when incoming data channel closes
+      Bus.emit('network:dataChannelClose', { peerId });
     };
     
     channel.onerror = (error) => {
@@ -402,6 +795,9 @@ window.Network = (() => {
       sdp: offer.sdp
     }));
     
+    // Flush queued ICE candidates after remote description is set
+    await flushIceCandidateQueue(peerId);
+    
     // Create answer
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
@@ -441,10 +837,21 @@ window.Network = (() => {
       throw new Error('Only initiator can process answer');
     }
     
+    // Check if remote description (answer) is already set
+    // For initiator: after setting answer, signalingState becomes 'stable'
+    // If remote description is already set and it's an answer, don't set it again
+    if (conn.pc.remoteDescription && conn.pc.remoteDescription.type === 'answer') {
+      // Answer already processed - remote description is set
+      return;
+    }
+    
     await conn.pc.setRemoteDescription(new RTCSessionDescription({
       type: 'answer',
       sdp: answer.sdp
     }));
+    
+    // Flush queued ICE candidates after remote description is set
+    await flushIceCandidateQueue(peerId);
   }
   
   /**
@@ -454,10 +861,20 @@ window.Network = (() => {
     const conn = connections.get(peerId);
     if (!conn) {
       // Store candidate for later (connection might not be ready yet)
-      if (!messageQueues.has(peerId)) {
-        messageQueues.set(peerId, []);
+      if (!iceCandidateQueues.has(peerId)) {
+        iceCandidateQueues.set(peerId, []);
       }
-      // TODO: Store ICE candidates for later addition
+      iceCandidateQueues.get(peerId).push(candidate);
+      return;
+    }
+    
+    // Check if remote description is set
+    if (!conn.pc.remoteDescription) {
+      // Store candidate for later (remote description not set yet)
+      if (!iceCandidateQueues.has(peerId)) {
+        iceCandidateQueues.set(peerId, []);
+      }
+      iceCandidateQueues.get(peerId).push(candidate);
       return;
     }
     
@@ -468,7 +885,44 @@ window.Network = (() => {
         sdpMid: candidate.sdpMid
       }));
     } catch (e) {
-      console.error(`[Network] Error adding ICE candidate for ${peerId}:`, e);
+      // If error, store for later retry
+      if (!iceCandidateQueues.has(peerId)) {
+        iceCandidateQueues.set(peerId, []);
+      }
+      iceCandidateQueues.get(peerId).push(candidate);
+      console.warn(`[Network] Error adding ICE candidate for ${peerId}, queued for later:`, e.message);
+    }
+  }
+  
+  /**
+   * Flush queued ICE candidates for a peer (called after remote description is set)
+   */
+  async function flushIceCandidateQueue(peerId) {
+    const conn = connections.get(peerId);
+    if (!conn || !conn.pc.remoteDescription) {
+      return; // Can't flush if no connection or no remote description
+    }
+    
+    const queue = iceCandidateQueues.get(peerId);
+    if (!queue || queue.length === 0) {
+      return;
+    }
+    
+    console.log(`[Network] Flushing ${queue.length} queued ICE candidates for ${peerId}`);
+    
+    const candidates = queue.splice(0); // Remove all from queue
+    iceCandidateQueues.delete(peerId);
+    
+    for (const candidate of candidates) {
+      try {
+        await conn.pc.addIceCandidate(new RTCIceCandidate({
+          candidate: candidate.candidate,
+          sdpMLineIndex: candidate.sdpMLineIndex,
+          sdpMid: candidate.sdpMid
+        }));
+      } catch (e) {
+        console.warn(`[Network] Error adding queued ICE candidate for ${peerId}:`, e.message);
+      }
     }
   }
   
@@ -524,6 +978,7 @@ window.Network = (() => {
     connections.delete(peerId);
     connectionStates.delete(peerId);
     messageQueues.delete(peerId);
+    iceCandidateQueues.delete(peerId);
     
     Bus.emit('network:disconnected', { peerId });
   }
@@ -539,11 +994,28 @@ window.Network = (() => {
    * Get all active connections
    */
   function getConnections() {
-    return Array.from(connections.keys()).map(peerId => ({
-      peerId,
-      state: getConnectionState(peerId),
-      role: connections.get(peerId)?.role
-    }));
+    return Array.from(connections.keys()).map(peerId => {
+      const conn = connections.get(peerId);
+      return {
+        peerId,
+        state: getConnectionState(peerId),
+        role: conn?.role,
+        dataChannelOpen: conn?.dataChannel?.readyState === 'open',
+        iceConnectionState: conn?.pc?.iceConnectionState,
+        connectionState: conn?.pc?.connectionState,
+        hasLocalDescription: !!(conn?.pc?.localDescription && conn.pc.localDescription.sdp),
+        hasRemoteDescription: !!(conn?.pc?.remoteDescription && conn.pc.remoteDescription.sdp),
+        pc: conn?.pc // Include pc for advanced checks (but prefer hasLocalDescription/hasRemoteDescription)
+      };
+    });
+  }
+  
+  /**
+   * Check if connection has open data channel
+   */
+  function isDataChannelOpen(peerId) {
+    const conn = connections.get(peerId);
+    return conn && conn.dataChannel && conn.dataChannel.readyState === 'open';
   }
   
   /**
@@ -561,6 +1033,16 @@ window.Network = (() => {
     // Configuration
     getIceServersConfig,
     updateIceServers,
+    getSignalingServerUrl,
+    setSignalingServerUrl,
+    getPublicSignalingUrl,
+    setPublicSignalingUrl,
+    
+    // Signaling (internal use)
+    sendSignalingData,
+    pollSignalingData,
+    connectSignaling,
+    disconnectSignaling,
     
     // Connection management
     createOffer,
@@ -575,6 +1057,7 @@ window.Network = (() => {
     // Status
     getConnectionState,
     getConnections,
+    isDataChannelOpen,
     getPeerId,
     
     // Events

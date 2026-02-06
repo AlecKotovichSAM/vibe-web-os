@@ -9,7 +9,13 @@ if errorlevel 1 (
     echo.
     echo Trying alternative: npx serve...
     echo.
-    npx --yes serve -p 9000
+    REM Get port from argument or use default 9000
+    if "%~1"=="" (
+        set PORT=9000
+    ) else (
+        set PORT=%~1
+    )
+    npx --yes serve -p %PORT%
     if errorlevel 1 (
         echo.
         echo ERROR: Could not start server
@@ -24,12 +30,17 @@ if errorlevel 1 (
     exit /b 0
 )
 
-REM Use port 9000
-set PORT=9000
+REM Get port from argument or use default 9000
+if "%~1"=="" (
+    set PORT=9000
+) else (
+    set PORT=%~1
+)
 
 echo.
 echo Server starting on http://localhost:%PORT%
 echo Open this URL in your browser
 echo Press Ctrl+C to stop the server
+echo Usage: dev-server.bat [port] (default: 9000)
 echo.
 python -m http.server %PORT%

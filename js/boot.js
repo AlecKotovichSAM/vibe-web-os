@@ -81,9 +81,67 @@
       } else {
         console.warn('[StateManager] StateManager not available');
       }
+      
+      // Check for Telecom invite link in URL (for cross-origin invites)
+      checkTelecomInviteLink();
     }, 500); // Increased delay to ensure everything is ready
     
     BSOD.startRandomSchedule(600, 1200); // 10-20 minutes
+  }
+  
+  /**
+   * Check for Telecom invite link in URL and open Telecom app if found
+   */
+  function checkTelecomInviteLink() {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const inviteParam = urlParams.get('invite');
+      
+      if (inviteParam && window.Apps) {
+        // Decode invite to check if it's valid
+        try {
+          const inviteJson = atob(inviteParam);
+          const invite = JSON.parse(inviteJson);
+          
+          // Validate invite structure
+          if (invite.id && invite.fromGuid && invite.toGuid) {
+            // Check if user is logged in and has Telecom configured
+            if (window.Auth && window.Auth.isLoggedIn()) {
+              const STORAGE_KEY = 'webos.telecom.v1';
+              const telecomConfig = localStorage.getItem(STORAGE_KEY);
+              
+              if (telecomConfig) {
+                try {
+                  const config = JSON.parse(telecomConfig);
+                  const systemAccount = window.Auth.getAccount();
+                  
+                  // Verify system GUID matches
+                  if (config.systemGuid && systemAccount && config.systemGuid === systemAccount.guid) {
+                    // Check if invite is for current user
+                    const effectiveGuid = config.guidType === 'application' 
+                      ? (config.applicationGuid || null)
+                      : (systemAccount ? systemAccount.guid : null);
+                    
+                    if (effectiveGuid && invite.toGuid === effectiveGuid) {
+                      // Open Telecom app - it will handle showing the invite dialog
+                      setTimeout(() => {
+                        window.Apps.open('telecom');
+                      }, 1000); // Wait a bit more for everything to be ready
+                    }
+                  }
+                } catch (e) {
+                  console.error('[Boot] Error checking Telecom config:', e);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.error('[Boot] Error parsing invite from URL:', e);
+        }
+      }
+    } catch (e) {
+      console.error('[Boot] Error checking Telecom invite link:', e);
+    }
   }
 
   next();

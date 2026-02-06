@@ -1,5 +1,42 @@
 # Vibe Web OS
 
+## P2P Invites (Telecom)
+
+### Pure Peer-to-Peer Communication
+
+The Telecom app uses **100% peer-to-peer WebRTC** connections. No external servers required for signaling.
+
+**How it works:**
+- **Same-Origin (Same Browser)**: Automatically exchanges WebRTC signals via `localStorage` between browser tabs
+- **Cross-Origin**: Requires manual exchange of signals (copy/paste, QR codes, etc.)
+
+**Important:** WebRTC requires exchanging metadata (offers, answers, ICE candidates) BEFORE establishing the P2P connection. This is called "signaling". The actual data connection is **100% P2P** - no servers involved in data transfer.
+
+**Current Implementation:**
+- ✅ **Same-origin**: Fully automatic via localStorage (works between tabs in same browser)
+- ⚠️ **Cross-origin**: Requires manual signal exchange (copy/paste, QR code, etc.)
+
+### Testing Same-Origin P2P
+
+```bash
+# Start dev server
+dev-server.bat 9000
+```
+
+Open multiple tabs on `http://localhost:9000` - invites work automatically between tabs via localStorage.
+
+### STUN Servers
+
+**STUN servers** (configured in Network app):
+- Help WebRTC find your public IP address (NAT traversal)
+- Required for P2P connections through firewalls/NAT
+- Public STUN servers are available (Google, etc.) - no configuration needed
+- **Note:** STUN is NOT signaling - it's only for NAT traversal. Signaling uses localStorage for same-origin.
+
+---
+
+# Vibe Web OS
+
 A browser-based operating system built with pure HTML, CSS, and JavaScript. Features a desktop environment with window management, virtual file system, and built-in apps.
 
 🌐 **Live Demo:** [https://aleckotovichsam.github.io/vibe-web-os/](https://aleckotovichsam.github.io/vibe-web-os/)

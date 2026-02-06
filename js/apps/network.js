@@ -515,6 +515,45 @@ Apps.register({
         
         <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--panel-2);" />
         
+        <h3>${I18n.t('network.signalingServer')}</h3>
+        <p style="color: var(--muted); font-size: 0.9rem; margin-bottom: 8px;">${I18n.t('network.signalingServerDescription')}</p>
+        <div style="padding: 12px; margin-bottom: 16px; background: rgba(79, 124, 255, 0.1); border: 1px solid var(--accent); border-radius: 6px; font-size: 0.85rem; color: var(--text);">
+          <strong>ℹ️ ${I18n.t('network.signalingNote')}</strong><br>
+          ${I18n.t('network.signalingNoteText')}
+        </div>
+        
+        <div id="signaling-config" style="padding: 16px; background: var(--panel); border: 1px solid var(--panel-2); border-radius: 6px; margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+            <input type="radio" id="signaling-none" name="signaling-type" value="none" />
+            <label for="signaling-none" style="cursor: pointer; flex: 1;">${I18n.t('network.signalingNone')}</label>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+            <input type="radio" id="signaling-public" name="signaling-type" value="public" />
+            <label for="signaling-public" style="cursor: pointer; flex: 1;">${I18n.t('network.signalingPublic')}</label>
+          </div>
+          <div id="signaling-public-url-group" style="display: none; margin-left: 28px; margin-bottom: 12px;">
+            <input type="text" id="signaling-public-url" placeholder="${I18n.t('network.signalingUrlPlaceholder')}" 
+                   style="width: 100%; padding: 8px; background: var(--bg); border: 1px solid var(--panel-2); border-radius: 4px; color: var(--text);" />
+            <span style="font-size: 0.85rem; color: var(--muted); display: block; margin-top: 4px;">${I18n.t('network.signalingUrlHint')}</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <input type="radio" id="signaling-custom" name="signaling-type" value="custom" />
+            <label for="signaling-custom" style="cursor: pointer; flex: 1;">${I18n.t('network.signalingCustom')}</label>
+          </div>
+          <div id="signaling-custom-url-group" style="display: none; margin-left: 28px;">
+            <input type="text" id="signaling-custom-url" placeholder="${I18n.t('network.signalingUrlPlaceholder')}" 
+                   style="width: 100%; padding: 8px; background: var(--bg); border: 1px solid var(--panel-2); border-radius: 4px; color: var(--text);" />
+            <span style="font-size: 0.85rem; color: var(--muted); display: block; margin-top: 4px;">${I18n.t('network.signalingUrlHint')}</span>
+          </div>
+        </div>
+        
+        <div style="display: flex; gap: 8px; margin-bottom: 24px;">
+          <button id="save-signaling-btn" class="auth-button-primary">${I18n.t('network.save')}</button>
+          <div id="signaling-status" style="flex: 1; padding: 8px; background: var(--panel); border-radius: 4px; font-size: 0.9rem; color: var(--muted);"></div>
+        </div>
+        
+        <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--panel-2);" />
+        
         <h3>${I18n.t('network.connections')}</h3>
         <div id="connections-list"></div>
       </div>
@@ -543,11 +582,116 @@ Apps.register({
     // Initial render
     renderStunServers();
     renderConnections();
+    renderSignalingConfig();
     
     // Auto-check servers on load (only if WebRTC is available)
     if (webrtcAvailable) {
       checkAllServers();
     }
+    
+    // Render signaling configuration
+    function renderSignalingConfig() {
+      const currentUrl = window.Network.getSignalingServerUrl();
+      const publicUrl = window.Network.getPublicSignalingUrl();
+      
+      // Set radio button state
+      if (!currentUrl || currentUrl === null) {
+        win.querySelector('#signaling-none').checked = true;
+        win.querySelector('#signaling-public-url-group').style.display = 'none';
+        win.querySelector('#signaling-custom-url-group').style.display = 'none';
+      } else if (currentUrl === 'public') {
+        win.querySelector('#signaling-public').checked = true;
+        win.querySelector('#signaling-public-url-group').style.display = 'block';
+        win.querySelector('#signaling-custom-url-group').style.display = 'none';
+        if (publicUrl) {
+          win.querySelector('#signaling-public-url').value = publicUrl;
+        }
+      } else {
+        win.querySelector('#signaling-custom').checked = true;
+        win.querySelector('#signaling-public-url-group').style.display = 'none';
+        win.querySelector('#signaling-custom-url-group').style.display = 'block';
+        win.querySelector('#signaling-custom-url').value = currentUrl;
+      }
+      
+      // Update status
+      updateSignalingStatus();
+    }
+    
+    // Update signaling status display
+    function updateSignalingStatus() {
+      const statusDiv = win.querySelector('#signaling-status');
+      if (!statusDiv) return;
+      
+      const currentUrl = window.Network.getSignalingServerUrl();
+      if (!currentUrl || currentUrl === null) {
+        statusDiv.textContent = I18n.t('network.signalingStatusNone');
+        statusDiv.style.color = 'var(--muted)';
+      } else if (currentUrl === 'public') {
+        const publicUrl = window.Network.getPublicSignalingUrl();
+        if (publicUrl) {
+          statusDiv.textContent = `${I18n.t('network.signalingStatusPublic')}: ${publicUrl}`;
+          statusDiv.style.color = 'var(--ok)';
+        } else {
+          statusDiv.textContent = I18n.t('network.signalingStatusPublicNoUrl');
+          statusDiv.style.color = 'var(--danger)';
+        }
+      } else {
+        statusDiv.textContent = `${I18n.t('network.signalingStatusCustom')}: ${currentUrl}`;
+        statusDiv.style.color = 'var(--ok)';
+      }
+    }
+    
+    // Radio button handlers
+    win.querySelector('#signaling-none').addEventListener('change', () => {
+      win.querySelector('#signaling-public-url-group').style.display = 'none';
+      win.querySelector('#signaling-custom-url-group').style.display = 'none';
+      updateSignalingStatus();
+    });
+    
+    win.querySelector('#signaling-public').addEventListener('change', () => {
+      win.querySelector('#signaling-public-url-group').style.display = 'block';
+      win.querySelector('#signaling-custom-url-group').style.display = 'none';
+      updateSignalingStatus();
+    });
+    
+    win.querySelector('#signaling-custom').addEventListener('change', () => {
+      win.querySelector('#signaling-public-url-group').style.display = 'none';
+      win.querySelector('#signaling-custom-url-group').style.display = 'block';
+      updateSignalingStatus();
+    });
+    
+    // Save signaling configuration
+    win.querySelector('#save-signaling-btn').addEventListener('click', () => {
+      try {
+        const selectedType = win.querySelector('input[name="signaling-type"]:checked').value;
+        
+        if (selectedType === 'none') {
+          window.Network.setSignalingServerUrl(null);
+          showMessage(I18n.t('network.signalingSaved'), 'success');
+        } else if (selectedType === 'public') {
+          const publicUrl = win.querySelector('#signaling-public-url').value.trim();
+          if (!publicUrl) {
+            showMessage(I18n.t('network.signalingUrlRequired'), 'error');
+            return;
+          }
+          window.Network.setSignalingServerUrl('public');
+          window.Network.setPublicSignalingUrl(publicUrl);
+          showMessage(I18n.t('network.signalingSaved'), 'success');
+        } else if (selectedType === 'custom') {
+          const customUrl = win.querySelector('#signaling-custom-url').value.trim();
+          if (!customUrl) {
+            showMessage(I18n.t('network.signalingUrlRequired'), 'error');
+            return;
+          }
+          window.Network.setSignalingServerUrl(customUrl);
+          showMessage(I18n.t('network.signalingSaved'), 'success');
+        }
+        
+        renderSignalingConfig();
+      } catch (e) {
+        showMessage(e.message || I18n.t('network.error'), 'error');
+      }
+    });
     
     // Add server button
     win.querySelector('#add-server-btn').addEventListener('click', () => {
