@@ -116,6 +116,16 @@ Apps.register({
         }, 10000); // 10 second timeout (STUN can be slow)
         
         try {
+          // Skip TURN servers with empty username or credential (they cause InvalidAccessError)
+          if (server.urls && (Array.isArray(server.urls) ? server.urls.some(url => url.includes('turn:')) : server.urls.includes('turn:'))) {
+            if (!server.username || !server.credential || server.username === '' || server.credential === '') {
+              const serverUrlDisplay = formatServerUrls(server);
+              console.warn(`[Network] Skipping TURN server ${serverUrlDisplay}: empty username or credential`);
+              resolve(false);
+              return;
+            }
+          }
+          
           // Create a test RTCPeerConnection with only this server
           testPc = new RTCPeerConnection({
             iceServers: [server]

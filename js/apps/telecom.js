@@ -3678,9 +3678,22 @@ async function showCreateInviteDialog(win, winId, config, storageKey, existingIn
   // Serialize invite to JSON (full data for textarea)
   const inviteJson = JSON.stringify(invite, null, 2);
   
+  // Verify webrtcOffer is included in JSON
+  if (invite.webrtcOffer) {
+    console.log('[Telecom] ✅ Full JSON includes WebRTC offer:', {
+      hasOffer: !!invite.webrtcOffer,
+      sdpLength: invite.webrtcOffer.sdp?.length || 0,
+      type: invite.webrtcOffer.type,
+      candidatesCount: invite.webrtcOffer.iceCandidates?.length || 0
+    });
+  } else {
+    console.warn('[Telecom] ⚠️ Full JSON does NOT include WebRTC offer - invite was created without WebRTC');
+  }
+  
   // For QR code: include all data except avatar (avatar data URI can be 10KB+)
   // QR codes version 40 with level L can hold ~2953 bytes, so we exclude only avatar
   // Public key (RSA 2048, base64, ~294 chars) is included - fits easily
+  // WebRTC offer is included if available (needed for establishing connection)
   // Full JSON with all data (including avatar) remains in textarea for manual copying
   const inviteForQR = {
     id: invite.id,
@@ -3693,9 +3706,22 @@ async function showCreateInviteDialog(win, winId, config, storageKey, existingIn
     fromFirstName: invite.fromFirstName,
     fromLastName: invite.fromLastName,
     fromEmail: invite.fromEmail,
-    fromPublicKey: invite.fromPublicKey // Include public key (~294 chars, fits easily)
+    fromPublicKey: invite.fromPublicKey, // Include public key (~294 chars, fits easily)
+    webrtcOffer: invite.webrtcOffer || null // Include WebRTC offer if available (needed for connection)
     // Exclude only: fromAvatar (too large for QR code)
   };
+  
+  // Log if webrtcOffer is included
+  if (invite.webrtcOffer) {
+    console.log('[Telecom] QR code includes WebRTC offer:', {
+      hasOffer: !!invite.webrtcOffer,
+      sdpLength: invite.webrtcOffer.sdp?.length || 0,
+      type: invite.webrtcOffer.type,
+      candidatesCount: invite.webrtcOffer.iceCandidates?.length || 0
+    });
+  } else {
+    console.warn('[Telecom] QR code does NOT include WebRTC offer - invite was created without WebRTC');
+  }
   const inviteJsonCompact = JSON.stringify(inviteForQR); // Minimal version
   const qrData = inviteJsonCompact; // Use raw JSON directly
   const qrDataSize = qrData.length;
@@ -3706,6 +3732,7 @@ async function showCreateInviteDialog(win, winId, config, storageKey, existingIn
   sharedFields.push('ID, GUIDs, timestamp');
   sharedFields.push('Display name, Username');
   if (invite.fromPublicKey) sharedFields.push('Public key');
+  if (invite.webrtcOffer) sharedFields.push('WebRTC offer (for connection)');
   if (invite.fromFirstName) sharedFields.push('First name');
   if (invite.fromLastName) sharedFields.push('Last name');
   if (invite.fromEmail) sharedFields.push('Email');
@@ -4767,13 +4794,25 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
           const existingIndex = recipientInvites.findIndex(inv => inv.id === invite.id);
           
           // Log invite data before saving
+          const hasValidOffer = invite.webrtcOffer && 
+                                typeof invite.webrtcOffer === 'object' &&
+                                invite.webrtcOffer.sdp &&
+                                invite.webrtcOffer.type;
+          
           console.log('[Telecom] Saving invite to recipient storage:', {
             id: invite.id,
             hasWebrtcOffer: !!invite.webrtcOffer,
-            webrtcOfferType: invite.webrtcOffer?.type,
+            webrtcOfferType: typeof invite.webrtcOffer,
+            webrtcOfferValue: invite.webrtcOffer,
+            hasValidOffer: hasValidOffer,
+            webrtcOfferTypeField: invite.webrtcOffer?.type,
             webrtcOfferSdpLength: invite.webrtcOffer?.sdp?.length,
             inviteKeys: Object.keys(invite)
           });
+          
+          if (!hasValidOffer && invite.webrtcOffer !== undefined) {
+            console.warn('[Telecom] ⚠️ Invite has webrtcOffer key but value is invalid:', invite.webrtcOffer);
+          }
           
           if (existingIndex >= 0) {
             // Update existing invite (merge with new data)
@@ -5378,8 +5417,10 @@ function deleteContact(contactGuid, config = null) {
   }
   
   if (config) {
-    // 1. Delete received invites from this contact (where fromGuid === contactGuid)
     const effectiveGuid = getEffectiveGuid(config);
+    
+    // 1. Delete received invites from this contact (where fromGuid === contactGuid)
+    // These are invites that the deleted contact sent to the current user
     const RECIPIENT_INVITES_STORAGE_KEY = `webos.telecom.invites.${effectiveGuid}.v1`;
     
     try {
@@ -5401,6 +5442,7 @@ function deleteContact(contactGuid, config = null) {
     }
     
     // 2. Delete sent invites to this contact (where toGuid === contactGuid)
+    // These are invites that the current user sent to the deleted contact
     const SENT_INVITES_STORAGE_KEY = `webos.telecom.sent_invites.guid_from.${effectiveGuid}`;
     
     try {
@@ -5420,6 +5462,33 @@ function deleteContact(contactGuid, config = null) {
     } catch (e) {
       console.error('[Telecom] Error deleting sent invites:', e);
     }
+    
+    // 3. Also check RECIPIENT_STORAGE_KEY for current user (where invites are stored by recipient GUID)
+    // This is where invites sent TO the current user are stored (same as RECIPIENT_INVITES_STORAGE_KEY)
+    // But we check both to be safe
+    const RECIPIENT_STORAGE_KEY = `webos.telecom.invites.${effectiveGuid}.v1`;
+    if (RECIPIENT_STORAGE_KEY !== RECIPIENT_INVITES_STORAGE_KEY) {
+      // This shouldn't happen, but check anyway
+      try {
+        const recipientInvitesData = localStorage.getItem(RECIPIENT_STORAGE_KEY);
+        if (recipientInvitesData) {
+          const recipientInvites = JSON.parse(recipientInvitesData);
+          const initialLength = recipientInvites.length;
+          // Remove invites where fromGuid matches the deleted contact
+          const filteredRecipientInvites = recipientInvites.filter(inv => inv.fromGuid !== contactGuid);
+          
+          if (filteredRecipientInvites.length < initialLength) {
+            const deletedCount = initialLength - filteredRecipientInvites.length;
+            localStorage.setItem(RECIPIENT_STORAGE_KEY, JSON.stringify(filteredRecipientInvites));
+            console.log('[Telecom] Deleted', deletedCount, 'invite(s) from contact in recipient storage:', contactGuid);
+          }
+        }
+      } catch (e) {
+        console.error('[Telecom] Error deleting invites from recipient storage:', e);
+      }
+    }
+    
+    console.log('[Telecom] ✅ All invites and offers related to contact', contactGuid, 'have been deleted');
   }
 }
 
@@ -5935,6 +6004,7 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
   const publicKey = senderAccount.publicKey || null;
   
   // Create invite object - use effective GUID as fromGuid
+  // Only include webrtcOffer if it's valid (not null/undefined)
   const invite = {
     id: 'invite-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
     fromGuid: senderEffectiveGuid, // Use effective GUID (system or application)
@@ -5948,11 +6018,25 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
     fromPublicKey: publicKey, // Public key from account (RSA 2048, base64, ~294 chars)
     toGuid: targetGuid,
     timestamp: new Date().toISOString(),
-    status: 'pending', // pending, accepted, declined
-    webrtcOffer: webrtcOffer // WebRTC offer with SDP and ICE candidates
+    status: 'pending' // pending, accepted, declined
   };
   
+  // Only add webrtcOffer if it's valid (not null/undefined)
+  // This prevents webrtcOffer: null from being saved, which can cause confusion
+  if (webrtcOffer && typeof webrtcOffer === 'object' && webrtcOffer.sdp && webrtcOffer.type) {
+    invite.webrtcOffer = webrtcOffer;
+    console.log('[Telecom] Created invite with valid WebRTC offer:', {
+      sdpLength: webrtcOffer.sdp.length,
+      type: webrtcOffer.type,
+      candidatesCount: webrtcOffer.iceCandidates?.length || 0
+    });
+  } else {
+    console.log('[Telecom] Created invite without WebRTC offer (WebRTC unavailable or failed)');
+  }
+  
   console.log('[Telecom] Created invite object with avatar:', invite.fromAvatar ? (invite.fromAvatar.substring(0, 50) + '...') : 'null');
+  console.log('[Telecom] Invite object keys:', Object.keys(invite));
+  console.log('[Telecom] Invite has webrtcOffer:', 'webrtcOffer' in invite, invite.webrtcOffer ? 'valid' : 'missing');
 
   // Check: is there already a pending invite to this GUID?
   const sentInvitesData = localStorage.getItem(SENT_INVITES_STORAGE_KEY);
@@ -6376,12 +6460,21 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
     // Use storedInvite (from storage) instead of invite parameter, as it has complete data
     const inviteForAnswer = inviteToProcess || invite;
     
+    // Check if webrtcOffer is valid (has sdp and type)
+    const hasValidOffer = inviteForAnswer.webrtcOffer && 
+                          typeof inviteForAnswer.webrtcOffer === 'object' &&
+                          inviteForAnswer.webrtcOffer.sdp &&
+                          inviteForAnswer.webrtcOffer.type;
+    
     console.log('[Telecom] Checking WebRTC answer generation conditions:');
-    console.log('[Telecom]   inviteForAnswer.webrtcOffer:', !!inviteForAnswer.webrtcOffer, inviteForAnswer.webrtcOffer ? 'present' : 'missing');
+    console.log('[Telecom]   inviteForAnswer.webrtcOffer exists:', !!inviteForAnswer.webrtcOffer);
+    console.log('[Telecom]   inviteForAnswer.webrtcOffer type:', typeof inviteForAnswer.webrtcOffer);
+    console.log('[Telecom]   inviteForAnswer.webrtcOffer value:', inviteForAnswer.webrtcOffer);
+    console.log('[Telecom]   hasValidOffer:', hasValidOffer);
     console.log('[Telecom]   RTCPeerConnection available:', typeof RTCPeerConnection !== 'undefined');
     console.log('[Telecom]   inviteForAnswer object keys:', Object.keys(inviteForAnswer));
     
-    if (inviteForAnswer.webrtcOffer && typeof RTCPeerConnection !== 'undefined') {
+    if (hasValidOffer && typeof RTCPeerConnection !== 'undefined') {
       try {
         console.log('[Telecom] ✅ Generating WebRTC answer for invite:', inviteForAnswer.id);
         
@@ -6906,10 +6999,19 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         // Continue without WebRTC answer if it fails
       }
     } else {
-      if (!invite.webrtcOffer) {
-        console.warn('[Telecom] ⚠️ Cannot generate WebRTC answer: invite.webrtcOffer is missing');
-        console.warn('[Telecom] This invite was likely created without WebRTC offer (old format or manual invite)');
-        console.warn('[Telecom] WebRTC connection cannot be established without offer');
+      if (!hasValidOffer) {
+        console.warn('[Telecom] ⚠️ Cannot generate WebRTC answer: invite.webrtcOffer is missing or invalid');
+        console.warn('[Telecom]   webrtcOffer exists:', !!inviteForAnswer.webrtcOffer);
+        console.warn('[Telecom]   webrtcOffer type:', typeof inviteForAnswer.webrtcOffer);
+        console.warn('[Telecom]   webrtcOffer value:', inviteForAnswer.webrtcOffer);
+        if (inviteForAnswer.webrtcOffer === false || inviteForAnswer.webrtcOffer === null) {
+          console.warn('[Telecom] ⚠️ webrtcOffer is explicitly set to false/null - this invite was created without WebRTC');
+        } else if (!inviteForAnswer.webrtcOffer) {
+          console.warn('[Telecom] ⚠️ webrtcOffer is missing - this invite was likely created without WebRTC offer');
+        } else if (!inviteForAnswer.webrtcOffer.sdp || !inviteForAnswer.webrtcOffer.type) {
+          console.warn('[Telecom] ⚠️ webrtcOffer exists but is invalid (missing sdp or type)');
+        }
+        console.warn('[Telecom] WebRTC connection cannot be established without valid offer');
       }
       if (typeof RTCPeerConnection === 'undefined') {
         console.error('[Telecom] ❌ Cannot generate WebRTC answer: RTCPeerConnection is not available');
