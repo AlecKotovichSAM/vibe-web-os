@@ -1180,6 +1180,9 @@ function renderMainScreen(winId, config, storageKey, restoreState = null) {
     }
   });
   
+  // Check blinking chats Set BEFORE any operations
+  console.log('[Telecom] 🔍 On window open - blinking chats Set BEFORE any operations:', window._telecomBlinkingChats ? Array.from(window._telecomBlinkingChats) : [], 'size:', window._telecomBlinkingChats?.size || 0);
+  
   // Auto-select first chat (service chat) if available
   // CRITICAL: Set selectedChatId BEFORE renderChatsList so blink is not restored for selected chat
   const chats = getChats();
@@ -1193,20 +1196,17 @@ function renderMainScreen(winId, config, storageKey, restoreState = null) {
   }
   
   // Now render chats list (selectedChatId is already set, so blink won't be restored for selected chat)
+  // This should restore blink for any chats in Set that are NOT selected
+  console.log('[Telecom] 🔍 Before renderChatsList - Set:', window._telecomBlinkingChats ? Array.from(window._telecomBlinkingChats) : [], 'size:', window._telecomBlinkingChats?.size || 0);
   renderChatsList(win, winId, config, storageKey);
+  console.log('[Telecom] 🔍 After renderChatsList - Set:', window._telecomBlinkingChats ? Array.from(window._telecomBlinkingChats) : [], 'size:', window._telecomBlinkingChats?.size || 0);
   
   // After rendering, select the chat (this will highlight it and remove blink if it was in Set)
   if (chats.length > 0) {
     const serviceChat = chats.find(c => c.id === 'telecom-service') || chats[0];
+    console.log('[Telecom] 🔍 Before selectChat - Set:', window._telecomBlinkingChats ? Array.from(window._telecomBlinkingChats) : [], 'size:', window._telecomBlinkingChats?.size || 0);
     selectChat(win, winId, serviceChat, config, storageKey);
-    
-    // After selectChat, restore blink for any OTHER chats that are still in the Set
-    // (selectChat removes the selected chat from Set, but others should still blink)
-    if (window._telecomBlinkingChats && window._telecomBlinkingChats.size > 0) {
-      console.log('[Telecom] 🔄 Restoring blink after selectChat for chats:', Array.from(window._telecomBlinkingChats));
-      // Re-render chats list to restore blink for non-selected chats
-      renderChatsList(win, winId, config, storageKey);
-    }
+    console.log('[Telecom] 🔍 After selectChat - Set:', window._telecomBlinkingChats ? Array.from(window._telecomBlinkingChats) : [], 'size:', window._telecomBlinkingChats?.size || 0);
   } else {
     // No chats - ensure selectedChatId is cleared
     delete win.dataset.selectedChatId;
@@ -1280,9 +1280,9 @@ function blinkChatItem(chatId) {
           console.warn('[Telecom] ⚠️ Chat item not found for blink:', chatId, 'in window:', winId, '- will be restored by renderChatsList');
         }
       } else {
-        // Chat is selected - remove from blinking Set
-        window._telecomBlinkingChats.delete(chatId);
-        console.log('[Telecom] ℹ️ Skipping blink for selected chat:', chatId);
+        // Chat is selected - don't apply blink, but keep it in Set
+        // (selectChat will remove it from Set when chat is actually opened)
+        console.log('[Telecom] ℹ️ Skipping blink for selected chat:', chatId, '(chat is open, blink not needed, keeping in Set)');
       }
     });
     
@@ -1313,6 +1313,9 @@ function renderChatsList(win, winId, config, storageKey) {
   // Initialize global blinking chats Set if needed
   if (!window._telecomBlinkingChats) {
     window._telecomBlinkingChats = new Set();
+    console.log('[Telecom] 🔄 Created new blinking chats Set (was undefined)');
+  } else {
+    console.log('[Telecom] 🔄 renderChatsList: Set exists, size:', window._telecomBlinkingChats.size, 'contents:', Array.from(window._telecomBlinkingChats));
   }
 
   // Save which chats are currently blinking before re-rendering
@@ -1322,10 +1325,11 @@ function renderChatsList(win, winId, config, storageKey) {
     const chatId = item.dataset.chatId;
     if (chatId) {
       blinkingChats.add(chatId);
+      console.log('[Telecom] 🔄 Found existing blink in DOM, added to local Set:', chatId);
     }
   });
   
-  console.log('[Telecom] 🔄 renderChatsList called, blinking chats in Set:', Array.from(blinkingChats));
+  console.log('[Telecom] 🔄 renderChatsList called, blinking chats in Set:', Array.from(blinkingChats), 'Set size:', blinkingChats.size, 'Global Set size:', window._telecomBlinkingChats?.size || 0, 'Global Set contents:', Array.from(window._telecomBlinkingChats || []));
 
   const chats = getChats();
   
@@ -1543,7 +1547,14 @@ function selectChat(win, winId, chat, config, storageKey) {
       item.classList.remove('telecom-chat-blink'); // Remove blink when chat is opened
       // Also remove from global Set
       if (window._telecomBlinkingChats) {
+        const wasInSet = window._telecomBlinkingChats.has(chat.id);
+        const setBefore = Array.from(window._telecomBlinkingChats);
         window._telecomBlinkingChats.delete(chat.id);
+        if (wasInSet) {
+          console.log('[Telecom] 🗑️ Removed chat from blinking Set (chat selected):', chat.id, 'Set BEFORE:', setBefore, 'Set AFTER:', Array.from(window._telecomBlinkingChats), 'Set size now:', window._telecomBlinkingChats.size);
+        } else {
+          console.log('[Telecom] ℹ️ Chat was not in blinking Set (selectChat):', chat.id, 'Current Set:', setBefore);
+        }
       }
       console.log('[Telecom] ✅ Applied selected styling to chat:', chat.id);
     } else {
@@ -1555,6 +1566,14 @@ function selectChat(win, winId, chat, config, storageKey) {
       // If chat is blinking, keep its blink styling (orange border-left, etc.)
     }
   });
+  
+  // After removing selected chat from Set, restore blink for any OTHER chats that are still in Set
+  // This ensures that if multiple chats have new messages, they all blink (except the selected one)
+  if (window._telecomBlinkingChats && window._telecomBlinkingChats.size > 0) {
+    console.log('[Telecom] 🔄 After selectChat, restoring blink for other chats in Set:', Array.from(window._telecomBlinkingChats));
+    // Re-render chats list to restore blink for non-selected chats
+    renderChatsList(win, winId, config, storageKey);
+  }
   
 }
 
@@ -7884,10 +7903,11 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                       try {
                         decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
                         console.log('[Telecom] ✅ Message decrypted successfully (recipient side):', decryptedText);
-                        // Add to blinking Set - blink will be applied when window opens via renderChatsList
+                        // Add to blinking Set and trigger blink immediately
                         if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
                         window._telecomBlinkingChats.add(chatId);
-                        console.log('[Telecom] 💫 Added chat to blinking Set:', chatId);
+                        console.log('[Telecom] 💫 Added chat to blinking Set:', chatId, 'Set size:', window._telecomBlinkingChats.size);
+                        blinkChatItem(chatId);
                       } catch (e) {
                         console.error('[Telecom] ❌ Error decrypting with private key:', e);
                         decryptedText = '[Encrypted message - decryption failed]';
@@ -7903,10 +7923,11 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                 }
               } else {
                 console.log('[Telecom] 📝 Message is not encrypted, using as-is:', decryptedText);
-                // Add to blinking Set - blink will be applied when window opens via renderChatsList
+                // Add to blinking Set and trigger blink immediately
                 if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
                 window._telecomBlinkingChats.add(chatId);
-                console.log('[Telecom] 💫 Added chat to blinking Set (unencrypted):', chatId);
+                console.log('[Telecom] 💫 Added chat to blinking Set (unencrypted):', chatId, 'Set size:', window._telecomBlinkingChats.size);
+                blinkChatItem(chatId);
               }
               
               const newMessage = {
@@ -8084,10 +8105,12 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                         try {
                           decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
                           console.log('[Telecom] ✅ Message decrypted successfully (recipient side, incoming channel):', decryptedText);
-                          // Add to blinking Set - blink will be applied when window opens via renderChatsList
+                          // Add to blinking Set and trigger blink immediately
                           if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
                           window._telecomBlinkingChats.add(chatId);
-                          console.log('[Telecom] 💫 Added chat to blinking Set (incoming channel):', chatId);
+                          console.log('[Telecom] 💫 Added chat to blinking Set (incoming channel):', chatId, 'Set size:', window._telecomBlinkingChats.size, 'Set contents:', Array.from(window._telecomBlinkingChats));
+                          blinkChatItem(chatId);
+                          console.log('[Telecom] 💫 After blinkChatItem, Set size:', window._telecomBlinkingChats.size, 'Set contents:', Array.from(window._telecomBlinkingChats));
                         } catch (e) {
                           console.error('[Telecom] ❌ Error decrypting with private key:', e);
                           decryptedText = '[Encrypted message - decryption failed]';
@@ -8196,12 +8219,13 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                   if (selectedChatId === chatId) {
                     // Chat is selected - use selectChat to refresh (same as clicking on chat)
                     // This will also remove blink effect if it was active
-                    console.log('[Telecom] ✅ Chat is selected (incoming channel), refreshing using selectChat');
+                    console.log('[Telecom] ✅ Chat is selected (incoming channel), refreshing using selectChat. Set BEFORE:', Array.from(window._telecomBlinkingChats || []));
                     selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
+                    console.log('[Telecom] Set AFTER selectChat:', Array.from(window._telecomBlinkingChats || []));
                   } else {
                     // Chat is not selected - blink was already added to Set after decryption
                     // renderChatsList will restore blink effect from Set
-                    console.log('[Telecom] ✅ Chat is not selected (incoming channel), refreshing list (blink already in Set)');
+                    console.log('[Telecom] ✅ Chat is not selected (incoming channel), refreshing list (blink already in Set). Set:', Array.from(window._telecomBlinkingChats || []));
                     renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
                   }
                 });
@@ -9287,10 +9311,11 @@ async function processWebRTCAnswer(invite, config, storageKey) {
                     try {
                       decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
                       console.log('[Telecom] ✅ Message decrypted successfully (sender side):', decryptedText);
-                      // Add to blinking Set - blink will be applied when window opens via renderChatsList
+                      // Add to blinking Set and trigger blink immediately
                       if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
                       window._telecomBlinkingChats.add(chatId);
-                      console.log('[Telecom] 💫 Added chat to blinking Set (sender side):', chatId);
+                      console.log('[Telecom] 💫 Added chat to blinking Set (sender side):', chatId, 'Set size:', window._telecomBlinkingChats.size);
+                      blinkChatItem(chatId);
                     } catch (e) {
                       console.error('[Telecom] ❌ Error decrypting with private key:', e);
                       decryptedText = '[Encrypted message - decryption failed]';
