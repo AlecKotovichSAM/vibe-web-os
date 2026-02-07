@@ -3136,104 +3136,66 @@ function showPasswordDialog(winId) {
       }
     }
     
-    // Method 2: If not found, try to find any Telecom window using proper selector
+    // Method 2: If not found, try to find any Telecom window
     if (!windowElement) {
-      // Use proper selector for Telecom windows (same as in core.apps.js findAppWindow)
-      const telecomWindows = document.querySelectorAll('.window[data-win-id^="telecom-"]');
+      const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
       if (telecomWindows.length > 0) {
         // Get the first Telecom window and extract its winId
-        windowElement = telecomWindows[0];
-        winId = windowElement.dataset.winId || null;
-        console.log('[Telecom] Found Telecom window via querySelector, winId:', winId);
-        
-        // Verify via WindowManager
-        if (winId) {
-          const verifiedWindow = WindowManager.findWindow(winId);
-          if (verifiedWindow) {
-            windowElement = verifiedWindow;
-            console.log('[Telecom] Verified window via WindowManager.findWindow');
+        const foundWinId = telecomWindows[0].dataset.winId || null;
+        if (foundWinId) {
+          // Use WindowManager to find the window properly
+          windowElement = WindowManager.findWindow(foundWinId);
+          if (windowElement) {
+            winId = foundWinId;
+            console.log('[Telecom] Found Telecom window via WindowManager, winId:', winId);
           }
         }
       }
     }
     
-    // Determine where to attach the dialog
-    let containerElement = null;
-    let isGlobalDialog = false;
-    
-    if (windowElement) {
-      const windowContent = windowElement.querySelector('.win-content');
-      if (windowContent) {
-        containerElement = windowContent;
-      }
+    if (!windowElement) {
+      console.error('[Telecom] Window not found, winId:', winId);
+      resolve(null);
+      return;
     }
-    
-    // If no window found, create global dialog on body
-    if (!containerElement) {
-      containerElement = document.body;
-      isGlobalDialog = true;
-      console.log('[Telecom] No Telecom window found, creating global password dialog');
+
+    const windowContent = windowElement.querySelector('.win-content');
+    if (!windowContent) {
+      console.error('[Telecom] Window content not found');
+      resolve(null);
+      return;
     }
 
     // Create backdrop
     const backdrop = document.createElement('div');
     backdrop.className = 'telecom-password-backdrop';
-    if (isGlobalDialog) {
-      backdrop.style.cssText = `
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.7);
-        z-index: 9999;
-        animation: fadeIn 0.2s ease;
-      `;
-    } else {
-      backdrop.style.cssText = `
-        position: absolute;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.7);
-        z-index: 2000;
-        animation: fadeIn 0.2s ease;
-      `;
-    }
+    backdrop.style.cssText = `
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 2000;
+      animation: fadeIn 0.2s ease;
+    `;
 
     // Create dialog
     const dialog = document.createElement('div');
     dialog.className = 'telecom-password-dialog';
-    if (isGlobalDialog) {
-      dialog.style.cssText = `
-        position: fixed;
-        left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
-        width: 400px;
-        max-width: 90%;
-        background: var(--panel);
-        border-radius: 8px;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-        z-index: 10000;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        animation: fadeIn 0.2s ease;
-      `;
-    } else {
-      dialog.style.cssText = `
-        position: absolute;
-        left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
-        width: 400px;
-        max-width: 90%;
-        background: var(--panel);
-        border-radius: 8px;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-        z-index: 2001;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        animation: fadeIn 0.2s ease;
-      `;
-    }
+    dialog.style.cssText = `
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 400px;
+      max-width: 90%;
+      background: var(--panel);
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      z-index: 2001;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      animation: fadeIn 0.2s ease;
+    `;
 
     // Dialog header
     const header = document.createElement('div');
@@ -3286,12 +3248,12 @@ function showPasswordDialog(winId) {
     dialog.appendChild(header);
     dialog.appendChild(body);
     dialog.appendChild(footer);
-    containerElement.appendChild(backdrop);
-    containerElement.appendChild(dialog);
+    windowContent.appendChild(backdrop);
+    windowContent.appendChild(dialog);
     
-    // Ensure container has relative positioning if it's window content
-    if (!isGlobalDialog && containerElement.style.position !== 'relative' && containerElement.style.position !== 'absolute') {
-      containerElement.style.position = 'relative';
+    // Ensure window content has relative positioning
+    if (windowContent.style.position !== 'relative' && windowContent.style.position !== 'absolute') {
+      windowContent.style.position = 'relative';
     }
 
     const passwordInput = dialog.querySelector('#telecom-password-input');
@@ -9005,23 +8967,22 @@ async function processWebRTCAnswer(invite, config, storageKey) {
                   decryptedText = '[Encrypted message - decryption failed: private key not available]';
                 } else {
                   // Try to get decrypted private key (will show password dialog if needed)
-                  // Find Telecom window to get winId using proper WindowManager mechanism
+                  // Find Telecom window to get winId using WindowManager
                   let winId = null;
                   
-                  // Use proper selector for Telecom windows (same as in core.apps.js findAppWindow)
-                  const telecomWindows = document.querySelectorAll('.window[data-win-id^="telecom-"]');
+                  // Find Telecom windows using proper selector
+                  const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
                   if (telecomWindows.length > 0) {
-                    // Get the first Telecom window and extract its winId
-                    const windowElement = telecomWindows[0];
-                    winId = windowElement.dataset.winId || null;
-                    console.log('[Telecom] Found Telecom window for password dialog, winId:', winId);
-                    
-                    // Verify via WindowManager
-                    if (winId && WindowManager.findWindow(winId)) {
-                      console.log('[Telecom] Verified Telecom window via WindowManager.findWindow');
-                    } else {
-                      console.warn('[Telecom] ⚠️ Telecom window found but WindowManager.findWindow failed');
-                      winId = null;
+                    const foundWinId = telecomWindows[0].dataset.winId || null;
+                    if (foundWinId) {
+                      // Verify via WindowManager
+                      const verifiedWindow = WindowManager.findWindow(foundWinId);
+                      if (verifiedWindow) {
+                        winId = foundWinId;
+                        console.log('[Telecom] Found Telecom window via WindowManager, winId:', winId);
+                      } else {
+                        console.warn('[Telecom] ⚠️ Telecom window found but WindowManager.findWindow failed');
+                      }
                     }
                   } else {
                     console.log('[Telecom] No Telecom windows found');
