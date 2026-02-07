@@ -4765,12 +4765,24 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
           
           // Check if invite already exists
           const existingIndex = recipientInvites.findIndex(inv => inv.id === invite.id);
+          
+          // Log invite data before saving
+          console.log('[Telecom] Saving invite to recipient storage:', {
+            id: invite.id,
+            hasWebrtcOffer: !!invite.webrtcOffer,
+            webrtcOfferType: invite.webrtcOffer?.type,
+            webrtcOfferSdpLength: invite.webrtcOffer?.sdp?.length,
+            inviteKeys: Object.keys(invite)
+          });
+          
           if (existingIndex >= 0) {
             // Update existing invite (merge with new data)
-            recipientInvites[existingIndex] = {
+            const mergedInvite = {
               ...recipientInvites[existingIndex],
               ...invite // Overwrite with new data
             };
+            console.log('[Telecom] Merging invite - existing has webrtcOffer:', !!recipientInvites[existingIndex].webrtcOffer, 'new has:', !!invite.webrtcOffer);
+            recipientInvites[existingIndex] = mergedInvite;
           } else {
             // Add new invite
             recipientInvites.push(invite);
@@ -4779,6 +4791,14 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
           // Save to localStorage
           try {
             localStorage.setItem(RECIPIENT_INVITES_STORAGE_KEY, JSON.stringify(recipientInvites));
+            console.log('[Telecom] ✅ Invite saved to recipient storage');
+            
+            // Verify saved data
+            const verify = JSON.parse(localStorage.getItem(RECIPIENT_INVITES_STORAGE_KEY));
+            const savedInvite = verify.find(inv => inv.id === invite.id);
+            if (savedInvite) {
+              console.log('[Telecom] Verification - saved invite has webrtcOffer:', !!savedInvite.webrtcOffer);
+            }
           } catch (e) {
             console.error('[Telecom] Error saving recipient invites:', e);
           }
@@ -6300,9 +6320,18 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
     throw new Error('Invite not found in recipient storage');
   }
 
-  console.log('[Telecom] Updating invite status:', invite.id, 'from', recipientInvites[recipientInviteIndex].status, 'to', response);
-  recipientInvites[recipientInviteIndex].status = response;
-  recipientInvites[recipientInviteIndex].respondedAt = new Date().toISOString();
+  // Get the actual invite from storage (it may have more data than the passed invite parameter)
+  const storedInvite = recipientInvites[recipientInviteIndex];
+  
+  console.log('[Telecom] Updating invite status:', invite.id, 'from', storedInvite.status, 'to', response);
+  console.log('[Telecom] Stored invite has webrtcOffer:', !!storedInvite.webrtcOffer);
+  console.log('[Telecom] Passed invite has webrtcOffer:', !!invite.webrtcOffer);
+  
+  // Use stored invite (it has the complete data including webrtcOffer)
+  const inviteToProcess = storedInvite;
+  
+  storedInvite.status = response;
+  storedInvite.respondedAt = new Date().toISOString();
 
   // Load and update invite in sent invites storage
   let sentInvites = [];
@@ -6344,9 +6373,17 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
     }
 
     // Generate WebRTC answer if offer is present
-    if (invite.webrtcOffer && typeof RTCPeerConnection !== 'undefined') {
+    // Use storedInvite (from storage) instead of invite parameter, as it has complete data
+    const inviteForAnswer = inviteToProcess || invite;
+    
+    console.log('[Telecom] Checking WebRTC answer generation conditions:');
+    console.log('[Telecom]   inviteForAnswer.webrtcOffer:', !!inviteForAnswer.webrtcOffer, inviteForAnswer.webrtcOffer ? 'present' : 'missing');
+    console.log('[Telecom]   RTCPeerConnection available:', typeof RTCPeerConnection !== 'undefined');
+    console.log('[Telecom]   inviteForAnswer object keys:', Object.keys(inviteForAnswer));
+    
+    if (inviteForAnswer.webrtcOffer && typeof RTCPeerConnection !== 'undefined') {
       try {
-        console.log('[Telecom] Generating WebRTC answer for invite:', invite.id);
+        console.log('[Telecom] ✅ Generating WebRTC answer for invite:', inviteForAnswer.id);
         
         // Create RTCPeerConnection with ICE servers from Network module configuration
         const iceServers = window.Network ? window.Network.getIceServersConfig() : [
@@ -6468,13 +6505,13 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         if (!window._telecomDataChannels) {
           window._telecomDataChannels = new Map();
         }
-        window._telecomPeerConnections.set(invite.fromGuid, pc);
-        window._telecomDataChannels.set(invite.fromGuid, dataChannel);
+        window._telecomPeerConnections.set(inviteForAnswer.fromGuid, pc);
+        window._telecomDataChannels.set(inviteForAnswer.fromGuid, dataChannel);
         
         // Set remote description (offer from sender)
         await pc.setRemoteDescription(new RTCSessionDescription({
-          type: invite.webrtcOffer.type,
-          sdp: invite.webrtcOffer.sdp
+          type: inviteForAnswer.webrtcOffer.type,
+          sdp: inviteForAnswer.webrtcOffer.sdp
         }));
         console.log('[Telecom] Set remote description (offer)');
         
@@ -6636,9 +6673,9 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         };
         
         // Add remote ICE candidates with detailed logging
-        if (invite.webrtcOffer.iceCandidates && invite.webrtcOffer.iceCandidates.length > 0) {
-          console.log('[ICE-RECIPIENT] Adding', invite.webrtcOffer.iceCandidates.length, 'remote ICE candidates from offer');
-          for (const candidateData of invite.webrtcOffer.iceCandidates) {
+        if (inviteForAnswer.webrtcOffer.iceCandidates && inviteForAnswer.webrtcOffer.iceCandidates.length > 0) {
+          console.log('[ICE-RECIPIENT] Adding', inviteForAnswer.webrtcOffer.iceCandidates.length, 'remote ICE candidates from offer');
+          for (const candidateData of inviteForAnswer.webrtcOffer.iceCandidates) {
             try {
               const candidateStr = candidateData.candidate;
               remoteCandidatesRecipient.push(candidateStr);
@@ -6658,7 +6695,7 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
               console.error('[ICE-RECIPIENT] Error adding remote ICE candidate:', e, candidateData);
             }
           }
-          console.log('[ICE-RECIPIENT] Successfully added', invite.webrtcOffer.iceCandidates.length, 'remote ICE candidates');
+          console.log('[ICE-RECIPIENT] Successfully added', inviteForAnswer.webrtcOffer.iceCandidates.length, 'remote ICE candidates');
           console.log('[ICE-RECIPIENT] All remote candidates:', remoteCandidatesRecipient);
         }
         
@@ -6844,7 +6881,7 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         
         // Create updated invite with answer for sharing back to sender
         const inviteWithAnswer = {
-          ...invite,
+          ...inviteForAnswer,
           webrtcAnswer: webrtcAnswer,
           status: 'accepted'
         };
@@ -6864,8 +6901,19 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         }
         
       } catch (e) {
-        console.error('[Telecom] Error creating WebRTC answer:', e);
+        console.error('[Telecom] ❌ Error creating WebRTC answer:', e);
+        console.error('[Telecom] Stack trace:', e.stack);
         // Continue without WebRTC answer if it fails
+      }
+    } else {
+      if (!invite.webrtcOffer) {
+        console.warn('[Telecom] ⚠️ Cannot generate WebRTC answer: invite.webrtcOffer is missing');
+        console.warn('[Telecom] This invite was likely created without WebRTC offer (old format or manual invite)');
+        console.warn('[Telecom] WebRTC connection cannot be established without offer');
+      }
+      if (typeof RTCPeerConnection === 'undefined') {
+        console.error('[Telecom] ❌ Cannot generate WebRTC answer: RTCPeerConnection is not available');
+        console.error('[Telecom] WebRTC API is not supported in this browser');
       }
     }
   }

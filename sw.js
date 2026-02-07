@@ -47,15 +47,24 @@ self.addEventListener('activate', e=>{
 });
 
 self.addEventListener('fetch', e=>{
+  // Skip caching for HEAD requests (Cache API doesn't support HEAD)
+  if (e.request.method === 'HEAD') {
+    e.respondWith(fetch(e.request));
+    return;
+  }
+  
   // Network-first strategy: try network first, fallback to cache
   e.respondWith(
     fetch(e.request)
       .then(response => {
-        // If network request succeeds, cache it and return
-        const responseToCache = response.clone();
-        caches.open(CACHE).then(cache => {
-          cache.put(e.request, responseToCache);
-        });
+        // Only cache successful GET requests
+        if (e.request.method === 'GET' && response.status === 200) {
+          // If network request succeeds, cache it and return
+          const responseToCache = response.clone();
+          caches.open(CACHE).then(cache => {
+            cache.put(e.request, responseToCache);
+          });
+        }
         return response;
       })
       .catch(() => {
