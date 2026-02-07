@@ -3120,6 +3120,238 @@ function showNewChannelDialog(win, winId, config, storageKey) {
 }
 
 /**
+ * Show password dialog for decrypting private key
+ * @returns {Promise<string|null>} Decrypted private key in base64 format, or null if cancelled/failed
+ */
+function showPasswordDialog(winId) {
+  return new Promise((resolve) => {
+    // Find the actual window element
+    let windowElement = null;
+    if (winId) {
+      windowElement = WindowManager.findWindow(winId);
+    }
+    
+    // If window not found by winId, try to find any Telecom window
+    if (!windowElement) {
+      const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+      if (telecomWindows.length > 0) {
+        windowElement = telecomWindows[0];
+        winId = windowElement.dataset.winId || null;
+        console.log('[Telecom] Found Telecom window automatically, winId:', winId);
+      }
+    }
+    
+    if (!windowElement) {
+      console.error('[Telecom] Window not found, winId:', winId);
+      resolve(null);
+      return;
+    }
+
+    const windowContent = windowElement.querySelector('.win-content');
+    if (!windowContent) {
+      console.error('[Telecom] Window content not found');
+      resolve(null);
+      return;
+    }
+
+    // Create backdrop
+    const backdrop = document.createElement('div');
+    backdrop.className = 'telecom-password-backdrop';
+    backdrop.style.cssText = `
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 2000;
+      animation: fadeIn 0.2s ease;
+    `;
+
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.className = 'telecom-password-dialog';
+    dialog.style.cssText = `
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 400px;
+      max-width: 90%;
+      background: var(--panel);
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      z-index: 2001;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      animation: fadeIn 0.2s ease;
+    `;
+
+    // Dialog header
+    const header = document.createElement('div');
+    header.style.cssText = 'padding: 20px 20px 16px; border-bottom: 1px solid var(--panel-2);';
+    header.innerHTML = `
+      <div style="font-size: 18px; font-weight: 600; color: var(--text);">
+        ${I18n.t('telecom.passwordDialogTitle') || 'Enter Password to Decrypt Messages'}
+      </div>
+    `;
+
+    // Dialog body
+    const body = document.createElement('div');
+    body.style.cssText = 'padding: 20px; flex: 1;';
+    body.innerHTML = `
+      <div style="margin-bottom: 16px; color: var(--muted); font-size: 14px; line-height: 1.5;">
+        <div style="margin-bottom: 12px; font-weight: 500; color: var(--text);">
+          ${I18n.t('telecom.passwordDialogTitle') || 'Enter Password to Decrypt Messages'}
+        </div>
+        <div style="margin-bottom: 8px;">
+          ${I18n.t('telecom.passwordDialogDescription') || 'You received an encrypted message. To decrypt it, enter your password once. Your private key will be decrypted and stored in memory for this browser session only. You won\'t need to enter the password again until you close the browser.'}
+        </div>
+        <div style="padding: 12px; background: var(--panel-2); border-radius: 6px; font-size: 13px; color: var(--muted);">
+          <strong style="color: var(--accent);">💡 Why?</strong> Messages are encrypted with your public key. Only your private key (protected by password) can decrypt them.
+        </div>
+      </div>
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; margin-bottom: 8px; font-size: 14px; font-weight: 500; color: var(--text);">
+          ${I18n.t('telecom.passwordDialogPassword') || 'Password'}
+        </label>
+        <input type="password" id="telecom-password-input" 
+          placeholder="${I18n.t('telecom.passwordDialogPasswordPlaceholder') || 'Enter your password'}"
+          style="width: 100%; padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--panel-2); border-radius: 6px; color: var(--text); font-size: 14px; font-family: inherit; outline: none; transition: border-color 0.2s;"
+        />
+        <div id="telecom-password-error" style="margin-top: 8px; color: var(--danger); font-size: 12px; display: none;"></div>
+      </div>
+    `;
+
+    // Dialog footer
+    const footer = document.createElement('div');
+    footer.style.cssText = 'padding: 16px 20px; border-top: 1px solid var(--panel-2); display: flex; gap: 12px; justify-content: flex-end;';
+    footer.innerHTML = `
+      <button id="telecom-password-cancel" style="padding: 8px 16px; background: var(--panel-2); color: var(--text); border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; transition: background 0.2s;">
+        ${I18n.t('telecom.passwordDialogCancel') || 'Cancel'}
+      </button>
+      <button id="telecom-password-submit" style="padding: 8px 16px; background: var(--accent); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; transition: background 0.2s;">
+        ${I18n.t('telecom.passwordDialogSubmit') || 'Decrypt'}
+      </button>
+    `;
+
+    dialog.appendChild(header);
+    dialog.appendChild(body);
+    dialog.appendChild(footer);
+    windowContent.appendChild(backdrop);
+    windowContent.appendChild(dialog);
+
+    const passwordInput = dialog.querySelector('#telecom-password-input');
+    const errorDiv = dialog.querySelector('#telecom-password-error');
+    const submitBtn = dialog.querySelector('#telecom-password-submit');
+    const cancelBtn = dialog.querySelector('#telecom-password-cancel');
+
+    const closeDialog = () => {
+      backdrop.remove();
+      dialog.remove();
+    };
+
+    const handleSubmit = async () => {
+      const password = passwordInput.value.trim();
+      if (!password) {
+        errorDiv.textContent = I18n.t('telecom.passwordDialogPasswordPlaceholder') || 'Please enter your password';
+        errorDiv.style.display = 'block';
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = I18n.t('common.loading') || 'Loading...';
+
+      try {
+        // Get system account
+        const systemAccount = window.Auth ? window.Auth.getAccount() : null;
+        if (!systemAccount || !systemAccount.privateKeyEncrypted) {
+          throw new Error('Private key not available');
+        }
+
+        // Decrypt private key using password
+        const decryptedPrivateKey = await window.Auth.getPrivateKey(password);
+        
+        // Save to sessionStorage for this session
+        sessionStorage.setItem('telecom.decryptedPrivateKey', decryptedPrivateKey);
+        console.log('[Telecom] ✅ Private key decrypted and cached in sessionStorage');
+        
+        closeDialog();
+        resolve(decryptedPrivateKey);
+      } catch (e) {
+        console.error('[Telecom] Error decrypting private key:', e);
+        errorDiv.textContent = I18n.t('telecom.passwordDialogError') || 'Invalid password. Please try again.';
+        errorDiv.style.display = 'block';
+        passwordInput.value = '';
+        passwordInput.focus();
+        submitBtn.disabled = false;
+        submitBtn.textContent = I18n.t('telecom.passwordDialogSubmit') || 'Decrypt';
+      }
+    };
+
+    const handleCancel = () => {
+      closeDialog();
+      resolve(null);
+    };
+
+    submitBtn.addEventListener('click', handleSubmit);
+    cancelBtn.addEventListener('click', handleCancel);
+    backdrop.addEventListener('click', handleCancel);
+    
+    passwordInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        handleSubmit();
+      } else if (e.key === 'Escape') {
+        handleCancel();
+      }
+    });
+
+    // Focus input
+    setTimeout(() => {
+      passwordInput.focus();
+    }, 100);
+  });
+}
+
+/**
+ * Get decrypted private key, showing password dialog if needed
+ * @param {string} winId - Window ID
+ * @returns {Promise<string|null>} Decrypted private key or null
+ */
+async function getDecryptedPrivateKey(winId) {
+  // Check if we have cached decrypted private key
+  const cachedPrivateKey = sessionStorage.getItem('telecom.decryptedPrivateKey');
+  if (cachedPrivateKey) {
+    console.log('[Telecom] ✅ Using cached decrypted private key from sessionStorage');
+    return cachedPrivateKey;
+  }
+
+  // Check if private key is available
+  const systemAccount = window.Auth ? window.Auth.getAccount() : null;
+  if (!systemAccount || !systemAccount.privateKeyEncrypted) {
+    console.warn('[Telecom] ⚠️ Cannot decrypt: private key not available');
+    return null;
+  }
+
+  // If winId not provided, try to find Telecom window
+  if (!winId) {
+    const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+    if (telecomWindows.length > 0) {
+      winId = telecomWindows[0].dataset.winId || null;
+      console.log('[Telecom] Found Telecom window, using winId:', winId);
+    }
+  }
+
+  // Show password dialog
+  console.log('[Telecom] 🔐 Showing password dialog to decrypt private key (winId:', winId, ')');
+  const decryptedKey = await showPasswordDialog(winId);
+  if (decryptedKey) {
+    console.log('[Telecom] ✅ Private key decrypted successfully, cached in sessionStorage');
+  } else {
+    console.log('[Telecom] ⚠️ Password dialog cancelled or failed');
+  }
+  return decryptedKey;
+}
+
+/**
  * Show contacts dialog
  */
 function showContactsDialog(win, winId, config, storageKey) {
@@ -5264,9 +5496,54 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
       // Check if this is a received invite (toGuid matches user's active GUID)
       const isReceivedInvite = invite.toGuid === effectiveGuid;
       
-      // If this is a sent invite with WebRTC answer, process the answer
+      // If this is a sent invite with WebRTC answer, save it to localStorage first, then process
       if (isSentInvite && invite.webrtcAnswer) {
-        console.log('[Telecom] Received invite with WebRTC answer, processing...');
+        console.log('[Telecom] Received invite with WebRTC answer, saving to localStorage first...');
+        
+        // Save updated invite with answer to sender's sent invites storage
+        try {
+          const SENT_INVITES_STORAGE_KEY = `webos.telecom.sent_invites.guid_from.${effectiveGuid}`;
+          const sentInvitesData = localStorage.getItem(SENT_INVITES_STORAGE_KEY);
+          let sentInvites = [];
+          
+          if (sentInvitesData) {
+            sentInvites = JSON.parse(sentInvitesData);
+          }
+          
+          // Find and update the invite with answer data
+          const inviteIndex = sentInvites.findIndex(inv => inv.id === invite.id || inv.toGuid === invite.toGuid);
+          if (inviteIndex !== -1) {
+            // Merge answer data into existing invite
+            sentInvites[inviteIndex] = {
+              ...sentInvites[inviteIndex],
+              ...invite, // This includes webrtcAnswer and recipient's data (toUsername, toDisplayName, etc.)
+              status: 'accepted',
+              respondedAt: new Date().toISOString()
+            };
+            console.log('[Telecom] ✅ Updated invite in localStorage with answer and recipient data:', {
+              id: sentInvites[inviteIndex].id,
+              toGuid: sentInvites[inviteIndex].toGuid,
+              toUsername: sentInvites[inviteIndex].toUsername,
+              toDisplayName: sentInvites[inviteIndex].toDisplayName,
+              hasWebrtcAnswer: !!sentInvites[inviteIndex].webrtcAnswer
+            });
+          } else {
+            // Add new invite with answer
+            sentInvites.push({
+              ...invite,
+              status: 'accepted',
+              respondedAt: new Date().toISOString()
+            });
+            console.log('[Telecom] ✅ Added new invite with answer to localStorage');
+          }
+          
+          localStorage.setItem(SENT_INVITES_STORAGE_KEY, JSON.stringify(sentInvites));
+          console.log('[Telecom] ✅ Saved invite with answer to localStorage');
+        } catch (e) {
+          console.error('[Telecom] Error saving invite with answer to localStorage:', e);
+        }
+        
+        console.log('[Telecom] Processing WebRTC answer...');
         processWebRTCAnswer(invite, config, storageKey).then(() => {
           alert('WebRTC answer processed successfully. Connection should be established.');
           // Clear textarea
@@ -7269,20 +7546,20 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                     console.warn('[Telecom] ⚠️ Cannot decrypt: private key not available');
                     decryptedText = '[Encrypted message - decryption failed: private key not available]';
                   } else {
-                    // Try to get decrypted private key from session cache
-                    const cachedPrivateKey = sessionStorage.getItem('telecom.decryptedPrivateKey');
-                    if (cachedPrivateKey) {
-                      console.log('[Telecom] Using cached decrypted private key (recipient side)');
+                    // Try to get decrypted private key (will show password dialog if needed)
+                    const winId = win?.dataset?.winId || null;
+                    const privateKey = await getDecryptedPrivateKey(winId);
+                    if (privateKey) {
+                      console.log('[Telecom] Using decrypted private key (recipient side)');
                       try {
-                        decryptedText = await decryptMessageForTelecom(messageData.text, cachedPrivateKey);
+                        decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
                         console.log('[Telecom] ✅ Message decrypted successfully (recipient side):', decryptedText);
                       } catch (e) {
-                        console.error('[Telecom] ❌ Error decrypting with cached key:', e);
+                        console.error('[Telecom] ❌ Error decrypting with private key:', e);
                         decryptedText = '[Encrypted message - decryption failed]';
                       }
                     } else {
-                      console.warn('[Telecom] ⚠️ No cached private key - message cannot be decrypted automatically');
-                      console.warn('[Telecom] 💡 To enable automatic decryption, enter your password once in Telecom settings');
+                      console.warn('[Telecom] ⚠️ Cannot decrypt: private key not available or password cancelled');
                       decryptedText = '[Encrypted message - enter password to decrypt]';
                     }
                   }
@@ -7404,20 +7681,20 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                       console.warn('[Telecom] ⚠️ Cannot decrypt: private key not available');
                       decryptedText = '[Encrypted message - decryption failed: private key not available]';
                     } else {
-                      // Try to get decrypted private key from session cache
-                      const cachedPrivateKey = sessionStorage.getItem('telecom.decryptedPrivateKey');
-                      if (cachedPrivateKey) {
-                        console.log('[Telecom] Using cached decrypted private key (recipient side, incoming channel)');
+                      // Try to get decrypted private key (will show password dialog if needed)
+                      const winId = win?.dataset?.winId || null;
+                      const privateKey = await getDecryptedPrivateKey(winId);
+                      if (privateKey) {
+                        console.log('[Telecom] Using decrypted private key (recipient side, incoming channel)');
                         try {
-                          decryptedText = await decryptMessageForTelecom(messageData.text, cachedPrivateKey);
+                          decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
                           console.log('[Telecom] ✅ Message decrypted successfully (recipient side, incoming channel):', decryptedText);
                         } catch (e) {
-                          console.error('[Telecom] ❌ Error decrypting with cached key:', e);
+                          console.error('[Telecom] ❌ Error decrypting with private key:', e);
                           decryptedText = '[Encrypted message - decryption failed]';
                         }
                       } else {
-                        console.warn('[Telecom] ⚠️ No cached private key - message cannot be decrypted automatically');
-                        console.warn('[Telecom] 💡 To enable automatic decryption, enter your password once in Telecom settings');
+                        console.warn('[Telecom] ⚠️ Cannot decrypt: private key not available or password cancelled');
                         decryptedText = '[Encrypted message - enter password to decrypt]';
                       }
                     }
@@ -8538,21 +8815,23 @@ async function processWebRTCAnswer(invite, config, storageKey) {
                   console.warn('[Telecom] ⚠️ Cannot decrypt: private key not available');
                   decryptedText = '[Encrypted message - decryption failed: private key not available]';
                 } else {
-                  // Try to get decrypted private key from session cache or prompt for password
-                  // Check if we have cached decrypted private key in sessionStorage
-                  const cachedPrivateKey = sessionStorage.getItem('telecom.decryptedPrivateKey');
-                  if (cachedPrivateKey) {
-                    console.log('[Telecom] Using cached decrypted private key');
+                  // Try to get decrypted private key (will show password dialog if needed)
+                  // Find Telecom window to get winId
+                  const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+                  const telecomWin = telecomWindows[0]; // Use first Telecom window
+                  const winId = telecomWin?.dataset?.winId || null;
+                  const privateKey = await getDecryptedPrivateKey(winId);
+                  if (privateKey) {
+                    console.log('[Telecom] Using decrypted private key (sender side)');
                     try {
-                      decryptedText = await decryptMessageForTelecom(messageData.text, cachedPrivateKey);
+                      decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
                       console.log('[Telecom] ✅ Message decrypted successfully (sender side):', decryptedText);
                     } catch (e) {
-                      console.error('[Telecom] ❌ Error decrypting with cached key:', e);
+                      console.error('[Telecom] ❌ Error decrypting with private key:', e);
                       decryptedText = '[Encrypted message - decryption failed]';
                     }
                   } else {
-                    console.warn('[Telecom] ⚠️ No cached private key - message cannot be decrypted automatically');
-                    console.warn('[Telecom] 💡 To enable automatic decryption, enter your password once in Telecom settings');
+                    console.warn('[Telecom] ⚠️ Cannot decrypt: private key not available or password cancelled');
                     decryptedText = '[Encrypted message - enter password to decrypt]';
                   }
                 }
@@ -8641,15 +8920,34 @@ async function processWebRTCAnswer(invite, config, storageKey) {
     
     console.log('[Telecom] WebRTC answer processed successfully for contact:', contactGuid);
     
+    // Ensure we have config and storageKey
+    const effectiveStorageKey = storageKey || 'webos.telecom.v1';
+    let effectiveConfig = config;
+    if (!effectiveConfig) {
+      try {
+        const configData = localStorage.getItem(effectiveStorageKey);
+        if (configData) {
+          effectiveConfig = JSON.parse(configData);
+          config = effectiveConfig; // Update config reference
+          console.log('[Telecom] ✅ Loaded config from localStorage in processWebRTCAnswer');
+        } else {
+          console.warn('[Telecom] ⚠️ No config found in localStorage');
+        }
+      } catch (e) {
+        console.error('[Telecom] Error loading config:', e);
+      }
+    }
+    
     // Update invite status to 'accepted' and add contact immediately after processing answer
     try {
       console.log('[Telecom] 🔄 Updating invite status and adding contact after processing answer...');
       console.log('[Telecom]   contactGuid:', contactGuid);
       console.log('[Telecom]   invite.id:', invite.id);
       console.log('[Telecom]   invite.toGuid:', invite.toGuid);
-      console.log('[Telecom]   config:', config ? 'present' : 'missing');
+      console.log('[Telecom]   config:', effectiveConfig ? 'present' : 'missing');
+      console.log('[Telecom]   storageKey:', effectiveStorageKey);
       
-      const effectiveGuid = getEffectiveGuid(config);
+      const effectiveGuid = getEffectiveGuid(effectiveConfig);
       console.log('[Telecom]   effectiveGuid:', effectiveGuid);
       
       if (effectiveGuid) {
@@ -8681,7 +8979,20 @@ async function processWebRTCAnswer(invite, config, storageKey) {
             localStorage.setItem(SENT_INVITES_STORAGE_KEY, JSON.stringify(sentInvites));
             console.log('[Telecom] ✅ Updated invite status to accepted for contact:', contactGuid, 'invite ID:', sentInvites[inviteIndex].id);
             
+            // Verify the update was saved
+            const verifyData = localStorage.getItem(SENT_INVITES_STORAGE_KEY);
+            if (verifyData) {
+              const verifyInvites = JSON.parse(verifyData);
+              const verifyInvite = verifyInvites.find(inv => inv.id === sentInvites[inviteIndex].id);
+              if (verifyInvite && verifyInvite.status === 'accepted') {
+                console.log('[Telecom] ✅ Verified: Invite status saved correctly in localStorage');
+              } else {
+                console.error('[Telecom] ❌ ERROR: Invite status NOT saved correctly! Expected: accepted, Got:', verifyInvite?.status);
+              }
+            }
+            
             // Refresh contacts dialog if it's open to show updated status
+            const effectiveStorageKey = storageKey || 'webos.telecom.v1';
             const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
             telecomWindows.forEach(telecomWin => {
               const winId = telecomWin.dataset.winId;
@@ -8691,16 +9002,40 @@ async function processWebRTCAnswer(invite, config, storageKey) {
                   const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
                   if (contactsDialog) {
                     // Reload config to ensure we have latest data
+                    let effectiveConfig = config;
                     try {
-                      const configData = localStorage.getItem(storageKey);
+                      const configData = localStorage.getItem(effectiveStorageKey);
                       if (configData) {
-                        const latestConfig = JSON.parse(configData);
-                        Object.assign(config, latestConfig);
+                        effectiveConfig = JSON.parse(configData);
+                        if (config) {
+                          Object.assign(config, effectiveConfig);
+                        } else {
+                          config = effectiveConfig;
+                        }
                       }
                     } catch (e) {
                       console.warn('[Telecom] Error reloading config:', e);
                     }
-                    refreshContactsDialog(contactsDialog, config, storageKey, winId);
+                    if (effectiveConfig) {
+                      console.log('[Telecom] 🔄 Refreshing contacts dialog after invite status update');
+                      refreshContactsDialog(contactsDialog, effectiveConfig, effectiveStorageKey, winId);
+                      console.log('[Telecom] ✅ Contacts dialog refreshed');
+                    } else {
+                      console.warn('[Telecom] ⚠️ Cannot refresh contacts dialog: config not available');
+                      // Try to reload config one more time
+                      try {
+                        const configData = localStorage.getItem(effectiveStorageKey);
+                        if (configData) {
+                          const reloadedConfig = JSON.parse(configData);
+                          refreshContactsDialog(contactsDialog, reloadedConfig, effectiveStorageKey, winId);
+                          console.log('[Telecom] ✅ Contacts dialog refreshed with reloaded config');
+                        }
+                      } catch (e) {
+                        console.error('[Telecom] ❌ Failed to reload config for refresh:', e);
+                      }
+                    }
+                  } else {
+                    console.log('[Telecom] Contacts dialog not open, skipping refresh');
                   }
                 }
               }
@@ -8716,7 +9051,8 @@ async function processWebRTCAnswer(invite, config, storageKey) {
         }
       } else {
         console.warn('[Telecom] ⚠️ Could not get effective GUID for updating invite status');
-        console.warn('[Telecom]   config keys:', config ? Object.keys(config) : 'config is null/undefined');
+        console.warn('[Telecom]   config keys:', effectiveConfig ? Object.keys(effectiveConfig) : 'config is null/undefined');
+        console.warn('[Telecom]   effectiveConfig:', effectiveConfig);
       }
     } catch (e) {
       console.error('[Telecom] ❌ Error updating invite status after processing answer:', e);
@@ -8730,19 +9066,70 @@ async function processWebRTCAnswer(invite, config, storageKey) {
       if (!existingContact) {
         console.log('[Telecom] Auto-adding contact after processing answer:', contactGuid);
         
-        // Try to get contact info from answer (recipient's data)
-        const contactInfo = {
+        // Try to get contact info from updated invite in localStorage (which contains webrtcAnswer with recipient's data)
+        let contactInfo = {
           guid: contactGuid,
-          username: invite.toUsername || null,
-          displayName: invite.toDisplayName || invite.toUsername || contactGuid.substring(0, 8) + '...',
-          firstName: invite.toFirstName || null,
-          lastName: invite.toLastName || null,
-          email: invite.toEmail || null,
-          publicKey: invite.toPublicKey || null, // Public key for encryption
+          username: null,
+          displayName: contactGuid.substring(0, 8) + '...',
+          firstName: null,
+          lastName: null,
+          email: null,
+          publicKey: null,
           addedAt: new Date().toISOString()
         };
         
-        console.log('[Telecom] Contact info from answer:', {
+        // Try to find updated invite in localStorage that contains webrtcAnswer with recipient's data
+        try {
+          if (effectiveGuid) {
+            const SENT_INVITES_STORAGE_KEY = `webos.telecom.sent_invites.guid_from.${effectiveGuid}`;
+            const sentInvitesData = localStorage.getItem(SENT_INVITES_STORAGE_KEY);
+            if (sentInvitesData) {
+              const sentInvites = JSON.parse(sentInvitesData);
+              // Find invite with answer (contains recipient's data)
+              const inviteWithAnswer = sentInvites.find(inv => 
+                (inv.id === invite.id || inv.toGuid === contactGuid) && inv.webrtcAnswer
+              );
+              
+              if (inviteWithAnswer) {
+                // Use data from invite with answer (recipient's data)
+                contactInfo.username = inviteWithAnswer.toUsername || null;
+                contactInfo.displayName = inviteWithAnswer.toDisplayName || inviteWithAnswer.toUsername || contactGuid.substring(0, 8) + '...';
+                contactInfo.firstName = inviteWithAnswer.toFirstName || null;
+                contactInfo.lastName = inviteWithAnswer.toLastName || null;
+                contactInfo.email = inviteWithAnswer.toEmail || null;
+                contactInfo.publicKey = inviteWithAnswer.toPublicKey || null;
+                console.log('[Telecom] ✅ Found contact data in invite with answer:', {
+                  username: contactInfo.username,
+                  displayName: contactInfo.displayName,
+                  firstName: contactInfo.firstName,
+                  lastName: contactInfo.lastName,
+                  email: contactInfo.email ? 'present' : 'missing',
+                  publicKey: contactInfo.publicKey ? 'present' : 'missing'
+                });
+              } else {
+                // Fallback: try to use data from passed invite parameter
+                contactInfo.username = invite.toUsername || null;
+                contactInfo.displayName = invite.toDisplayName || invite.toUsername || contactGuid.substring(0, 8) + '...';
+                contactInfo.firstName = invite.toFirstName || null;
+                contactInfo.lastName = invite.toLastName || null;
+                contactInfo.email = invite.toEmail || null;
+                contactInfo.publicKey = invite.toPublicKey || null;
+                console.log('[Telecom] ⚠️ Using data from invite parameter (may be incomplete):', {
+                  username: contactInfo.username,
+                  displayName: contactInfo.displayName,
+                  firstName: contactInfo.firstName,
+                  lastName: contactInfo.lastName,
+                  email: contactInfo.email ? 'present' : 'missing',
+                  publicKey: contactInfo.publicKey ? 'present' : 'missing'
+                });
+              }
+            }
+          }
+        } catch (e) {
+          console.error('[Telecom] Error getting contact data from invite:', e);
+        }
+        
+        console.log('[Telecom] Final contact info:', {
           username: contactInfo.username,
           displayName: contactInfo.displayName,
           firstName: contactInfo.firstName,
@@ -8759,9 +9146,10 @@ async function processWebRTCAnswer(invite, config, storageKey) {
         const savedContacts = getContacts();
         const savedContact = savedContacts.find(c => c.guid === contactGuid);
         if (savedContact) {
-          console.log('[Telecom] ✅ Contact verified in storage:', savedContact.guid, 'displayName:', savedContact.displayName);
+          console.log('[Telecom] ✅ Contact verified in storage:', savedContact.guid, 'displayName:', savedContact.displayName, 'publicKey:', savedContact.publicKey ? 'present' : 'missing');
         } else {
           console.error('[Telecom] ❌ Contact NOT found in storage after save! Expected GUID:', contactGuid);
+          console.error('[Telecom]   Available contacts:', savedContacts.map(c => ({ guid: c.guid, displayName: c.displayName })));
         }
         
         // Create chat for this contact
@@ -8782,18 +9170,58 @@ async function processWebRTCAnswer(invite, config, storageKey) {
         }
         
         // Refresh UI if Telecom window is open
+        const effectiveStorageKey = storageKey || 'webos.telecom.v1';
         const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
         telecomWindows.forEach(telecomWin => {
           const winId = telecomWin.dataset.winId;
           if (winId) {
-            renderChatsList(telecomWin, winId, config, storageKey);
+            // Get config if not available
+            let effectiveConfig = config;
+            if (!effectiveConfig) {
+              try {
+                const configData = localStorage.getItem(effectiveStorageKey);
+                if (configData) {
+                  effectiveConfig = JSON.parse(configData);
+                }
+              } catch (e) {
+                console.warn('[Telecom] Error loading config for UI refresh:', e);
+              }
+            }
             
-            // Refresh contacts dialog if it's open
-            const windowContent = telecomWin.querySelector('.win-content');
-            if (windowContent) {
-              const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
-              if (contactsDialog) {
-                refreshContactsDialog(contactsDialog, config, storageKey, winId);
+            if (effectiveConfig) {
+              renderChatsList(telecomWin, winId, effectiveConfig, effectiveStorageKey);
+              
+              // Refresh contacts dialog if it's open
+              const windowContent = telecomWin.querySelector('.win-content');
+              if (windowContent) {
+                const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
+                if (contactsDialog) {
+                  console.log('[Telecom] 🔄 Refreshing contacts dialog after adding contact');
+                  refreshContactsDialog(contactsDialog, effectiveConfig, effectiveStorageKey, winId);
+                  console.log('[Telecom] ✅ Contacts dialog refreshed after contact addition');
+                } else {
+                  console.log('[Telecom] Contacts dialog not open, skipping refresh');
+                }
+              }
+            } else {
+              console.warn('[Telecom] ⚠️ Cannot refresh UI: config not available');
+              // Try to reload config one more time
+              try {
+                const configData = localStorage.getItem(effectiveStorageKey);
+                if (configData) {
+                  const reloadedConfig = JSON.parse(configData);
+                  renderChatsList(telecomWin, winId, reloadedConfig, effectiveStorageKey);
+                  const windowContent = telecomWin.querySelector('.win-content');
+                  if (windowContent) {
+                    const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
+                    if (contactsDialog) {
+                      refreshContactsDialog(contactsDialog, reloadedConfig, effectiveStorageKey, winId);
+                      console.log('[Telecom] ✅ UI refreshed with reloaded config');
+                    }
+                  }
+                }
+              } catch (e) {
+                console.error('[Telecom] ❌ Failed to reload config for UI refresh:', e);
               }
             }
           }
