@@ -1197,18 +1197,24 @@ function renderMainScreen(winId, config, storageKey, restoreState = null) {
     console.log('[Telecom] 🔄 Setting selectedChatId BEFORE renderChatsList:', serviceChat.id);
   }
   
-  // Now render chats list (selectedChatId is already set, so blink won't be restored for selected chat)
-  // This should restore blink for any chats in Set that are NOT selected
-  console.log('[Telecom] 🔍 Before renderChatsList - Set:', window._telecomBlinkingChats ? Array.from(window._telecomBlinkingChats) : [], 'size:', window._telecomBlinkingChats?.size || 0);
+  // Render chats list FIRST to restore blink for chats in Set
+  // Then select the first chat (this will highlight it and remove blink if it was in Set)
+  console.log('[Telecom] 🔍 Before renderChatsList (initial) - Set:', window._telecomBlinkingChats ? Array.from(window._telecomBlinkingChats) : [], 'size:', window._telecomBlinkingChats?.size || 0);
   renderChatsList(win, winId, config, storageKey);
-  console.log('[Telecom] 🔍 After renderChatsList - Set:', window._telecomBlinkingChats ? Array.from(window._telecomBlinkingChats) : [], 'size:', window._telecomBlinkingChats?.size || 0);
+  console.log('[Telecom] 🔍 After renderChatsList (initial) - Set:', window._telecomBlinkingChats ? Array.from(window._telecomBlinkingChats) : [], 'size:', window._telecomBlinkingChats?.size || 0);
   
-  // After rendering, select the chat (this will highlight it and remove blink if it was in Set)
+  // Now select the first chat (this will highlight it and remove blink if it was in Set)
   if (chats.length > 0) {
     const serviceChat = chats.find(c => c.id === 'telecom-service') || chats[0];
     console.log('[Telecom] 🔍 Before selectChat - Set:', window._telecomBlinkingChats ? Array.from(window._telecomBlinkingChats) : [], 'size:', window._telecomBlinkingChats?.size || 0);
     selectChat(win, winId, serviceChat, config, storageKey);
     console.log('[Telecom] 🔍 After selectChat - Set:', window._telecomBlinkingChats ? Array.from(window._telecomBlinkingChats) : [], 'size:', window._telecomBlinkingChats?.size || 0);
+    
+    // After selectChat, restore blink for any OTHER chats that are still in the Set
+    if (window._telecomBlinkingChats && window._telecomBlinkingChats.size > 0) {
+      console.log('[Telecom] 🔄 After selectChat, restoring blink for other chats in Set:', Array.from(window._telecomBlinkingChats));
+      renderChatsList(win, winId, config, storageKey);
+    }
   } else {
     // No chats - ensure selectedChatId is cleared
     delete win.dataset.selectedChatId;
@@ -1285,11 +1291,13 @@ function blinkChatItem(chatId) {
         const chatItem = win.querySelector(`.telecom-chat-item[data-chat-id="${chatId}"]`);
         if (chatItem) {
           chatItem.classList.add('telecom-chat-blink');
-          // Force style application to ensure visibility
+          // CRITICAL: Remove ALL inline background styles FIRST - they override CSS animation
+          chatItem.style.backgroundColor = '';
+          chatItem.style.background = '';
+          // Then set animation and border - CSS class will handle the rest
           chatItem.style.animation = 'blinkOrange 1s ease-in-out infinite';
           chatItem.style.borderLeft = '3px solid rgba(255, 165, 0, 0.9)';
-          chatItem.style.backgroundColor = 'rgba(255, 165, 0, 0.3)';
-          console.log('[Telecom] 💫✅ Added blink effect to chat:', chatId, 'in window:', winId, 'element:', chatItem);
+          console.log('[Telecom] 💫✅ Added blink effect to chat:', chatId, 'in window:', winId, 'animation:', chatItem.style.animation);
           applied = true;
         } else {
           console.warn('[Telecom] ⚠️ Chat item not found for blink:', chatId, 'in window:', winId, '- will be restored by renderChatsList');
@@ -1368,14 +1376,17 @@ function renderChatsList(win, winId, config, storageKey) {
     const lastMessageTime = chat.lastMessage?.timestamp ? formatMessageTime(chat.lastMessage.timestamp) : '';
     const isVerified = chat.id === 'telecom-service' || chat.verified === true;
     const isSelected = selectedChatId === chat.id;
+    const shouldBlink = blinkingChats.has(chat.id) && !isSelected;
     
     // Visual styling for selected chat (but don't override blink)
-    const backgroundColor = isSelected ? 'var(--panel-2)' : 'transparent';
-    const borderLeft = isSelected ? '3px solid var(--accent)' : 'none';
+    // If chat should blink, don't set background inline - let animation handle it
+    const backgroundColor = shouldBlink ? '' : (isSelected ? 'var(--panel-2)' : 'transparent');
+    const borderLeft = shouldBlink ? '3px solid rgba(255, 165, 0, 0.9)' : (isSelected ? '3px solid var(--accent)' : 'none');
+    const animation = shouldBlink ? 'blinkOrange 1s ease-in-out infinite' : 'none';
     
     return `
-      <div class="telecom-chat-item" data-chat-id="${chat.id}" 
-        style="padding:10px 12px; display:flex; align-items:center; gap:12px; cursor:pointer; transition:background 0.2s ease; border-bottom:1px solid var(--panel-2); background:${backgroundColor}; border-left:${borderLeft};">
+      <div class="telecom-chat-item${shouldBlink ? ' telecom-chat-blink' : ''}" data-chat-id="${chat.id}" 
+        style="padding:10px 12px; display:flex; align-items:center; gap:12px; cursor:pointer; transition:background 0.2s ease; border-bottom:1px solid var(--panel-2);${backgroundColor ? ` background:${backgroundColor};` : ''} border-left:${borderLeft}; animation:${animation};">
         <div style="width:48px; height:48px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0;">
           ${chat.icon || '💬'}
         </div>
@@ -1411,18 +1422,28 @@ function renderChatsList(win, winId, config, storageKey) {
     item.addEventListener('mouseenter', () => {
       const chatId = item.dataset.chatId;
       const isSelected = selectedChatId === chatId;
-      // Don't override blink or selected chat styling on hover
-      if (!item.classList.contains('telecom-chat-blink') && !isSelected) {
+      const isBlinking = item.classList.contains('telecom-chat-blink');
+      // CRITICAL: Never override blink styling on hover - animation handles background
+      if (!isBlinking && !isSelected) {
         item.style.background = 'var(--panel-2)';
+      } else if (isBlinking) {
+        // If blinking, ensure background is cleared so animation works
+        item.style.background = '';
+        item.style.backgroundColor = '';
       }
     });
     
     item.addEventListener('mouseleave', () => {
       const chatId = item.dataset.chatId;
       const isSelected = selectedChatId === chatId;
-      // Don't override blink or selected chat styling on hover leave
-      if (!item.classList.contains('telecom-chat-blink') && !isSelected) {
+      const isBlinking = item.classList.contains('telecom-chat-blink');
+      // CRITICAL: Never override blink styling on hover leave - animation handles background
+      if (!isBlinking && !isSelected) {
         item.style.background = 'transparent';
+      } else if (isBlinking) {
+        // If blinking, ensure background is cleared so animation works
+        item.style.background = '';
+        item.style.backgroundColor = '';
       }
     });
     
@@ -1447,16 +1468,18 @@ function renderChatsList(win, winId, config, storageKey) {
       // Only restore blink if chat is not currently selected
       if (!isCurrentlySelected) {
         item.classList.add('telecom-chat-blink');
-        // Force style application - CSS already has !important, but ensure inline styles are set
-        // Blink uses orange border-left, which will override the blue border-left for selected chat
+        // CRITICAL: Remove ALL inline background styles FIRST - they override CSS animation
+        item.style.backgroundColor = '';
+        item.style.background = '';
+        // Then set animation and border - CSS class with !important will handle the animation
         item.style.animation = 'blinkOrange 1s ease-in-out infinite';
         item.style.borderLeft = '3px solid rgba(255, 165, 0, 0.9)';
-        item.style.backgroundColor = 'rgba(255, 165, 0, 0.3)';
         // Ensure it's in global Set
         if (window._telecomBlinkingChats && !window._telecomBlinkingChats.has(chatId)) {
           window._telecomBlinkingChats.add(chatId);
         }
-        console.log('[Telecom] 💫✅ Restored blink effect for chat:', chatId, 'Set size:', window._telecomBlinkingChats?.size, 'selectedChatId:', currentSelectedChatId, 'element:', item);
+        const computedStyle = window.getComputedStyle(item);
+        console.log('[Telecom] 💫✅ Restored blink effect for chat:', chatId, 'Set size:', window._telecomBlinkingChats?.size, 'selectedChatId:', currentSelectedChatId, 'animation:', item.style.animation, 'computedAnimation:', computedStyle.animation, 'computedBackground:', computedStyle.backgroundColor);
       } else {
         // Chat is selected, remove from Set and ensure it has selected styling (not blink)
         if (window._telecomBlinkingChats) {
@@ -1588,8 +1611,15 @@ function selectChat(win, winId, chat, config, storageKey) {
       if (!item.classList.contains('telecom-chat-blink')) {
         item.style.background = 'transparent';
         item.style.borderLeft = 'none';
+        item.style.animation = '';
+      } else {
+        // Chat is blinking - ensure animation is active and no inline background interferes
+        item.style.animation = 'blinkOrange 1s ease-in-out infinite';
+        item.style.borderLeft = '3px solid rgba(255, 165, 0, 0.9)';
+        item.style.backgroundColor = ''; // Let animation handle background
+        item.style.background = ''; // Let animation handle background
+        console.log('[Telecom] 💫 Preserved blink effect for chat:', itemChatId, 'during selectChat');
       }
-      // If chat is blinking, keep its blink styling (orange border-left, etc.)
     }
   });
   
