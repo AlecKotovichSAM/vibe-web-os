@@ -7850,8 +7850,7 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
               }
               
               // Refresh UI - use same logic as selectChat
-              const chats = getChats();
-              const chat = chats.find(c => c.id === chatId);
+              // Reuse chat variable from above
               
               if (!chat) {
                 console.warn('[Telecom] Chat not found for UI update:', chatId);
@@ -8021,28 +8020,44 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                 messages.push(newMessage);
                 localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
                 
-                // Update chat's last message
+                // Update chat's last message - use decrypted text, not encrypted
                 const chats = getChats();
                 const chat = chats.find(c => c.id === chatId);
                 if (chat) {
+                  // Use decrypted text for preview, but limit length for display
+                  let previewText = decryptedText;
+                  if (messageData.encrypted && decryptedText.startsWith('[Encrypted')) {
+                    // If decryption failed, show placeholder
+                    previewText = '[Encrypted message]';
+                  } else if (previewText.length > 50) {
+                    // Truncate long messages for preview
+                    previewText = previewText.substring(0, 50) + '...';
+                  }
+                  
                   chat.lastMessage = {
-                    text: messageData.text,
+                    text: previewText,
                     timestamp: newMessage.timestamp
                   };
                   localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
                 }
                 
-                // Refresh UI - reload messages after saving
-                const updatedMessages = getChatMessages(chatId);
+                // Refresh UI - use same logic as selectChat
+                // Reuse chat variable from above
                 
-                const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+                const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
                 telecomWindows.forEach(winEl => {
                   const winId = winEl.dataset.winId;
-                  if (!winId) return;
+                  if (!winId) {
+                    console.warn('[Telecom] Window element has no winId');
+                    return;
+                  }
                   
                   // Verify via WindowManager
                   const win = WindowManager.findWindow(winId);
-                  if (!win) return;
+                  if (!win) {
+                    console.warn('[Telecom] Window not found via WindowManager:', winId);
+                    return;
+                  }
                   
                   const selectedChatId = win.dataset.selectedChatId;
                   // Get storageKey from context or use default
@@ -8061,8 +8076,7 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                   }
                   
                   // Refresh UI - use same logic as selectChat
-                  const chats = getChats();
-                  const chat = chats.find(c => c.id === chatId);
+                  // Reuse chat variable from above
                   
                   if (!chat) {
                     console.warn('[Telecom] Chat not found for UI update:', chatId);
@@ -9223,8 +9237,7 @@ async function processWebRTCAnswer(invite, config, storageKey) {
             }
             
             // Refresh UI - use same logic as selectChat
-            const chats = getChats();
-            const chat = chats.find(c => c.id === chatId);
+            // Reuse chat variable from above
             
             if (!chat) {
               console.warn('[Telecom] Chat not found for UI update:', chatId);
