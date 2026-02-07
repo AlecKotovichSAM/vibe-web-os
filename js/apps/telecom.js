@@ -6352,93 +6352,59 @@ function deleteContact(contactGuid, config = null) {
     console.log('[Telecom] No chat found for contact:', contactGuid);
   }
   
-  // Delete invites related to this contact
-  // Load config if not provided
-  if (!config) {
-    const STORAGE_KEY = 'webos.telecom.v1';
-    try {
-      const configData = localStorage.getItem(STORAGE_KEY);
-      if (configData) {
-        config = JSON.parse(configData);
-      }
-    } catch (e) {
-      console.error('[Telecom] Error loading config for invite deletion:', e);
-    }
-  }
+  // Delete ALL invites related to this contact from ALL possible storage keys
+  // We need to check ALL keys in localStorage, not just current user's keys
+  console.log('[Telecom] 🔍 Searching for all invites related to contact:', contactGuid);
   
-  if (config) {
-    const effectiveGuid = getEffectiveGuid(config);
-    
-    // 1. Delete received invites from this contact (where fromGuid === contactGuid)
-    // These are invites that the deleted contact sent to the current user
-    const RECIPIENT_INVITES_STORAGE_KEY = `webos.telecom.invites.${effectiveGuid}.v1`;
-    
+  let totalDeleted = 0;
+  
+  // Find all localStorage keys that might contain invites
+  const allKeys = Object.keys(localStorage);
+  const inviteKeys = allKeys.filter(key => 
+    key.startsWith('webos.telecom.invites.') || 
+    key.startsWith('webos.telecom.sent_invites.')
+  );
+  
+  console.log('[Telecom] Found', inviteKeys.length, 'invite storage keys to check');
+  
+  // Process each invite storage key
+  inviteKeys.forEach(storageKey => {
     try {
-      const invitesData = localStorage.getItem(RECIPIENT_INVITES_STORAGE_KEY);
-      if (invitesData) {
-        const invites = JSON.parse(invitesData);
-        const initialLength = invites.length;
-        // Remove invites where fromGuid matches the deleted contact
-        const filteredInvites = invites.filter(inv => inv.fromGuid !== contactGuid);
-        
-        if (filteredInvites.length < initialLength) {
-          const deletedCount = initialLength - filteredInvites.length;
-          localStorage.setItem(RECIPIENT_INVITES_STORAGE_KEY, JSON.stringify(filteredInvites));
-          console.log('[Telecom] Deleted', deletedCount, 'received invite(s) from contact:', contactGuid);
-        }
+      const invitesData = localStorage.getItem(storageKey);
+      if (!invitesData) return;
+      
+      const invites = JSON.parse(invitesData);
+      if (!Array.isArray(invites)) return;
+      
+      const initialLength = invites.length;
+      
+      // Remove ALL invites where fromGuid OR toGuid matches the deleted contact
+      const filteredInvites = invites.filter(inv => {
+        const isFromContact = inv.fromGuid === contactGuid;
+        const isToContact = inv.toGuid === contactGuid;
+        return !isFromContact && !isToContact;
+      });
+      
+      const deletedCount = initialLength - filteredInvites.length;
+      
+      if (deletedCount > 0) {
+        localStorage.setItem(storageKey, JSON.stringify(filteredInvites));
+        totalDeleted += deletedCount;
+        console.log('[Telecom] ✅ Deleted', deletedCount, 'invite(s) from key:', storageKey);
+        console.log('[Telecom]   Removed invites:', invites
+          .filter(inv => inv.fromGuid === contactGuid || inv.toGuid === contactGuid)
+          .map(inv => `ID:${inv.id} (from:${inv.fromGuid?.substring(0,8)}... to:${inv.toGuid?.substring(0,8)}...)`)
+          .join(', '));
       }
     } catch (e) {
-      console.error('[Telecom] Error deleting received invites:', e);
+      console.error('[Telecom] Error processing invite key', storageKey, ':', e);
     }
-    
-    // 2. Delete sent invites to this contact (where toGuid === contactGuid)
-    // These are invites that the current user sent to the deleted contact
-    const SENT_INVITES_STORAGE_KEY = `webos.telecom.sent_invites.guid_from.${effectiveGuid}`;
-    
-    try {
-      const sentInvitesData = localStorage.getItem(SENT_INVITES_STORAGE_KEY);
-      if (sentInvitesData) {
-        const sentInvites = JSON.parse(sentInvitesData);
-        const initialLength = sentInvites.length;
-        // Remove invites where toGuid matches the deleted contact
-        const filteredSentInvites = sentInvites.filter(inv => inv.toGuid !== contactGuid);
-        
-        if (filteredSentInvites.length < initialLength) {
-          const deletedCount = initialLength - filteredSentInvites.length;
-          localStorage.setItem(SENT_INVITES_STORAGE_KEY, JSON.stringify(filteredSentInvites));
-          console.log('[Telecom] Deleted', deletedCount, 'sent invite(s) to contact:', contactGuid);
-        }
-      }
-    } catch (e) {
-      console.error('[Telecom] Error deleting sent invites:', e);
-    }
-    
-    // 3. Also check RECIPIENT_STORAGE_KEY for current user (where invites are stored by recipient GUID)
-    // This is where invites sent TO the current user are stored (same as RECIPIENT_INVITES_STORAGE_KEY)
-    // But we check both to be safe
-    const RECIPIENT_STORAGE_KEY = `webos.telecom.invites.${effectiveGuid}.v1`;
-    if (RECIPIENT_STORAGE_KEY !== RECIPIENT_INVITES_STORAGE_KEY) {
-      // This shouldn't happen, but check anyway
-      try {
-        const recipientInvitesData = localStorage.getItem(RECIPIENT_STORAGE_KEY);
-        if (recipientInvitesData) {
-          const recipientInvites = JSON.parse(recipientInvitesData);
-          const initialLength = recipientInvites.length;
-          // Remove invites where fromGuid matches the deleted contact
-          const filteredRecipientInvites = recipientInvites.filter(inv => inv.fromGuid !== contactGuid);
-          
-          if (filteredRecipientInvites.length < initialLength) {
-            const deletedCount = initialLength - filteredRecipientInvites.length;
-            localStorage.setItem(RECIPIENT_STORAGE_KEY, JSON.stringify(filteredRecipientInvites));
-            console.log('[Telecom] Deleted', deletedCount, 'invite(s) from contact in recipient storage:', contactGuid);
-          }
-        }
-      } catch (e) {
-        console.error('[Telecom] Error deleting invites from recipient storage:', e);
-      }
-    }
-    
-    console.log('[Telecom] ✅ All invites and offers related to contact', contactGuid, 'have been deleted');
+  });
+  
+  if (totalDeleted > 0) {
+    console.log('[Telecom] ✅ Deleted total of', totalDeleted, 'invite(s) related to contact:', contactGuid);
+  } else {
+    console.log('[Telecom] ℹ️ No invites found related to contact:', contactGuid);
   }
 }
 
@@ -7102,11 +7068,37 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
   
   // Save invites in both places (localStorage)
   try {
-    localStorage.setItem(SENT_INVITES_STORAGE_KEY, JSON.stringify(sentInvites));
-    localStorage.setItem(RECIPIENT_STORAGE_KEY, JSON.stringify(recipientInvites));
+    const sentInvitesJson = JSON.stringify(sentInvites);
+    const recipientInvitesJson = JSON.stringify(recipientInvites);
+    const sentInvitesSize = new Blob([sentInvitesJson]).size;
+    const recipientInvitesSize = new Blob([recipientInvitesJson]).size;
+    
+    console.log('[Telecom] Saving invites - sent:', (sentInvitesSize / 1024).toFixed(2), 'KB, recipient:', (recipientInvitesSize / 1024).toFixed(2), 'KB');
+    
+    localStorage.setItem(SENT_INVITES_STORAGE_KEY, sentInvitesJson);
+    localStorage.setItem(RECIPIENT_STORAGE_KEY, recipientInvitesJson);
     console.log('[Telecom] Invite sent to', targetGuid, 'ID:', invite.id);
   } catch (e) {
     console.error('[Telecom] Error saving invite:', e);
+    
+    // Check if it's a quota exceeded error
+    if (e.name === 'QuotaExceededError' || e.name === 'DOMException' || e.code === 22 || e.code === 1014 || e.message?.includes('quota') || e.message?.includes('Quota')) {
+      // Calculate current localStorage usage
+      let localStorageSize = 0;
+      for (let key in localStorage) {
+        if (localStorage.hasOwnProperty(key)) {
+          localStorageSize += localStorage[key].length + key.length;
+        }
+      }
+      const sizeMB = (localStorageSize / (1024 * 1024)).toFixed(2);
+      const sizeKB = (localStorageSize / 1024).toFixed(2);
+      
+      const errorMsg = `Storage quota exceeded!\n\nCurrent usage: ${sizeMB} MB (${sizeKB} KB)\n\nPlease delete old invites, messages, or contacts to free up space.\n\nYou can:\n- Delete old invites in Contacts > Invites tab\n- Delete old chats\n- Clear old messages`;
+      console.error('[Telecom]', errorMsg);
+      alert(errorMsg);
+      throw new Error('Storage quota exceeded. Please free up space by deleting old data.');
+    }
+    
     throw e;
   }
   
