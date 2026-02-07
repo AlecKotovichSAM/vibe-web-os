@@ -361,6 +361,10 @@ Apps.register({
         height: 320 
       });
 
+      // CRITICAL: Set data-app-id attribute so blinkChatItem can find the window
+      win.setAttribute('data-app-id', 'telecom');
+      win.dataset.appId = 'telecom';
+
       // Handle create account button
       const createAccountBtn = win.querySelector('#telecom-create-account');
       if (createAccountBtn && window.AuthUI) {
@@ -750,6 +754,10 @@ function renderSetupScreen(winId, systemAccount, storageKey) {
     width: 600, 
     height: 500 
   });
+
+  // CRITICAL: Set data-app-id attribute so blinkChatItem can find the window
+  win.setAttribute('data-app-id', 'telecom');
+  win.dataset.appId = 'telecom';
 
   // Handle continue button
   const continueBtn = win.querySelector('#telecom-setup-continue');
@@ -1149,6 +1157,10 @@ function renderMainScreen(winId, config, storageKey, restoreState = null) {
     height: windowHeight 
   });
 
+  // CRITICAL: Set data-app-id attribute so blinkChatItem can find the window
+  win.setAttribute('data-app-id', 'telecom');
+  win.dataset.appId = 'telecom';
+
   // Ensure service chat exists
   createServiceChat();
   
@@ -1181,9 +1193,9 @@ function renderMainScreen(winId, config, storageKey, restoreState = null) {
   });
   
   // Initialize blinking chats Set if needed (never overwrites existing!)
-  console.log('[Telecom] 🔍 On window open - Set in memory BEFORE init:', window._telecomBlinkingChats ? Array.from(window._telecomBlinkingChats) : 'undefined', 'size:', window._telecomBlinkingChats?.size || 0);
+  console.log('[Telecom] 🔍 On window open - Set in memory BEFORE init:', window._telecomBlinkingChats, 'size:', window._telecomBlinkingChats?.size || 0);
   initBlinkingChatsSet(); // This will preserve existing Set if it has items
-  console.log('[Telecom] 🔍 On window open - Set AFTER init (preserved if existed):', window._telecomBlinkingChats ? Array.from(window._telecomBlinkingChats) : [], 'size:', window._telecomBlinkingChats?.size || 0);
+  console.log('[Telecom] 🔍 On window open - Set AFTER init (preserved if existed):', Array.from(window._telecomBlinkingChats || []), 'size:', window._telecomBlinkingChats?.size || 0);
   
   // Auto-select first chat (service chat) if available
   // CRITICAL: Set selectedChatId BEFORE renderChatsList so blink is not restored for selected chat
@@ -1197,22 +1209,21 @@ function renderMainScreen(winId, config, storageKey, restoreState = null) {
     console.log('[Telecom] 🔄 Setting selectedChatId BEFORE renderChatsList:', serviceChat.id);
   }
   
+  console.log('[Telecom] 🔍 Before renderChatsList (initial) - Set:', Array.from(window._telecomBlinkingChats || []), 'size:', window._telecomBlinkingChats?.size || 0);
   // Render chats list FIRST to restore blink for chats in Set
   // Then select the first chat (this will highlight it and remove blink if it was in Set)
-  console.log('[Telecom] 🔍 Before renderChatsList (initial) - Set:', window._telecomBlinkingChats ? Array.from(window._telecomBlinkingChats) : [], 'size:', window._telecomBlinkingChats?.size || 0);
   renderChatsList(win, winId, config, storageKey);
-  console.log('[Telecom] 🔍 After renderChatsList (initial) - Set:', window._telecomBlinkingChats ? Array.from(window._telecomBlinkingChats) : [], 'size:', window._telecomBlinkingChats?.size || 0);
+  console.log('[Telecom] 🔍 After renderChatsList (initial) - Set:', Array.from(window._telecomBlinkingChats || []), 'size:', window._telecomBlinkingChats?.size || 0);
   
   // Now select the first chat (this will highlight it and remove blink if it was in Set)
   if (chats.length > 0) {
     const serviceChat = chats.find(c => c.id === 'telecom-service') || chats[0];
-    console.log('[Telecom] 🔍 Before selectChat - Set:', window._telecomBlinkingChats ? Array.from(window._telecomBlinkingChats) : [], 'size:', window._telecomBlinkingChats?.size || 0);
+    console.log('[Telecom] 🔍 Before selectChat - Set:', Array.from(window._telecomBlinkingChats || []), 'size:', window._telecomBlinkingChats?.size || 0);
     selectChat(win, winId, serviceChat, config, storageKey);
-    console.log('[Telecom] 🔍 After selectChat - Set:', window._telecomBlinkingChats ? Array.from(window._telecomBlinkingChats) : [], 'size:', window._telecomBlinkingChats?.size || 0);
+    console.log('[Telecom] 🔍 After selectChat - Set:', Array.from(window._telecomBlinkingChats || []), 'size:', window._telecomBlinkingChats?.size || 0);
     
     // After selectChat, restore blink for any OTHER chats that are still in the Set
     if (window._telecomBlinkingChats && window._telecomBlinkingChats.size > 0) {
-      console.log('[Telecom] 🔄 After selectChat, restoring blink for other chats in Set:', Array.from(window._telecomBlinkingChats));
       renderChatsList(win, winId, config, storageKey);
     }
   } else {
@@ -1255,40 +1266,62 @@ function blinkChatItem(chatId) {
   
   // Add to global Set first - this ensures blink will be restored when window opens
   window._telecomBlinkingChats.add(chatId);
-  console.log('[Telecom] 💫 Requesting blink for chat:', chatId, '(Set size:', window._telecomBlinkingChats.size + ')');
   
   // Try immediately first
   const applyBlink = () => {
-    const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
-    console.log('[Telecom] Found', telecomWindows.length, 'Telecom windows for blink');
+    // Find Telecom windows directly via DOM (most reliable - works even if windowAppMap is stale)
+    // This works even when user switches browser tabs or window is not in focus
     
-    if (telecomWindows.length === 0) {
+    // Method 1: Find by telecom-main content (most reliable - always present)
+    const allWindows = document.querySelectorAll('.window');
+    const windowsWithTelecomContent = [];
+    allWindows.forEach(win => {
+      const winContent = win.querySelector('.telecom-main');
+      if (winContent) {
+        windowsWithTelecomContent.push(win);
+      }
+    });
+    
+    // Method 2: Also try finding by data-app-id (fallback)
+    const telecomWindowsByAttr = document.querySelectorAll('.window[data-app-id="telecom"]');
+    
+    // Combine both methods, avoiding duplicates
+    const allTelecomWindows = Array.from(windowsWithTelecomContent);
+    Array.from(telecomWindowsByAttr).forEach(win => {
+      if (!allTelecomWindows.includes(win)) {
+        allTelecomWindows.push(win);
+      }
+    });
+    
+    console.log('[Telecom] Found', allTelecomWindows.length, 'Telecom windows for blink');
+    
+    if (allTelecomWindows.length === 0) {
       // Window is closed - blink will be restored when window opens via renderChatsList
       console.log('[Telecom] ℹ️ No Telecom windows open - blink will be restored when window opens');
       return false;
     }
     
     let applied = false;
-    telecomWindows.forEach(winEl => {
-      const winId = winEl.dataset.winId;
+    
+    // Process each Telecom window
+    allTelecomWindows.forEach(win => {
+      const winId = win.dataset.winId || win.id;
       if (!winId) {
         console.warn('[Telecom] ⚠️ Window element has no winId');
         return;
       }
       
-      // Verify via WindowManager
-      const win = WindowManager.findWindow(winId);
-      if (!win) {
-        console.warn('[Telecom] ⚠️ Window not found via WindowManager:', winId);
-        return;
-      }
+      // Verify via WindowManager (but use DOM element directly if WindowManager fails)
+      const verifiedWin = WindowManager.findWindow(winId) || win;
       
-      const selectedChatId = win.dataset.selectedChatId;
-      console.log('[Telecom] Checking blink - selected:', selectedChatId, 'target:', chatId);
+      // Don't skip if window is minimized/hidden - blink should still be applied
+      // (it will be visible when window is restored/shown)
+      
+      const selectedChatId = verifiedWin.dataset.selectedChatId || null;
       
       // Only blink if chat is not currently selected
       if (selectedChatId !== chatId) {
-        const chatItem = win.querySelector(`.telecom-chat-item[data-chat-id="${chatId}"]`);
+        const chatItem = verifiedWin.querySelector(`.telecom-chat-item[data-chat-id="${chatId}"]`);
         if (chatItem) {
           chatItem.classList.add('telecom-chat-blink');
           // CRITICAL: Remove ALL inline background styles FIRST - they override CSS animation
@@ -1297,10 +1330,20 @@ function blinkChatItem(chatId) {
           // Then set animation and border - CSS class will handle the rest
           chatItem.style.animation = 'blinkOrange 1s ease-in-out infinite';
           chatItem.style.borderLeft = '3px solid rgba(255, 165, 0, 0.9)';
-          console.log('[Telecom] 💫✅ Added blink effect to chat:', chatId, 'in window:', winId, 'animation:', chatItem.style.animation);
+          console.log('[Telecom] 💫✅ Added blink effect to chat:', chatId, 'in window:', winId);
           applied = true;
         } else {
-          console.warn('[Telecom] ⚠️ Chat item not found for blink:', chatId, 'in window:', winId, '- will be restored by renderChatsList');
+          // Chat item not found - refresh chats list to restore blink
+          console.log('[Telecom] 🔄 Chat item not found for blink:', chatId, 'in window:', winId, '- refreshing chats list...');
+          try {
+            const storageKey = 'webos.telecom.v1';
+            const configData = localStorage.getItem(storageKey);
+            const config = configData ? JSON.parse(configData) : {};
+            renderChatsList(verifiedWin, winId, config, storageKey);
+            applied = true; // renderChatsList will restore blink from Set
+          } catch (e) {
+            console.error('[Telecom] Error refreshing chats list:', e);
+          }
         }
       } else {
         // Chat is selected - don't apply blink, but keep it in Set
@@ -1309,14 +1352,16 @@ function blinkChatItem(chatId) {
       }
     });
     
-    return applied;
+    return applied; // Return true if blink was applied or chats list was refreshed
   };
   
   // Try immediately
-  if (!applyBlink()) {
+  const result = applyBlink();
+  if (!result) {
     // If not found, retry after delay (in case window is opening)
     setTimeout(() => {
-      if (!applyBlink()) {
+      const retryResult = applyBlink();
+      if (!retryResult) {
         // Final retry (window might still be opening)
         setTimeout(() => {
           applyBlink();
@@ -1335,7 +1380,6 @@ function renderChatsList(win, winId, config, storageKey) {
 
   // Initialize global blinking chats Set if needed (never overwrites existing!)
   initBlinkingChatsSet();
-  console.log('[Telecom] 🔄 renderChatsList: Set size:', window._telecomBlinkingChats.size, 'contents:', Array.from(window._telecomBlinkingChats));
 
   // Save which chats are currently blinking before re-rendering
   const blinkingChats = new Set(window._telecomBlinkingChats);
@@ -1344,10 +1388,10 @@ function renderChatsList(win, winId, config, storageKey) {
     const chatId = item.dataset.chatId;
     if (chatId) {
       blinkingChats.add(chatId);
-      console.log('[Telecom] 🔄 Found existing blink in DOM, added to local Set:', chatId);
     }
   });
   
+  console.log('[Telecom] 🔄 renderChatsList: Set size:', blinkingChats.size, 'contents:', Array.from(blinkingChats));
   console.log('[Telecom] 🔄 renderChatsList called, blinking chats in Set:', Array.from(blinkingChats), 'Set size:', blinkingChats.size, 'Global Set size:', window._telecomBlinkingChats?.size || 0, 'Global Set contents:', Array.from(window._telecomBlinkingChats || []));
 
   const chats = getChats();
@@ -1456,11 +1500,7 @@ function renderChatsList(win, winId, config, storageKey) {
     const inLocalSet = chatId && blinkingChats.has(chatId);
     const inGlobalSet = chatId && window._telecomBlinkingChats && window._telecomBlinkingChats.has(chatId);
     
-    console.log('[Telecom] 🔍 Checking blink restore for chat:', chatId, 
-      'inLocalSet:', inLocalSet, 
-      'inGlobalSet:', inGlobalSet, 
-      'selectedChatId:', currentSelectedChatId, 
-      'isSelected:', isCurrentlySelected);
+    console.log('[Telecom] 🔍 Checking blink restore for chat:', chatId, 'inLocalSet:', inLocalSet, 'inGlobalSet:', inGlobalSet, 'selectedChatId:', currentSelectedChatId, 'isSelected:', isCurrentlySelected);
     
     if (chatId && (inLocalSet || inGlobalSet)) {
       // Read selectedChatId from win.dataset - this is how we know which chat is open
@@ -1478,8 +1518,7 @@ function renderChatsList(win, winId, config, storageKey) {
         if (window._telecomBlinkingChats && !window._telecomBlinkingChats.has(chatId)) {
           window._telecomBlinkingChats.add(chatId);
         }
-        const computedStyle = window.getComputedStyle(item);
-        console.log('[Telecom] 💫✅ Restored blink effect for chat:', chatId, 'Set size:', window._telecomBlinkingChats?.size, 'selectedChatId:', currentSelectedChatId, 'animation:', item.style.animation, 'computedAnimation:', computedStyle.animation, 'computedBackground:', computedStyle.backgroundColor);
+        console.log('[Telecom] 💫✅ Restored blink effect for chat:', chatId);
       } else {
         // Chat is selected, remove from Set and ensure it has selected styling (not blink)
         if (window._telecomBlinkingChats) {
@@ -1600,9 +1639,8 @@ function selectChat(win, winId, chat, config, storageKey) {
         const setBefore = Array.from(window._telecomBlinkingChats);
         if (wasInSet) {
           window._telecomBlinkingChats.delete(chat.id);
-          console.log('[Telecom] 🗑️ Removed chat from blinking Set (chat selected):', chat.id, 'Set BEFORE:', setBefore, 'Set AFTER:', Array.from(window._telecomBlinkingChats), 'Set size now:', window._telecomBlinkingChats.size);
         } else {
-          console.log('[Telecom] ℹ️ Chat was not in blinking Set (selectChat):', chat.id, 'Current Set:', setBefore);
+          console.log('[Telecom] ℹ️ Chat was not in blinking Set (selectChat):', chat.id, 'Current Set:', Array.from(window._telecomBlinkingChats));
         }
       }
       console.log('[Telecom] ✅ Applied selected styling to chat:', chat.id);
@@ -1618,7 +1656,6 @@ function selectChat(win, winId, chat, config, storageKey) {
         item.style.borderLeft = '3px solid rgba(255, 165, 0, 0.9)';
         item.style.backgroundColor = ''; // Let animation handle background
         item.style.background = ''; // Let animation handle background
-        console.log('[Telecom] 💫 Preserved blink effect for chat:', itemChatId, 'during selectChat');
       }
     }
   });
@@ -1626,7 +1663,6 @@ function selectChat(win, winId, chat, config, storageKey) {
   // After removing selected chat from Set, restore blink for any OTHER chats that are still in Set
   // This ensures that if multiple chats have new messages, they all blink (except the selected one)
   if (window._telecomBlinkingChats && window._telecomBlinkingChats.size > 0) {
-    console.log('[Telecom] 🔄 After selectChat, restoring blink for other chats in Set:', Array.from(window._telecomBlinkingChats));
     // Re-render chats list to restore blink for non-selected chats
     renderChatsList(win, winId, config, storageKey);
   }
@@ -7963,7 +7999,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                         if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
                         window._telecomBlinkingChats.add(chatId);
                         // Set is in memory, no need to save
-                        console.log('[Telecom] 💫 Added chat to blinking Set:', chatId, 'Set size:', window._telecomBlinkingChats.size);
                         blinkChatItem(chatId);
                       } catch (e) {
                         console.error('[Telecom] ❌ Error decrypting with private key:', e);
@@ -7984,7 +8019,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                 if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
                 window._telecomBlinkingChats.add(chatId);
                 // Set is in memory, no need to save
-                console.log('[Telecom] 💫 Added chat to blinking Set (unencrypted):', chatId, 'Set size:', window._telecomBlinkingChats.size);
                 blinkChatItem(chatId);
               }
               
@@ -8038,8 +8072,11 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                 window._telecomBlinkingChats = new Set();
               }
               
-              // Find all Telecom windows
-              const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+              // Find all Telecom windows - use proper selector with .window class
+              let telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+              if (telecomWindows.length === 0) {
+                telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+              }
               console.log('[Telecom] Found', telecomWindows.length, 'Telecom windows for UI update');
               
               telecomWindows.forEach(winEl => {
@@ -8084,6 +8121,10 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                   // renderChatsList will restore blink effect from Set
                   console.log('[Telecom] ✅ Chat is not selected, refreshing list (blink already in Set)');
                   renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                  
+                  // Also ensure blinkChatItem is called to apply blink immediately
+                  // (in case renderChatsList didn't restore it properly)
+                  blinkChatItem(chatId);
                 }
               });
             }
@@ -8167,9 +8208,7 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                           if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
                           window._telecomBlinkingChats.add(chatId);
                           // Set is in memory, no need to save
-                          console.log('[Telecom] 💫 Added chat to blinking Set (incoming channel):', chatId, 'Set size:', window._telecomBlinkingChats.size, 'Set contents:', Array.from(window._telecomBlinkingChats));
                           blinkChatItem(chatId);
-                          console.log('[Telecom] 💫 After blinkChatItem, Set size:', window._telecomBlinkingChats.size, 'Set contents:', Array.from(window._telecomBlinkingChats));
                         } catch (e) {
                           console.error('[Telecom] ❌ Error decrypting with private key:', e);
                           decryptedText = '[Encrypted message - decryption failed]';
@@ -8234,7 +8273,11 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                 // Refresh UI - use same logic as selectChat
                 // Reuse chat variable from above
                 
-                const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+                // Find all Telecom windows - use proper selector with .window class
+                let telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+                if (telecomWindows.length === 0) {
+                  telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+                }
                 telecomWindows.forEach(winEl => {
                   const winId = winEl.dataset.winId;
                   if (!winId) {
@@ -8279,14 +8322,16 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                   if (selectedChatId === chatId) {
                     // Chat is selected - use selectChat to refresh (same as clicking on chat)
                     // This will also remove blink effect if it was active
-                    console.log('[Telecom] ✅ Chat is selected (incoming channel), refreshing using selectChat. Set BEFORE:', Array.from(window._telecomBlinkingChats || []));
                     selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
-                    console.log('[Telecom] Set AFTER selectChat:', Array.from(window._telecomBlinkingChats || []));
                   } else {
                     // Chat is not selected - blink was already added to Set after decryption
                     // renderChatsList will restore blink effect from Set
                     console.log('[Telecom] ✅ Chat is not selected (incoming channel), refreshing list (blink already in Set). Set:', Array.from(window._telecomBlinkingChats || []));
                     renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                    
+                    // Also ensure blinkChatItem is called to apply blink immediately
+                    // (in case renderChatsList didn't restore it properly)
+                    blinkChatItem(chatId);
                   }
                 });
               }
@@ -9375,7 +9420,6 @@ async function processWebRTCAnswer(invite, config, storageKey) {
                       if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
                       window._telecomBlinkingChats.add(chatId);
                       // Set is in memory, no need to save
-                      console.log('[Telecom] 💫 Added chat to blinking Set (sender side):', chatId, 'Set size:', window._telecomBlinkingChats.size);
                       blinkChatItem(chatId);
                     } catch (e) {
                       console.error('[Telecom] ❌ Error decrypting with private key:', e);
@@ -9492,6 +9536,10 @@ async function processWebRTCAnswer(invite, config, storageKey) {
                 // renderChatsList will restore blink effect from Set
                 console.log('[Telecom] ✅ Chat is not selected (sender side), refreshing list (blink already in Set)');
                 renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                
+                // Also ensure blinkChatItem is called to apply blink immediately
+                // (in case renderChatsList didn't restore it properly)
+                blinkChatItem(chatId);
               }
             });
           }

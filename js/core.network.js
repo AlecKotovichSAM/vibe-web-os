@@ -61,25 +61,17 @@ window.Network = (() => {
       if (saved) {
         const config = JSON.parse(saved);
         if (config.iceServers && Array.isArray(config.iceServers) && config.iceServers.length > 0) {
-          console.log('[Network] Loading ICE servers from localStorage:', config.iceServers.length, 'servers');
-          console.log('[Network] Raw ICE servers from storage:', JSON.stringify(config.iceServers, null, 2));
           // Ensure all servers have priority field (backward compatibility)
           const servers = config.iceServers.map(server => ({
             ...server,
             priority: server.priority || 'normal'
           }));
-          console.log('[Network] Processed ICE servers (with priority):', JSON.stringify(servers, null, 2));
           return servers;
-        } else {
-          console.log('[Network] No ICE servers in localStorage, using defaults');
         }
-      } else {
-        console.log('[Network] No saved config in localStorage, using defaults');
       }
     } catch (e) {
       console.warn('[Network] Error loading saved ICE servers:', e);
     }
-    console.log('[Network] Returning default ICE servers:', JSON.stringify(DEFAULT_ICE_SERVERS, null, 2));
     return DEFAULT_ICE_SERVERS;
   }
   
