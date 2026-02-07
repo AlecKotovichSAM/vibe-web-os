@@ -7849,10 +7849,21 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                 localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
               }
               
-              // Refresh UI - reload messages after saving
-              const updatedMessages = getChatMessages(chatId);
+              // Refresh UI - use same logic as selectChat
+              const chats = getChats();
+              const chat = chats.find(c => c.id === chatId);
               
-              // Find all Telecom windows using multiple selectors to be sure
+              if (!chat) {
+                console.warn('[Telecom] Chat not found for UI update:', chatId);
+                return;
+              }
+              
+              // Initialize blinking chats Set
+              if (!window._telecomBlinkingChats) {
+                window._telecomBlinkingChats = new Set();
+              }
+              
+              // Find all Telecom windows
               const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
               console.log('[Telecom] Found', telecomWindows.length, 'Telecom windows for UI update');
               
@@ -7888,22 +7899,16 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                   }
                 }
                 
-                // Always refresh chats list first
-                renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
-                
                 if (selectedChatId === chatId) {
-                  // Chat is selected - update messages immediately
-                  console.log('[Telecom] ✅ Chat is selected, updating messages immediately');
-                  renderMessages(win, updatedMessages, effectiveConfig);
-                  // Remove blink effect if it was active
-                  const chatItem = win.querySelector(`.telecom-chat-item[data-chat-id="${chatId}"]`);
-                  if (chatItem) {
-                    chatItem.classList.remove('telecom-chat-blink');
-                  }
+                  // Chat is selected - use selectChat to refresh (same as clicking on chat)
+                  console.log('[Telecom] ✅ Chat is selected, refreshing using selectChat');
+                  selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
                 } else {
-                  // Chat is not selected - add blink effect
-                  console.log('[Telecom] ✅ Chat is not selected, adding blink effect');
-                  blinkChatItem(chatId);
+                  // Chat is not selected - add to blinking Set and refresh list
+                  console.log('[Telecom] ✅ Chat is not selected, adding to blink Set');
+                  window._telecomBlinkingChats.add(chatId);
+                  // Refresh chats list (will restore blink effect)
+                  renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
                 }
               });
             }
@@ -8055,22 +8060,30 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                     }
                   }
                   
-                  // Always refresh chats list first
-                  renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                  // Refresh UI - use same logic as selectChat
+                  const chats = getChats();
+                  const chat = chats.find(c => c.id === chatId);
+                  
+                  if (!chat) {
+                    console.warn('[Telecom] Chat not found for UI update:', chatId);
+                    return;
+                  }
+                  
+                  // Initialize blinking chats Set
+                  if (!window._telecomBlinkingChats) {
+                    window._telecomBlinkingChats = new Set();
+                  }
                   
                   if (selectedChatId === chatId) {
-                    // Chat is selected - update messages immediately
-                    console.log('[Telecom] ✅ Chat is selected (incoming channel), updating messages immediately');
-                    renderMessages(win, updatedMessages, effectiveConfig);
-                    // Remove blink effect if it was active
-                    const chatItem = win.querySelector(`.telecom-chat-item[data-chat-id="${chatId}"]`);
-                    if (chatItem) {
-                      chatItem.classList.remove('telecom-chat-blink');
-                    }
+                    // Chat is selected - use selectChat to refresh (same as clicking on chat)
+                    console.log('[Telecom] ✅ Chat is selected (incoming channel), refreshing using selectChat');
+                    selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
                   } else {
-                    // Chat is not selected - add blink effect
-                    console.log('[Telecom] ✅ Chat is not selected (incoming channel), adding blink effect');
-                    blinkChatItem(chatId);
+                    // Chat is not selected - add to blinking Set and refresh list
+                    console.log('[Telecom] ✅ Chat is not selected (incoming channel), adding to blink Set');
+                    window._telecomBlinkingChats.add(chatId);
+                    // Refresh chats list (will restore blink effect)
+                    renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
                   }
                 });
               }
@@ -9209,19 +9222,38 @@ async function processWebRTCAnswer(invite, config, storageKey) {
               localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
             }
             
-            // Refresh UI - reload messages after saving
-            const updatedMessages = getChatMessages(chatId);
+            // Refresh UI - use same logic as selectChat
+            const chats = getChats();
+            const chat = chats.find(c => c.id === chatId);
             
-            const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+            if (!chat) {
+              console.warn('[Telecom] Chat not found for UI update:', chatId);
+              return;
+            }
+            
+            // Initialize blinking chats Set
+            if (!window._telecomBlinkingChats) {
+              window._telecomBlinkingChats = new Set();
+            }
+            
+            const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
             telecomWindows.forEach(winEl => {
               const winId = winEl.dataset.winId;
-              if (!winId) return;
+              if (!winId) {
+                console.warn('[Telecom] Window element has no winId');
+                return;
+              }
               
               // Verify via WindowManager
               const win = WindowManager.findWindow(winId);
-              if (!win) return;
+              if (!win) {
+                console.warn('[Telecom] Window not found via WindowManager:', winId);
+                return;
+              }
               
               const selectedChatId = win.dataset.selectedChatId;
+              console.log('[Telecom] Selected chat:', selectedChatId, 'Received message for:', chatId);
+              
               // Get storageKey from context or use default
               const effectiveStorageKey = storageKey || 'webos.telecom.v1';
               // Get config from context if not available
@@ -9237,22 +9269,16 @@ async function processWebRTCAnswer(invite, config, storageKey) {
                 }
               }
               
-              // Always refresh chats list first
-              renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
-              
               if (selectedChatId === chatId) {
-                // Chat is selected - update messages immediately
-                console.log('[Telecom] ✅ Chat is selected (sender side), updating messages immediately');
-                renderMessages(win, updatedMessages, effectiveConfig);
-                // Remove blink effect if it was active
-                const chatItem = win.querySelector(`.telecom-chat-item[data-chat-id="${chatId}"]`);
-                if (chatItem) {
-                  chatItem.classList.remove('telecom-chat-blink');
-                }
+                // Chat is selected - use selectChat to refresh (same as clicking on chat)
+                console.log('[Telecom] ✅ Chat is selected (sender side), refreshing using selectChat');
+                selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
               } else {
-                // Chat is not selected - add blink effect
-                console.log('[Telecom] ✅ Chat is not selected (sender side), adding blink effect');
-                blinkChatItem(chatId);
+                // Chat is not selected - add to blinking Set and refresh list
+                console.log('[Telecom] ✅ Chat is not selected (sender side), adding to blink Set');
+                window._telecomBlinkingChats.add(chatId);
+                // Refresh chats list (will restore blink effect)
+                renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
               }
             });
           }
