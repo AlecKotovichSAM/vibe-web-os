@@ -698,7 +698,64 @@ function saveConnectionSDP(peerId, effectiveGuid, type, sdp) {
 }
 
 /**
- * Helper function to update connection status indicator
+ * Get WebRTC connection state for a contact GUID
+ */
+function getConnectionStateForContact(contactGuid) {
+  const pc = window._telecomPeerConnections?.get(contactGuid);
+  if (!pc) return 'disconnected';
+  
+  // Check data channel state (more reliable than connectionState)
+  const dataChannel = window._telecomDataChannels?.get(contactGuid);
+  if (dataChannel && dataChannel.readyState === 'open') {
+    return 'connected';
+  }
+  
+  // Fallback to connection state
+  if (pc.connectionState === 'connected') {
+    return 'connected';
+  } else if (pc.connectionState === 'connecting') {
+    return 'connecting';
+  } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+    return 'disconnected';
+  }
+  
+  return 'disconnected';
+}
+
+/**
+ * Update connection status indicator for a chat
+ */
+function updateConnectionStatusForChat(contactGuid, state) {
+  // Find all Telecom windows and update status indicator
+  const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+  telecomWindows.forEach(win => {
+    const selectedChatId = win.dataset.selectedChatId;
+    if (selectedChatId === `contact-${contactGuid}`) {
+      const chatHeader = win.querySelector('.telecom-chat-header');
+      if (chatHeader) {
+        const statusIndicator = chatHeader.querySelector('.telecom-connection-status-indicator');
+        if (statusIndicator) {
+          if (state === 'connected') {
+            statusIndicator.style.background = '#2ec27e';
+            statusIndicator.style.boxShadow = '0 0 4px #2ec27e';
+            statusIndicator.title = I18n.t('telecom.connectionConnected') || 'Connected';
+          } else if (state === 'connecting') {
+            statusIndicator.style.background = '#ffa500';
+            statusIndicator.style.boxShadow = '0 0 4px #ffa500';
+            statusIndicator.title = I18n.t('telecom.connectionConnecting') || 'Connecting...';
+          } else {
+            statusIndicator.style.background = '#ff6b6b';
+            statusIndicator.style.boxShadow = '0 0 4px #ff6b6b';
+            statusIndicator.title = I18n.t('telecom.connectionDisconnected') || 'Disconnected';
+          }
+        }
+      }
+    }
+  });
+}
+
+/**
+ * Helper function to update connection status indicator (legacy, kept for compatibility)
  */
 function updateConnectionStatusIndicator(win, peerId, isConnected) {
   const statusElement = win.querySelector(`#telecom-connection-status-${peerId}`);
@@ -956,8 +1013,23 @@ function selectChat(win, winId, chat, config, storageKey) {
   if (chatHeader) {
     const isVerified = chat.id === 'telecom-service' || chat.verified === true;
     
-    // WebRTC connection status removed - using localStorage-based messaging instead
+    // Get connection status for contact chats
     let connectionStatusIndicator = '';
+    if (chat.type === 'contact' && chat.contactGuid) {
+      const connectionState = getConnectionStateForContact(chat.contactGuid);
+      let statusColor = '#ff6b6b'; // disconnected (red)
+      let statusTitle = I18n.t('telecom.connectionDisconnected') || 'Disconnected';
+      
+      if (connectionState === 'connected') {
+        statusColor = '#2ec27e'; // connected (green)
+        statusTitle = I18n.t('telecom.connectionConnected') || 'Connected';
+      } else if (connectionState === 'connecting') {
+        statusColor = '#ffa500'; // connecting (orange)
+        statusTitle = I18n.t('telecom.connectionConnecting') || 'Connecting...';
+      }
+      
+      connectionStatusIndicator = `<span class="telecom-connection-status-indicator" style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${statusColor}; box-shadow:0 0 4px ${statusColor}; flex-shrink:0; margin-left:6px;" title="${statusTitle}"></span>`;
+    }
     
     chatHeader.innerHTML = `
       <div style="width:40px; height:40px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0;">
@@ -967,11 +1039,20 @@ function selectChat(win, winId, chat, config, storageKey) {
         <div style="font-weight:500; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:flex; align-items:center; gap:4px;">
           ${chat.name}
           ${isVerified ? `<span style="display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:50%; background:var(--accent); color:white; font-size:10px; font-weight:bold; flex-shrink:0; line-height:1; margin-left:2px;" title="${I18n.t('telecom.verified')}">✓</span>` : ''}
-          ${connectionStatusIndicator}
+          ${connectionStatusIndicator || ''}
         </div>
         ${chat.type === 'service' ? `<div style="font-size:12px; color:var(--muted);">${I18n.t('telecom.serviceChat')}</div>` : ''}
       </div>
     `;
+    
+    // Ensure status indicator is updated after rendering
+    if (chat.type === 'contact' && chat.contactGuid) {
+      // Update status indicator immediately after rendering
+      setTimeout(() => {
+        const connectionState = getConnectionStateForContact(chat.contactGuid);
+        updateConnectionStatusForChat(chat.contactGuid, connectionState);
+      }, 100);
+    }
   }
 
   // Load and display messages
@@ -2811,65 +2892,89 @@ function showContactsDialog(win, winId, config, storageKey) {
   `;
   header.innerHTML = `
     <h3 style="margin:0; font-size:18px; font-weight:500;">${I18n.t('telecom.contactsTitle')}</h3>
-    <div style="display:flex; align-items:center; gap:8px;">
-      <button id="telecom-contacts-create-invite-btn" 
-        style="padding:8px 12px; background:var(--accent); color:white; border:none; border-radius:6px; cursor:pointer; font-size:14px; font-weight:500; display:flex; align-items:center; gap:6px;"
-        title="${I18n.t('telecom.contactsCreateInvite')}">
-        <span style="font-size:18px; line-height:1;">+</span>
-        <span>${I18n.t('telecom.contactsCreateInvite')}</span>
-      </button>
-      <button id="telecom-contacts-accept-invite-btn" 
-        style="padding:8px 12px; background:var(--panel-2); color:var(--text); border:1px solid var(--panel-2); border-radius:6px; cursor:pointer; font-size:14px; font-weight:500; display:flex; align-items:center; gap:6px;"
-        title="${I18n.t('telecom.contactsAcceptInvite')}">
-        <span>📥</span>
-        <span>${I18n.t('telecom.contactsAcceptInvite')}</span>
-      </button>
-      <button class="telecom-contacts-close" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text); padding:4px 8px; border-radius:4px;">✕</button>
-    </div>
+    <button class="telecom-contacts-close" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text); padding:4px 8px; border-radius:4px;">✕</button>
   `;
 
-  // Dialog content
-  const content = document.createElement('div');
-  content.style.cssText = `
-    flex: 1;
-    overflow-y: auto;
-    padding: 20px;
-  `;
-
-  // Load contacts and pending invites
+  // Get contacts and invites data
   const contacts = getContacts();
   const effectiveGuid = getEffectiveGuid(config);
   const pendingInvites = getPendingInvites(effectiveGuid); // Outgoing (sent)
   const receivedPendingInvites = getReceivedPendingInvites(effectiveGuid); // Incoming (received)
-
-  // Received pending invites section (Pending requests) - create container first
-  if (receivedPendingInvites.length > 0) {
-    const receivedPendingSection = document.createElement('div');
-    receivedPendingSection.style.cssText = 'margin-bottom:24px;';
-    receivedPendingSection.innerHTML = `
-      <h4 style="margin:0 0 12px 0; font-size:14px; font-weight:500; color:var(--text);">
-        ${I18n.t('telecom.contactsPendingRequests')}
-      </h4>
-      <div id="telecom-contacts-received-pending-invites" style="display:flex; flex-direction:column; gap:8px;">
-      </div>
-    `;
-    content.appendChild(receivedPendingSection);
-  }
-
-  // Pending invites section (Sent invites) - create container first
-  if (pendingInvites.length > 0) {
-    const pendingSection = document.createElement('div');
-    pendingSection.style.cssText = 'margin-bottom:24px;';
-    pendingSection.innerHTML = `
-      <h4 style="margin:0 0 12px 0; font-size:14px; font-weight:500; color:var(--text);">
-        ${I18n.t('telecom.contactsPendingInvites')}
-      </h4>
-      <div id="telecom-contacts-pending-invites" style="display:flex; flex-direction:column; gap:8px;">
-      </div>
-    `;
-    content.appendChild(pendingSection);
-  }
-
+  
+  // Get all invites (pending + accepted) for invites tab
+  const allSentInvites = getPendingInvites(effectiveGuid, false); // Get all, not just pending
+  const allReceivedInvites = getReceivedPendingInvites(effectiveGuid, false); // Get all, not just pending
+  
+  // Dialog content with tabs
+  const content = document.createElement('div');
+  content.style.cssText = `
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  `;
+  
+  // Tabs
+  const tabsContainer = document.createElement('div');
+  tabsContainer.style.cssText = `
+    display: flex;
+    border-bottom: 1px solid var(--panel-2);
+    background: var(--panel);
+  `;
+  
+  const contactsTab = document.createElement('button');
+  contactsTab.id = 'telecom-contacts-tab-contacts';
+  contactsTab.className = 'telecom-contacts-tab';
+  contactsTab.dataset.tab = 'contacts';
+  contactsTab.style.cssText = `
+    flex: 1;
+    padding: 12px 20px;
+    background: var(--panel);
+    border: none;
+    border-bottom: 2px solid var(--accent);
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+  `;
+  contactsTab.textContent = I18n.t('telecom.contactsTabContacts') || 'Contacts';
+  
+  const invitesTab = document.createElement('button');
+  invitesTab.id = 'telecom-contacts-tab-invites';
+  invitesTab.className = 'telecom-contacts-tab';
+  invitesTab.dataset.tab = 'invites';
+  invitesTab.style.cssText = `
+    flex: 1;
+    padding: 12px 20px;
+    background: var(--panel-2);
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+  `;
+  invitesTab.textContent = I18n.t('telecom.contactsTabInvites') || 'Invites';
+  
+  tabsContainer.appendChild(contactsTab);
+  tabsContainer.appendChild(invitesTab);
+  
+  // Tab content container
+  const tabContent = document.createElement('div');
+  tabContent.id = 'telecom-contacts-tab-content';
+  tabContent.style.cssText = `
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+  `;
+  
+  // Contacts tab content
+  const contactsTabContent = document.createElement('div');
+  contactsTabContent.id = 'telecom-contacts-tab-content-contacts';
+  contactsTabContent.style.cssText = 'display: block;';
+  
   // Contacts list
   const contactsList = document.createElement('div');
   contactsList.id = 'telecom-contacts-list';
@@ -2891,8 +2996,92 @@ function showContactsDialog(win, winId, config, storageKey) {
       contactsList.appendChild(contactElement);
     });
   }
-
-  content.appendChild(contactsList);
+  
+  contactsTabContent.appendChild(contactsList);
+  tabContent.appendChild(contactsTabContent);
+  
+  // Invites tab content
+  const invitesTabContent = document.createElement('div');
+  invitesTabContent.id = 'telecom-contacts-tab-content-invites';
+  invitesTabContent.style.cssText = 'display: none;';
+  
+  // Action buttons section (Create Invite and Accept Invite)
+  const actionsSection = document.createElement('div');
+  actionsSection.style.cssText = 'margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--panel-2);';
+  
+  const actionsContainer = document.createElement('div');
+  actionsContainer.style.cssText = 'display: flex; gap: 12px; align-items: center;';
+  
+  const createInviteBtn = document.createElement('button');
+  createInviteBtn.id = 'telecom-contacts-create-invite-btn';
+  createInviteBtn.style.cssText = 'padding:10px 16px; background:var(--accent); color:white; border:none; border-radius:6px; cursor:pointer; font-size:14px; font-weight:500; display:flex; align-items:center; gap:6px;';
+  createInviteBtn.innerHTML = `<span style="font-size:18px; line-height:1;">+</span><span>${I18n.t('telecom.contactsCreateInvite')}</span>`;
+  createInviteBtn.title = I18n.t('telecom.contactsCreateInvite');
+  
+  const acceptInviteBtn = document.createElement('button');
+  acceptInviteBtn.id = 'telecom-contacts-accept-invite-btn';
+  acceptInviteBtn.style.cssText = 'padding:10px 16px; background:var(--panel-2); color:var(--text); border:1px solid var(--panel-2); border-radius:6px; cursor:pointer; font-size:14px; font-weight:500; display:flex; align-items:center; gap:6px;';
+  acceptInviteBtn.innerHTML = `<span>📥</span><span>${I18n.t('telecom.contactsAcceptInvite')}</span>`;
+  acceptInviteBtn.title = I18n.t('telecom.contactsAcceptInvite');
+  
+  actionsContainer.appendChild(createInviteBtn);
+  actionsContainer.appendChild(acceptInviteBtn);
+  actionsSection.appendChild(actionsContainer);
+  
+  // Pending invites section
+  const pendingSection = document.createElement('div');
+  pendingSection.style.cssText = 'margin-bottom: 24px;';
+  
+  const pendingTitle = document.createElement('h4');
+  pendingTitle.style.cssText = 'font-size: 14px; font-weight: 500; color: var(--text); margin: 0 0 12px 0;';
+  pendingTitle.textContent = I18n.t('telecom.invitesPending') || 'Pending Invites';
+  pendingSection.appendChild(pendingTitle);
+  
+  const pendingInvitesContainer = document.createElement('div');
+  pendingInvitesContainer.id = 'telecom-contacts-pending-invites';
+  pendingInvitesContainer.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+  
+  if (pendingInvites.length === 0 && receivedPendingInvites.length === 0) {
+    pendingInvitesContainer.innerHTML = `
+      <div style="padding:20px; text-align:center; color:var(--muted); font-size:13px;">
+        ${I18n.t('telecom.invitesNoPending') || 'No pending invites'}
+      </div>
+    `;
+  }
+  pendingSection.appendChild(pendingInvitesContainer);
+  
+  // Accepted invites section
+  const acceptedSection = document.createElement('div');
+  
+  const acceptedTitle = document.createElement('h4');
+  acceptedTitle.style.cssText = 'font-size: 14px; font-weight: 500; color: var(--text); margin: 0 0 12px 0;';
+  acceptedTitle.textContent = I18n.t('telecom.invitesAccepted') || 'Accepted Invites';
+  acceptedSection.appendChild(acceptedTitle);
+  
+  const acceptedInvitesContainer = document.createElement('div');
+  acceptedInvitesContainer.id = 'telecom-contacts-accepted-invites';
+  acceptedInvitesContainer.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+  
+  // Filter accepted invites
+  const acceptedSentInvites = allSentInvites.filter(inv => inv.status === 'accepted');
+  const acceptedReceivedInvites = allReceivedInvites.filter(inv => inv.status === 'accepted');
+  
+  if (acceptedSentInvites.length === 0 && acceptedReceivedInvites.length === 0) {
+    acceptedInvitesContainer.innerHTML = `
+      <div style="padding:20px; text-align:center; color:var(--muted); font-size:13px;">
+        ${I18n.t('telecom.invitesNoAccepted') || 'No accepted invites'}
+      </div>
+    `;
+  }
+  acceptedSection.appendChild(acceptedInvitesContainer);
+  
+  invitesTabContent.appendChild(actionsSection);
+  invitesTabContent.appendChild(pendingSection);
+  invitesTabContent.appendChild(acceptedSection);
+  tabContent.appendChild(invitesTabContent);
+  
+  content.appendChild(tabsContainer);
+  content.appendChild(tabContent);
 
   // Assemble dialog
   dialog.appendChild(header);
@@ -2907,15 +3096,43 @@ function showContactsDialog(win, winId, config, storageKey) {
     windowContent.style.position = 'relative';
   }
 
-  // Render received pending invites if any (Pending requests)
-  if (receivedPendingInvites.length > 0) {
-    renderReceivedPendingInvitesInContactsDialog(dialog, receivedPendingInvites, config, storageKey, winId);
-  }
-
-  // Render pending invites if any (Sent invites)
+  // Tab switching handlers
+  contactsTab.addEventListener('click', () => {
+    contactsTab.style.background = 'var(--panel)';
+    contactsTab.style.borderBottom = '2px solid var(--accent)';
+    contactsTab.style.color = 'var(--text)';
+    invitesTab.style.background = 'var(--panel-2)';
+    invitesTab.style.borderBottom = '2px solid transparent';
+    invitesTab.style.color = 'var(--muted)';
+    contactsTabContent.style.display = 'block';
+    invitesTabContent.style.display = 'none';
+  });
+  
+  invitesTab.addEventListener('click', () => {
+    invitesTab.style.background = 'var(--panel)';
+    invitesTab.style.borderBottom = '2px solid var(--accent)';
+    invitesTab.style.color = 'var(--text)';
+    contactsTab.style.background = 'var(--panel-2)';
+    contactsTab.style.borderBottom = '2px solid transparent';
+    contactsTab.style.color = 'var(--muted)';
+    contactsTabContent.style.display = 'none';
+    invitesTabContent.style.display = 'block';
+  });
+  
+  // Render pending invites in invites tab
   if (pendingInvites.length > 0) {
-    console.log('[Telecom] Calling renderPendingInvitesInContactsDialog with', pendingInvites.length, 'invites');
-    renderPendingInvitesInContactsDialog(dialog, pendingInvites, config, storageKey, winId);
+    renderPendingInvitesInInvitesTab(pendingInvitesContainer, pendingInvites, config, storageKey, winId, 'sent');
+  }
+  if (receivedPendingInvites.length > 0) {
+    renderPendingInvitesInInvitesTab(pendingInvitesContainer, receivedPendingInvites, config, storageKey, winId, 'received');
+  }
+  
+  // Render accepted invites in invites tab
+  if (acceptedSentInvites.length > 0) {
+    renderAcceptedInvitesInInvitesTab(acceptedInvitesContainer, acceptedSentInvites, config, storageKey, winId, 'sent');
+  }
+  if (acceptedReceivedInvites.length > 0) {
+    renderAcceptedInvitesInInvitesTab(acceptedInvitesContainer, acceptedReceivedInvites, config, storageKey, winId, 'received');
   }
 
   // Handle close button
@@ -2925,23 +3142,17 @@ function showContactsDialog(win, winId, config, storageKey) {
     dialog.remove();
   });
 
-  // Handle Create Invite button (in header)
-  const createInviteBtn = header.querySelector('#telecom-contacts-create-invite-btn');
-  if (createInviteBtn) {
-    createInviteBtn.addEventListener('click', () => {
-      // Show create invite dialog without closing contacts dialog
-      showCreateInviteDialog(win, winId, config, storageKey);
-    });
-  }
+  // Handle Create Invite button (in invites tab) - buttons are already created above
+  createInviteBtn.addEventListener('click', () => {
+    // Show create invite dialog without closing contacts dialog
+    showCreateInviteDialog(win, winId, config, storageKey);
+  });
 
-  // Handle Accept Invite button (in header)
-  const acceptInviteBtn = header.querySelector('#telecom-contacts-accept-invite-btn');
-  if (acceptInviteBtn) {
-    acceptInviteBtn.addEventListener('click', () => {
-      // Show accept invite dialog without closing contacts dialog
-      showAcceptInviteDialog(win, winId, config, storageKey);
-    });
-  }
+  // Handle Accept Invite button (in invites tab) - buttons are already created above
+  acceptInviteBtn.addEventListener('click', () => {
+    // Show accept invite dialog without closing contacts dialog
+    showAcceptInviteDialog(win, winId, config, storageKey);
+  });
 
   // Close on backdrop click (only if nested dialogs are not open)
   backdrop.addEventListener('click', (e) => {
@@ -2997,82 +3208,73 @@ function refreshContactsDialog(dialog, config, storageKey, winId) {
     console.error('[Telecom] Error loading config:', e);
   }
 
-  // Reload contacts and pending invites
+  // Reload contacts and invites
   const contacts = getContacts();
   const effectiveGuid = getEffectiveGuid(config);
   const pendingInvites = getPendingInvites(effectiveGuid); // Outgoing (sent)
   const receivedPendingInvites = getReceivedPendingInvites(effectiveGuid); // Incoming (received)
-
-  // Find content area (the scrollable div)
-  const content = Array.from(dialog.children).find(child => 
-    child.style && child.style.cssText && child.style.cssText.includes('overflow-y: auto')
-  );
-  if (!content) {
-    console.error('[Telecom] Content area not found in contacts dialog');
-    return;
-  }
-
-  // Clear existing content
-  content.innerHTML = '';
-
-  // Received pending invites section (Pending requests)
-  if (receivedPendingInvites.length > 0) {
-    content.innerHTML += `
-      <div style="margin-bottom:24px;">
-        <h4 style="margin:0 0 12px 0; font-size:14px; font-weight:500; color:var(--text);">
-          ${I18n.t('telecom.contactsPendingRequests')}
-        </h4>
-        <div id="telecom-contacts-received-pending-invites" style="display:flex; flex-direction:column; gap:8px;">
-        </div>
-      </div>
-    `;
-  }
-
-  // Pending invites section (Sent invites)
-  if (pendingInvites.length > 0) {
-    content.innerHTML += `
-      <div style="margin-bottom:24px;">
-        <h4 style="margin:0 0 12px 0; font-size:14px; font-weight:500; color:var(--text);">
-          ${I18n.t('telecom.contactsPendingInvites')}
-        </h4>
-        <div id="telecom-contacts-pending-invites" style="display:flex; flex-direction:column; gap:8px;">
-        </div>
-      </div>
-    `;
-  }
-
-  // Contacts list
-  const contactsList = document.createElement('div');
-  contactsList.id = 'telecom-contacts-list';
-  contactsList.style.cssText = `
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  `;
+  const allSentInvites = getPendingInvites(effectiveGuid, false); // Get all, not just pending
+  const allReceivedInvites = getReceivedPendingInvites(effectiveGuid, false); // Get all, not just pending
   
-  if (contacts.length === 0) {
-    contactsList.innerHTML = `
-      <div style="padding:40px 20px; text-align:center; color:var(--muted);">
-        ${I18n.t('telecom.contactsNoContacts')}
-      </div>
-    `;
-  } else {
-    contacts.forEach(contact => {
-      const contactElement = renderContactItem(contact, dialog, config, storageKey, winId);
-      contactsList.appendChild(contactElement);
-    });
+  // Refresh Contacts tab
+  const contactsList = dialog.querySelector('#telecom-contacts-list');
+  if (contactsList) {
+    contactsList.innerHTML = '';
+    if (contacts.length === 0) {
+      contactsList.innerHTML = `
+        <div style="padding:40px 20px; text-align:center; color:var(--muted);">
+          ${I18n.t('telecom.contactsNoContacts')}
+        </div>
+      `;
+    } else {
+      contacts.forEach(contact => {
+        const contactElement = renderContactItem(contact, dialog, config, storageKey, winId);
+        contactsList.appendChild(contactElement);
+      });
+    }
   }
-
-  content.appendChild(contactsList);
-
-  // Render received pending invites if any (Pending requests)
-  if (receivedPendingInvites.length > 0) {
-    renderReceivedPendingInvitesInContactsDialog(dialog, receivedPendingInvites, config, storageKey, winId);
+  
+  // Refresh Invites tab - Pending section
+  const pendingInvitesContainer = dialog.querySelector('#telecom-contacts-pending-invites');
+  if (pendingInvitesContainer) {
+    pendingInvitesContainer.innerHTML = '';
+    if (pendingInvites.length === 0 && receivedPendingInvites.length === 0) {
+      pendingInvitesContainer.innerHTML = `
+        <div style="padding:20px; text-align:center; color:var(--muted); font-size:13px;">
+          ${I18n.t('telecom.invitesNoPending') || 'No pending invites'}
+        </div>
+      `;
+    } else {
+      if (pendingInvites.length > 0) {
+        renderPendingInvitesInInvitesTab(pendingInvitesContainer, pendingInvites, config, storageKey, winId, 'sent');
+      }
+      if (receivedPendingInvites.length > 0) {
+        renderPendingInvitesInInvitesTab(pendingInvitesContainer, receivedPendingInvites, config, storageKey, winId, 'received');
+      }
+    }
   }
-
-  // Render pending invites if any (Sent invites)
-  if (pendingInvites.length > 0) {
-    renderPendingInvitesInContactsDialog(dialog, pendingInvites, config, storageKey, winId);
+  
+  // Refresh Invites tab - Accepted section
+  const acceptedInvitesContainer = dialog.querySelector('#telecom-contacts-accepted-invites');
+  if (acceptedInvitesContainer) {
+    acceptedInvitesContainer.innerHTML = '';
+    const acceptedSentInvites = allSentInvites.filter(inv => inv.status === 'accepted');
+    const acceptedReceivedInvites = allReceivedInvites.filter(inv => inv.status === 'accepted');
+    
+    if (acceptedSentInvites.length === 0 && acceptedReceivedInvites.length === 0) {
+      acceptedInvitesContainer.innerHTML = `
+        <div style="padding:20px; text-align:center; color:var(--muted); font-size:13px;">
+          ${I18n.t('telecom.invitesNoAccepted') || 'No accepted invites'}
+        </div>
+      `;
+    } else {
+      if (acceptedSentInvites.length > 0) {
+        renderAcceptedInvitesInInvitesTab(acceptedInvitesContainer, acceptedSentInvites, config, storageKey, winId, 'sent');
+      }
+      if (acceptedReceivedInvites.length > 0) {
+        renderAcceptedInvitesInInvitesTab(acceptedInvitesContainer, acceptedReceivedInvites, config, storageKey, winId, 'received');
+      }
+    }
   }
 }
 
@@ -4376,18 +4578,24 @@ function showShareAnswerDialog(winId, inviteWithAnswer, config, storageKey) {
     flex: 1;
   `;
 
-  // Prepare invite JSON with answer (exclude avatar for QR code size)
+  // Prepare invite JSON with answer (minimal version for QR code - only essential fields)
+  // QR codes have size limits, so we include only what's needed to process the answer
   const inviteForQR = {
     id: inviteWithAnswer.id,
     fromGuid: inviteWithAnswer.fromGuid,
     toGuid: inviteWithAnswer.toGuid,
-    timestamp: inviteWithAnswer.timestamp,
-    status: inviteWithAnswer.status,
-    webrtcOffer: inviteWithAnswer.webrtcOffer,
     webrtcAnswer: inviteWithAnswer.webrtcAnswer
-    // Exclude avatar and other large fields for QR code
+    // Exclude: timestamp, status, webrtcOffer, avatar, displayName, username, etc.
+    // These are not needed to process the answer - only webrtcAnswer is essential
   };
   const inviteJsonCompact = JSON.stringify(inviteForQR);
+  
+  // Log QR code data size
+  console.log('[Telecom] QR code data size for answer:', inviteJsonCompact.length, 'chars');
+  if (inviteJsonCompact.length > 2000) {
+    console.warn('[Telecom] ⚠️ QR code data is large (', inviteJsonCompact.length, 'chars). QR code generation may fail.');
+    console.warn('[Telecom] 💡 Consider excluding more fields or using manual copy instead of QR code.');
+  }
   
   content.innerHTML = `
     <!-- Info Box -->
@@ -5681,6 +5889,7 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
       // Clean ICE servers - remove non-standard fields that might interfere with RTCPeerConnection
       // If server.urls is an array, expand it into separate server objects (one per URL)
       // This ensures maximum compatibility with RTCPeerConnection
+      // IMPORTANT: Skip TURN servers with empty username/credential (they cause InvalidAccessError)
       const cleanIceServers = [];
       iceServers.forEach((server, idx) => {
         const urlsArray = Array.isArray(server.urls) ? server.urls : [server.urls];
@@ -5692,8 +5901,26 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
           console.log(`[Telecom] Server ${idx + 1} URLs array:`, server.urls);
         }
         
+        // Check if this is a TURN server (requires username/credential)
+        const isTurnServer = urlsArray.some(url => 
+          typeof url === 'string' && (url.includes('turn:') || url.includes('turns:'))
+        );
+        
+        // Skip TURN servers with empty username or credential
+        if (isTurnServer && (!server.username || !server.credential || server.username === '' || server.credential === '')) {
+          console.warn(`[Telecom] ⚠️ Skipping TURN server ${idx + 1} (${urlsArray.join(', ')}) - empty username or credential`);
+          return; // Skip this server
+        }
+        
         // Create one server object per URL (RTCPeerConnection prefers this format)
         urlsArray.forEach((url, urlIdx) => {
+          // Double-check: skip individual TURN URLs without credentials
+          const isTurnUrl = typeof url === 'string' && (url.includes('turn:') || url.includes('turns:'));
+          if (isTurnUrl && (!server.username || !server.credential || server.username === '' || server.credential === '')) {
+            console.warn(`[Telecom] ⚠️ Skipping TURN URL "${url}" - empty username or credential`);
+            return; // Skip this URL
+          }
+          
           const clean = {
             urls: url // Single URL string per server object
           };
@@ -6528,6 +6755,7 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         // Clean ICE servers - remove non-standard fields that might interfere with RTCPeerConnection
         // If server.urls is an array, expand it into separate server objects (one per URL)
         // This ensures maximum compatibility with RTCPeerConnection
+        // IMPORTANT: Skip TURN servers with empty username/credential (they cause InvalidAccessError)
         const cleanIceServers = [];
         iceServers.forEach((server, idx) => {
           const urlsArray = Array.isArray(server.urls) ? server.urls : [server.urls];
@@ -6539,8 +6767,26 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
             console.log(`[Telecom] Server ${idx + 1} (answer) URLs array:`, server.urls);
           }
           
+          // Check if this is a TURN server (requires username/credential)
+          const isTurnServer = urlsArray.some(url => 
+            typeof url === 'string' && (url.includes('turn:') || url.includes('turns:'))
+          );
+          
+          // Skip TURN servers with empty username or credential
+          if (isTurnServer && (!server.username || !server.credential || server.username === '' || server.credential === '')) {
+            console.warn(`[Telecom] ⚠️ Skipping TURN server ${idx + 1} (answer) (${urlsArray.join(', ')}) - empty username or credential`);
+            return; // Skip this server
+          }
+          
           // Create one server object per URL (RTCPeerConnection prefers this format)
           urlsArray.forEach((url, urlIdx) => {
+            // Double-check: skip individual TURN URLs without credentials
+            const isTurnUrl = typeof url === 'string' && (url.includes('turn:') || url.includes('turns:'));
+            if (isTurnUrl && (!server.username || !server.credential || server.username === '' || server.credential === '')) {
+              console.warn(`[Telecom] ⚠️ Skipping TURN URL "${url}" (answer) - empty username or credential`);
+              return; // Skip this URL
+            }
+            
             const clean = {
               urls: url // Single URL string per server object
             };
@@ -6638,6 +6884,148 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         window._telecomPeerConnections.set(inviteForAnswer.fromGuid, pc);
         window._telecomDataChannels.set(inviteForAnswer.fromGuid, dataChannel);
         
+        // Set up data channel handlers for recipient (outgoing channel)
+        dataChannel.onopen = () => {
+          console.log('[Telecom] Data channel opened (recipient outgoing):', inviteForAnswer.fromGuid);
+          updateConnectionStatusForChat(inviteForAnswer.fromGuid, 'connected');
+        };
+        
+        dataChannel.onmessage = (event) => {
+          try {
+            const messageData = JSON.parse(event.data);
+            console.log('[Telecom] Received message via WebRTC (recipient):', inviteForAnswer.fromGuid, 'data:', messageData);
+            
+            // Handle incoming WebRTC message
+            if (messageData.type === 'message' && messageData.text) {
+              const chatId = `contact-${inviteForAnswer.fromGuid}`;
+              const newMessage = {
+                id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+                chatId: chatId,
+                senderId: inviteForAnswer.fromGuid,
+                senderName: messageData.senderName || inviteForAnswer.fromGuid.substring(0, 8) + '...',
+                text: messageData.text,
+                timestamp: messageData.timestamp || new Date().toISOString(),
+                type: 'user',
+                viaWebRTC: true
+              };
+              
+              // Save message
+              const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
+              const messages = getChatMessages(chatId);
+              messages.push(newMessage);
+              localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+              
+              // Update chat's last message
+              const chats = getChats();
+              const chat = chats.find(c => c.id === chatId);
+              if (chat) {
+                chat.lastMessage = {
+                  text: messageData.text,
+                  timestamp: newMessage.timestamp
+                };
+                localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
+              }
+              
+              // Refresh UI if chat is currently selected
+              const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+              telecomWindows.forEach(win => {
+                const selectedChatId = win.dataset.selectedChatId;
+                if (selectedChatId === chatId) {
+                  renderMessages(win, messages, config);
+                  renderChatsList(win, win.dataset.winId, config, storageKey);
+                }
+              });
+            }
+          } catch (e) {
+            console.error('[Telecom] Error parsing WebRTC message (recipient):', e);
+          }
+        };
+        
+        dataChannel.onerror = (error) => {
+          console.error('[Telecom] Data channel error (recipient):', inviteForAnswer.fromGuid, error);
+          updateConnectionStatusForChat(inviteForAnswer.fromGuid, 'disconnected');
+        };
+        
+        dataChannel.onclose = () => {
+          console.log('[Telecom] Data channel closed (recipient):', inviteForAnswer.fromGuid);
+          updateConnectionStatusForChat(inviteForAnswer.fromGuid, 'disconnected');
+        };
+        
+        // Also handle incoming data channels (in case sender creates one)
+        pc.ondatachannel = (event) => {
+          const incomingChannel = event.channel;
+          console.log('[Telecom] Incoming data channel (recipient):', incomingChannel.label, 'for contact:', inviteForAnswer.fromGuid);
+          
+          // Store incoming channel
+          window._telecomDataChannels.set(inviteForAnswer.fromGuid, incomingChannel);
+          
+          incomingChannel.onopen = () => {
+            console.log('[Telecom] Incoming data channel opened (recipient):', inviteForAnswer.fromGuid);
+            updateConnectionStatusForChat(inviteForAnswer.fromGuid, 'connected');
+          };
+          
+          incomingChannel.onmessage = (event) => {
+            try {
+              const messageData = JSON.parse(event.data);
+              console.log('[Telecom] Received message via incoming WebRTC channel (recipient):', inviteForAnswer.fromGuid, 'data:', messageData);
+              
+              // Handle incoming WebRTC message (same as above)
+              if (messageData.type === 'message' && messageData.text) {
+                const chatId = `contact-${inviteForAnswer.fromGuid}`;
+                const newMessage = {
+                  id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+                  chatId: chatId,
+                  senderId: inviteForAnswer.fromGuid,
+                  senderName: messageData.senderName || inviteForAnswer.fromGuid.substring(0, 8) + '...',
+                  text: messageData.text,
+                  timestamp: messageData.timestamp || new Date().toISOString(),
+                  type: 'user',
+                  viaWebRTC: true
+                };
+                
+                // Save message
+                const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
+                const messages = getChatMessages(chatId);
+                messages.push(newMessage);
+                localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+                
+                // Update chat's last message
+                const chats = getChats();
+                const chat = chats.find(c => c.id === chatId);
+                if (chat) {
+                  chat.lastMessage = {
+                    text: messageData.text,
+                    timestamp: newMessage.timestamp
+                  };
+                  localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
+                }
+                
+                // Refresh UI if chat is currently selected
+                const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+                telecomWindows.forEach(win => {
+                  const selectedChatId = win.dataset.selectedChatId;
+                  if (selectedChatId === chatId) {
+                    renderMessages(win, messages, config);
+                    renderChatsList(win, win.dataset.winId, config, storageKey);
+                  }
+                });
+              }
+            } catch (e) {
+              console.error('[Telecom] Error parsing WebRTC message (recipient incoming):', e);
+            }
+          };
+          
+          incomingChannel.onerror = (error) => {
+            console.error('[Telecom] Incoming data channel error (recipient):', inviteForAnswer.fromGuid, error);
+            updateConnectionStatusForChat(inviteForAnswer.fromGuid, 'disconnected');
+          };
+          
+          incomingChannel.onclose = () => {
+            console.log('[Telecom] Incoming data channel closed (recipient):', inviteForAnswer.fromGuid);
+            updateConnectionStatusForChat(inviteForAnswer.fromGuid, 'disconnected');
+          };
+        };
+        
         // Set remote description (offer from sender)
         await pc.setRemoteDescription(new RTCSessionDescription({
           type: inviteForAnswer.webrtcOffer.type,
@@ -6647,18 +7035,23 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         
         // Set up connection state handlers for recipient side
         pc.onconnectionstatechange = () => {
-          console.log('[Telecom] Connection state changed:', pc.connectionState, 'for contact (recipient):', invite.fromGuid);
+          const contactGuid = invite.fromGuid;
+          console.log('[Telecom] Connection state changed:', pc.connectionState, 'for contact (recipient):', contactGuid);
           if (pc.connectionState === 'connected') {
-            console.log('[Telecom] ✅ WebRTC connection established with contact (recipient):', invite.fromGuid);
+            console.log('[Telecom] ✅ WebRTC connection established with contact (recipient):', contactGuid);
+            updateConnectionStatusForChat(contactGuid, 'connected');
           } else if (pc.connectionState === 'failed') {
-            console.error('[Telecom] ❌ WebRTC connection failed with contact (recipient):', invite.fromGuid);
+            console.error('[Telecom] ❌ WebRTC connection failed with contact (recipient):', contactGuid);
             console.error('[Telecom] This is usually due to NAT/firewall restrictions.');
             console.error('[Telecom] 💡 If you see "No TURN (relay) candidates" above, you need to configure a TURN server.');
             console.error('[Telecom] 💡 Go to Network app (Settings > Network) and add a working TURN server.');
+            updateConnectionStatusForChat(contactGuid, 'disconnected');
           } else if (pc.connectionState === 'disconnected') {
-            console.warn('[Telecom] ⚠️ WebRTC connection disconnected with contact (recipient):', invite.fromGuid);
+            console.warn('[Telecom] ⚠️ WebRTC connection disconnected with contact (recipient):', contactGuid);
+            updateConnectionStatusForChat(contactGuid, 'disconnected');
           } else if (pc.connectionState === 'connecting') {
-            console.log('[Telecom] 🔄 WebRTC connection establishing with contact (recipient):', invite.fromGuid);
+            console.log('[Telecom] 🔄 WebRTC connection establishing with contact (recipient):', contactGuid);
+            updateConnectionStatusForChat(contactGuid, 'connecting');
           }
         };
         
@@ -7291,6 +7684,68 @@ async function processWebRTCAnswer(invite, config) {
       console.log('[Telecom] Connection state changed:', pc.connectionState, 'for contact:', contactGuid);
       if (pc.connectionState === 'connected') {
         console.log('[Telecom] ✅ WebRTC connection established with contact:', contactGuid);
+        
+        // Add contact automatically for sender when connection is established
+        const contacts = getContacts();
+        const existingContact = contacts.find(c => c.guid === contactGuid);
+        if (!existingContact) {
+          console.log('[Telecom] Auto-adding contact for sender:', contactGuid);
+          
+          // Try to find contact info from recipient's account data if available
+          // For now, we'll use GUID as display name, but in future we can query recipient's profile
+          const contactInfo = {
+            guid: contactGuid,
+            username: null, // We don't have username for recipient yet
+            displayName: contactGuid.substring(0, 8) + '...', // Use GUID prefix as display name
+            addedAt: new Date().toISOString()
+          };
+          
+          // Try to get better display name from recipient's account if available
+          // Note: This would require a way to query recipient's profile, which is not implemented yet
+          // For now, we use GUID prefix
+          
+          contacts.push(contactInfo);
+          saveContacts(contacts);
+          console.log('[Telecom] Contact auto-added for sender:', contactGuid);
+          
+          // Create chat for this contact
+          const chats = getChats();
+          const chatId = `contact-${contactGuid}`;
+          const existingChat = chats.find(c => c.id === chatId);
+          if (!existingChat) {
+            chats.push({
+              id: chatId,
+              name: contactInfo.displayName,
+              type: 'contact',
+              contactGuid: contactGuid,
+              createdAt: new Date().toISOString()
+            });
+            const CHATS_STORAGE_KEY = 'webos.telecom.chats.v1';
+            localStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(chats));
+            console.log('[Telecom] Chat created for auto-added contact:', contactGuid);
+            
+            // Refresh chats list if Telecom window is open
+            const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+            telecomWindows.forEach(telecomWin => {
+              const winId = telecomWin.dataset.winId;
+              if (winId) {
+                renderChatsList(telecomWin, winId, config, storageKey);
+                
+                // Refresh contacts dialog if it's open
+                const windowContent = telecomWin.querySelector('.win-content');
+                if (windowContent) {
+                  const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
+                  if (contactsDialog) {
+                    refreshContactsDialog(contactsDialog, config, storageKey, winId);
+                  }
+                }
+              }
+            });
+          }
+        }
+        
+        // Update connection status indicator in chat header
+        updateConnectionStatusForChat(contactGuid, 'connected');
       } else if (pc.connectionState === 'failed') {
         console.error('[Telecom] ❌ WebRTC connection failed with contact:', contactGuid);
         console.error('[Telecom] This is usually due to NAT/firewall restrictions.');
@@ -7305,8 +7760,10 @@ async function processWebRTCAnswer(invite, config) {
         };
       } else if (pc.connectionState === 'disconnected') {
         console.warn('[Telecom] ⚠️ WebRTC connection disconnected with contact:', contactGuid);
+        updateConnectionStatusForChat(contactGuid, 'disconnected');
       } else if (pc.connectionState === 'connecting') {
         console.log('[Telecom] 🔄 WebRTC connection establishing with contact:', contactGuid);
+        updateConnectionStatusForChat(contactGuid, 'connecting');
       }
     };
     
@@ -7442,15 +7899,68 @@ async function processWebRTCAnswer(invite, config) {
     if (dataChannel) {
       dataChannel.onopen = () => {
         console.log('[Telecom] Data channel opened with contact:', contactGuid);
+        updateConnectionStatusForChat(contactGuid, 'connected');
       };
       
       dataChannel.onmessage = (event) => {
-        console.log('[Telecom] Received message via WebRTC from contact:', contactGuid, 'data:', event.data);
-        // TODO: Handle incoming WebRTC messages
+        try {
+          const messageData = JSON.parse(event.data);
+          console.log('[Telecom] Received message via WebRTC from contact:', contactGuid, 'data:', messageData);
+          
+          // Handle incoming WebRTC message
+          if (messageData.type === 'message' && messageData.text) {
+            const chatId = `contact-${contactGuid}`;
+            const newMessage = {
+              id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+              chatId: chatId,
+              senderId: contactGuid,
+              senderName: messageData.senderName || contactGuid.substring(0, 8) + '...',
+              text: messageData.text,
+              timestamp: messageData.timestamp || new Date().toISOString(),
+              type: 'user',
+              viaWebRTC: true
+            };
+            
+            // Save message
+            const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
+            const messages = getChatMessages(chatId);
+            messages.push(newMessage);
+            localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+            
+            // Update chat's last message
+            const chats = getChats();
+            const chat = chats.find(c => c.id === chatId);
+            if (chat) {
+              chat.lastMessage = {
+                text: messageData.text,
+                timestamp: newMessage.timestamp
+              };
+              localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
+            }
+            
+            // Refresh UI if chat is currently selected
+            const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+            telecomWindows.forEach(win => {
+              const selectedChatId = win.dataset.selectedChatId;
+              if (selectedChatId === chatId) {
+                renderMessages(win, messages, config);
+                renderChatsList(win, win.dataset.winId, config, storageKey);
+              }
+            });
+          }
+        } catch (e) {
+          console.error('[Telecom] Error parsing WebRTC message:', e);
+        }
       };
       
       dataChannel.onerror = (error) => {
         console.error('[Telecom] Data channel error with contact:', contactGuid, error);
+        updateConnectionStatusForChat(contactGuid, 'disconnected');
+      };
+      
+      dataChannel.onclose = () => {
+        console.log('[Telecom] Data channel closed with contact:', contactGuid);
+        updateConnectionStatusForChat(contactGuid, 'disconnected');
       };
     }
     
@@ -7466,7 +7976,7 @@ async function processWebRTCAnswer(invite, config) {
  * Get pending invites sent by a user GUID (outgoing invites)
  * Simple: just read from localStorage and filter by status
  */
-function getPendingInvites(userGuid) {
+function getPendingInvites(userGuid, pendingOnly = true) {
   const SENT_INVITES_STORAGE_KEY = `webos.telecom.sent_invites.guid_from.${userGuid}`;
   
   try {
@@ -7477,13 +7987,17 @@ function getPendingInvites(userGuid) {
     }
     
     const invites = JSON.parse(invitesData);
-    const pending = invites.filter(inv => inv.status === 'pending');
-    const accepted = invites.filter(inv => inv.status === 'accepted');
-    console.log('[Telecom] getPendingInvites: total invites:', invites.length, 'pending:', pending.length, 'accepted:', accepted.length, 'for GUID:', userGuid);
-    if (pending.length > 0) {
-      console.log('[Telecom] Pending invite IDs:', pending.map(inv => `${inv.id} (to: ${inv.toGuid})`));
+    if (pendingOnly) {
+      const pending = invites.filter(inv => inv.status === 'pending');
+      const accepted = invites.filter(inv => inv.status === 'accepted');
+      console.log('[Telecom] getPendingInvites: total invites:', invites.length, 'pending:', pending.length, 'accepted:', accepted.length, 'for GUID:', userGuid);
+      if (pending.length > 0) {
+        console.log('[Telecom] Pending invite IDs:', pending.map(inv => `${inv.id} (to: ${inv.toGuid})`));
+      }
+      return pending;
+    } else {
+      return invites; // Return all invites
     }
-    return pending;
   } catch (e) {
     console.error('[Telecom] Error getting pending invites:', e);
     return [];
@@ -7491,9 +8005,31 @@ function getPendingInvites(userGuid) {
 }
 
 /**
+ * Get all invites (pending and accepted) - sent or received
+ */
+function getAllInvites(userGuid, type = 'sent') {
+  try {
+    if (type === 'sent') {
+      const SENT_INVITES_STORAGE_KEY = `webos.telecom.sent_invites.guid_from.${userGuid}`;
+      const invitesData = localStorage.getItem(SENT_INVITES_STORAGE_KEY);
+      if (!invitesData) return [];
+      return JSON.parse(invitesData);
+    } else {
+      const RECIPIENT_INVITES_STORAGE_KEY = `webos.telecom.invites.${userGuid}.v1`;
+      const invitesData = localStorage.getItem(RECIPIENT_INVITES_STORAGE_KEY);
+      if (!invitesData) return [];
+      return JSON.parse(invitesData);
+    }
+  } catch (e) {
+    console.error('[Telecom] Error getting all invites:', e);
+    return [];
+  }
+}
+
+/**
  * Get pending invites received by a user GUID (incoming invites)
  */
-function getReceivedPendingInvites(userGuid) {
+function getReceivedPendingInvites(userGuid, pendingOnly = true) {
   const RECIPIENT_STORAGE_KEY = `webos.telecom.invites.${userGuid}.v1`;
   
   try {
@@ -7504,17 +8040,21 @@ function getReceivedPendingInvites(userGuid) {
     }
     
     const invites = JSON.parse(invitesData);
-    const pending = invites.filter(inv => inv.status === 'pending');
-    const accepted = invites.filter(inv => inv.status === 'accepted');
-    console.log('[Telecom] getReceivedPendingInvites: total invites:', invites.length, 'pending:', pending.length, 'accepted:', accepted.length, 'for GUID:', userGuid);
-    if (pending.length > 0) {
-      console.log('[Telecom] Pending invite IDs:', pending.map(inv => inv.id));
-      // Log avatar info for each pending invite
-      pending.forEach((inv, idx) => {
-        console.log(`[Telecom] getReceivedPendingInvites: invite #${idx + 1} (${inv.id}) avatar:`, inv.fromAvatar ? (inv.fromAvatar.substring(0, 50) + '...') : 'null');
-      });
+    if (pendingOnly) {
+      const pending = invites.filter(inv => inv.status === 'pending');
+      const accepted = invites.filter(inv => inv.status === 'accepted');
+      console.log('[Telecom] getReceivedPendingInvites: total invites:', invites.length, 'pending:', pending.length, 'accepted:', accepted.length, 'for GUID:', userGuid);
+      if (pending.length > 0) {
+        console.log('[Telecom] Pending invite IDs:', pending.map(inv => inv.id));
+        // Log avatar info for each pending invite
+        pending.forEach((inv, idx) => {
+          console.log(`[Telecom] getReceivedPendingInvites: invite #${idx + 1} (${inv.id}) avatar:`, inv.fromAvatar ? (inv.fromAvatar.substring(0, 50) + '...') : 'null');
+        });
+      }
+      return pending;
+    } else {
+      return invites; // Return all invites
     }
-    return pending;
   } catch (e) {
     console.error('[Telecom] Error getting received pending invites:', e);
     return [];
@@ -7889,10 +8429,29 @@ function sendMessage(win, winId, config, storageKey) {
   // Extract peerId from chatId (chatId format: 'contact-{guid}')
   const peerId = selectedChatId.startsWith('contact-') ? selectedChatId.replace('contact-', '') : selectedChatId;
   
-  // WebRTC message sending removed - using localStorage-based messaging instead
-  // Messages are saved locally and will be synced via localStorage-based messaging
+  // Try to send via WebRTC if connection is available
+  const dataChannel = window._telecomDataChannels?.get(peerId);
+  if (dataChannel && dataChannel.readyState === 'open') {
+    try {
+      // Send message via WebRTC data channel
+      const messagePayload = {
+        type: 'message',
+        text: message,
+        senderId: effectiveGuid || config.systemGuid,
+        senderName: config.firstName && config.lastName ? `${config.firstName} ${config.lastName}` : config.username || effectiveGuid,
+        timestamp: newMessage.timestamp
+      };
+      dataChannel.send(JSON.stringify(messagePayload));
+      console.log('[Telecom] Message sent via WebRTC to contact:', peerId);
+    } catch (e) {
+      console.error('[Telecom] Error sending message via WebRTC:', e);
+      // Fallback to localStorage-based messaging
+    }
+  } else {
+    console.log('[Telecom] WebRTC data channel not available, using localStorage-based messaging');
+  }
 
-  // Save message
+  // Save message (always save locally)
   const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${selectedChatId}.v1`;
   const messages = getChatMessages(selectedChatId);
   messages.push(newMessage);
@@ -7918,4 +8477,372 @@ function sendMessage(win, winId, config, storageKey) {
   // Clear input
   messageInput.value = '';
   messageInput.style.height = 'auto';
+}
+
+/**
+ * Render pending invites in invites tab (for both sent and received)
+ */
+function renderPendingInvitesInInvitesTab(container, invites, config, storageKey, winId, type) {
+  invites.forEach((invite) => {
+    const inviteElement = createInviteElement(invite, config, storageKey, winId, type, 'pending');
+    container.appendChild(inviteElement);
+  });
+}
+
+/**
+ * Render accepted invites in invites tab (for both sent and received)
+ */
+function renderAcceptedInvitesInInvitesTab(container, invites, config, storageKey, winId, type) {
+  invites.forEach((invite) => {
+    const inviteElement = createInviteElement(invite, config, storageKey, winId, type, 'accepted');
+    container.appendChild(inviteElement);
+  });
+}
+
+/**
+ * Create invite element for invites tab
+ */
+function createInviteElement(invite, config, storageKey, winId, type, status) {
+  const inviteElement = document.createElement('div');
+  inviteElement.className = 'telecom-invite-item';
+  inviteElement.dataset.inviteId = invite.id;
+  inviteElement.style.cssText = 'padding:12px; background:var(--panel-2); border-radius:6px; display:flex; align-items:center; gap:12px; margin-bottom:8px;';
+  
+  // Avatar
+  const avatarDiv = document.createElement('div');
+  avatarDiv.style.cssText = 'width:40px; height:40px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0;';
+  avatarDiv.textContent = '👤';
+  
+  if (invite.fromAvatar && invite.fromAvatar.startsWith('data:image/')) {
+    const avatarImg = document.createElement('img');
+    avatarImg.src = invite.fromAvatar;
+    avatarImg.style.cssText = 'width:40px; height:40px; border-radius:50%; object-fit:cover; flex-shrink:0;';
+    avatarImg.alt = 'Avatar';
+    avatarImg.onerror = () => avatarImg.replaceWith(avatarDiv);
+    avatarDiv.replaceWith(avatarImg);
+  }
+  
+  inviteElement.appendChild(avatarDiv);
+  
+  // Content
+  const contentDiv = document.createElement('div');
+  contentDiv.style.cssText = 'flex:1; min-width:0;';
+  
+  const displayName = type === 'sent' ? (invite.toGuid) : (invite.fromDisplayName || invite.fromUsername || invite.fromGuid);
+  const displayNameDiv = document.createElement('div');
+  displayNameDiv.style.cssText = 'font-weight:500; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+  displayNameDiv.textContent = displayName;
+  contentDiv.appendChild(displayNameDiv);
+  
+  const guidDiv = document.createElement('div');
+  guidDiv.style.cssText = 'font-size:11px; color:var(--muted); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+  guidDiv.textContent = type === 'sent' ? `To: ${invite.toGuid}` : `From: ${invite.fromGuid}`;
+  contentDiv.appendChild(guidDiv);
+  
+  inviteElement.appendChild(contentDiv);
+  
+  // Actions
+  const actionsDiv = document.createElement('div');
+  actionsDiv.style.cssText = 'display:flex; gap:8px; flex-shrink:0; align-items:center;';
+  
+  // Status badge
+  const statusBadge = document.createElement('span');
+  statusBadge.style.cssText = `font-size:11px; padding:4px 8px; background:var(--panel); border-radius:4px; color:${status === 'pending' ? 'var(--muted)' : 'var(--ok)'};`;
+  statusBadge.textContent = status === 'pending' ? 'Pending' : 'Accepted';
+  actionsDiv.appendChild(statusBadge);
+  
+  // View Answer button (only for accepted invites with webrtcAnswer)
+  if (status === 'accepted' && invite.webrtcAnswer) {
+    const viewAnswerBtn = document.createElement('button');
+    viewAnswerBtn.style.cssText = 'background:var(--accent); border:none; font-size:12px; cursor:pointer; color:white; padding:6px 12px; border-radius:4px; font-weight:500;';
+    viewAnswerBtn.textContent = 'View Answer';
+    viewAnswerBtn.title = 'View WebRTC Answer';
+    viewAnswerBtn.addEventListener('click', () => {
+      showAnswerDialog(winId, invite, config, storageKey);
+    });
+    actionsDiv.appendChild(viewAnswerBtn);
+  }
+  
+  // View Invite button (for pending sent invites)
+  if (status === 'pending' && type === 'sent') {
+    const viewBtn = document.createElement('button');
+    viewBtn.style.cssText = 'background:var(--accent); border:none; font-size:12px; cursor:pointer; color:white; padding:6px 12px; border-radius:4px; font-weight:500;';
+    viewBtn.textContent = 'View';
+    viewBtn.title = 'View QR code and copy invite data';
+    viewBtn.addEventListener('click', () => {
+      const win = WindowManager.findWindow(winId);
+      showCreateInviteDialog(win, winId, config, storageKey, invite);
+    });
+    actionsDiv.appendChild(viewBtn);
+  }
+  
+  // Cancel/Delete button (for pending invites)
+  if (status === 'pending') {
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'telecom-invite-cancel';
+    cancelBtn.dataset.inviteId = invite.id;
+    cancelBtn.style.cssText = 'background:none; border:none; font-size:16px; cursor:pointer; color:var(--muted); padding:4px; border-radius:4px; width:24px; height:24px; display:flex; align-items:center; justify-content:center;';
+    cancelBtn.textContent = '✕';
+    cancelBtn.title = type === 'sent' ? (I18n.t('telecom.contactsCancelInvite') || 'Cancel Invite') : (I18n.t('telecom.contactsDeleteInvite') || 'Delete Invite');
+    cancelBtn.addEventListener('click', async () => {
+      const confirmMessage = type === 'sent' 
+        ? (I18n.t('telecom.contactsCancelInviteConfirm') || 'Are you sure you want to cancel this invite?')
+        : (I18n.t('telecom.contactsDeleteInviteConfirm') || 'Are you sure you want to delete this invite?');
+      
+      if (window.confirm(confirmMessage)) {
+        try {
+          if (type === 'sent') {
+            // Cancel sent invite
+            await cancelSentInvite(invite.id, config, storageKey);
+          } else {
+            // Delete received invite
+            const effectiveGuid = getEffectiveGuid(config);
+            const RECIPIENT_STORAGE_KEY = `webos.telecom.invites.${effectiveGuid}.v1`;
+            try {
+              const invitesData = localStorage.getItem(RECIPIENT_STORAGE_KEY);
+              if (invitesData) {
+                const invites = JSON.parse(invitesData);
+                const filteredInvites = invites.filter(inv => inv.id !== invite.id);
+                localStorage.setItem(RECIPIENT_STORAGE_KEY, JSON.stringify(filteredInvites));
+                console.log('[Telecom] Deleted received invite:', invite.id);
+              }
+            } catch (e) {
+              console.error('[Telecom] Error deleting received invite:', e);
+              throw e;
+            }
+          }
+          
+          // Reload config to ensure we have latest data
+          try {
+            const configData = localStorage.getItem(storageKey);
+            if (configData) {
+              const latestConfig = JSON.parse(configData);
+              Object.assign(config, latestConfig);
+            }
+          } catch (e) {
+            console.warn('[Telecom] Error reloading config after cancel/delete:', e);
+          }
+          
+          // Refresh contacts dialog
+          const windowElement = WindowManager.findWindow(winId);
+          if (windowElement) {
+            const windowContent = windowElement.querySelector('.win-content');
+            if (windowContent) {
+              const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
+              if (contactsDialog) {
+                refreshContactsDialog(contactsDialog, config, storageKey, winId);
+              }
+            }
+          }
+        } catch (e) {
+          console.error('[Telecom] Error canceling/deleting invite:', e);
+          alert(type === 'sent' 
+            ? (I18n.t('telecom.contactsCancelInviteError') || 'Error canceling invite. Please try again.')
+            : (I18n.t('telecom.contactsDeleteInviteError') || 'Error deleting invite. Please try again.'));
+        }
+      }
+    });
+    actionsDiv.appendChild(cancelBtn);
+  }
+  
+  inviteElement.appendChild(actionsDiv);
+  
+  return inviteElement;
+}
+
+/**
+ * Show Answer dialog (similar to showShareAnswerDialog but for viewing existing answer)
+ */
+function showAnswerDialog(winId, invite, config, storageKey) {
+  if (!invite.webrtcAnswer) {
+    alert('No answer available for this invite');
+    return;
+  }
+  
+  const windowElement = WindowManager.findWindow(winId);
+  if (!windowElement) {
+    console.error('[Telecom] Window not found:', winId);
+    return;
+  }
+  
+  const windowContent = windowElement.querySelector('.win-content');
+  if (!windowContent) {
+    console.error('[Telecom] Window content not found');
+    return;
+  }
+  
+  // Create backdrop
+  const backdrop = document.createElement('div');
+  backdrop.className = 'telecom-view-answer-backdrop';
+  backdrop.style.cssText = `
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 10000;
+    animation: fadeIn 0.2s ease;
+  `;
+  
+  // Create dialog
+  const dialog = document.createElement('div');
+  dialog.className = 'telecom-view-answer-dialog';
+  dialog.style.cssText = `
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 650px;
+    max-width: 90%;
+    max-height: 90vh;
+    background: var(--panel);
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    z-index: 10001;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: fadeIn 0.2s ease;
+  `;
+  
+  // Header
+  const header = document.createElement('div');
+  header.style.cssText = `
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--panel-2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  `;
+  header.innerHTML = `
+    <h3 style="margin:0; font-size:18px; font-weight:500;">WebRTC Answer</h3>
+    <button class="telecom-view-answer-close" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text); padding:4px 8px; border-radius:4px;">✕</button>
+  `;
+  
+  // Content
+  const content = document.createElement('div');
+  content.style.cssText = `
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+  `;
+  
+  // Prepare answer JSON (minimal version for QR code)
+  const answerForQR = {
+    id: invite.id,
+    fromGuid: invite.fromGuid,
+    toGuid: invite.toGuid,
+    webrtcAnswer: invite.webrtcAnswer
+  };
+  const answerJsonCompact = JSON.stringify(answerForQR);
+  const answerJsonFull = JSON.stringify(invite, null, 2);
+  
+  content.innerHTML = `
+    <div style="margin-bottom:20px;">
+      <p style="margin:0 0 12px 0; font-size:14px; color:var(--text);">
+        This is the WebRTC Answer for the invite. Share this with the sender to complete the connection.
+      </p>
+    </div>
+    
+    <div style="margin-bottom:20px;">
+      <label style="display:block; font-size:13px; font-weight:500; margin-bottom:8px; color:var(--text);">
+        📄 Answer Data (JSON) - Minimal version for QR code:
+      </label>
+      <textarea id="telecom-view-answer-json-compact" readonly
+        style="width:100%; min-height:150px; padding:12px; background:var(--panel-2); border:1px solid var(--panel-2); border-radius:6px; color:var(--text); font-size:12px; font-family:monospace; resize:vertical; outline:none;"
+      >${answerJsonCompact}</textarea>
+    </div>
+    
+    <div style="margin-bottom:20px;">
+      <label style="display:block; font-size:13px; font-weight:500; margin-bottom:8px; color:var(--text);">
+        📄 Full Answer Data (JSON):
+      </label>
+      <textarea id="telecom-view-answer-json-full" readonly
+        style="width:100%; min-height:200px; padding:12px; background:var(--panel-2); border:1px solid var(--panel-2); border-radius:6px; color:var(--text); font-size:12px; font-family:monospace; resize:vertical; outline:none;"
+      >${answerJsonFull}</textarea>
+    </div>
+    
+    <div style="display:flex; gap:12px; justify-content:flex-end;">
+      <button id="telecom-view-answer-copy-compact" 
+        style="padding:10px 20px; background:var(--accent); color:white; border:none; border-radius:6px; cursor:pointer; font-size:14px; font-weight:500;">
+        📋 Copy Minimal JSON
+      </button>
+      <button id="telecom-view-answer-copy-full" 
+        style="padding:10px 20px; background:var(--panel-2); color:var(--text); border:none; border-radius:6px; cursor:pointer; font-size:14px; font-weight:500;">
+        📋 Copy Full JSON
+      </button>
+      <button id="telecom-view-answer-close-btn" 
+        style="padding:10px 20px; background:var(--panel-2); color:var(--text); border:none; border-radius:6px; cursor:pointer; font-size:14px; font-weight:500;">
+        Close
+      </button>
+    </div>
+  `;
+  
+  dialog.appendChild(header);
+  dialog.appendChild(content);
+  
+  // Add to document body (not window content, to show above all dialogs)
+  document.body.appendChild(backdrop);
+  document.body.appendChild(dialog);
+  
+  // Copy handlers
+  const copyCompactBtn = dialog.querySelector('#telecom-view-answer-copy-compact');
+  if (copyCompactBtn) {
+    copyCompactBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(answerJsonCompact);
+        copyCompactBtn.textContent = '✓ Copied!';
+        setTimeout(() => {
+          copyCompactBtn.textContent = '📋 Copy Minimal JSON';
+        }, 2000);
+      } catch (e) {
+        console.error('[Telecom] Error copying answer JSON:', e);
+        const textarea = dialog.querySelector('#telecom-view-answer-json-compact');
+        if (textarea) {
+          textarea.select();
+          copyCompactBtn.textContent = 'Select & Copy manually';
+          setTimeout(() => {
+            copyCompactBtn.textContent = '📋 Copy Minimal JSON';
+          }, 3000);
+        }
+      }
+    });
+  }
+  
+  const copyFullBtn = dialog.querySelector('#telecom-view-answer-copy-full');
+  if (copyFullBtn) {
+    copyFullBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(answerJsonFull);
+        copyFullBtn.textContent = '✓ Copied!';
+        setTimeout(() => {
+          copyFullBtn.textContent = '📋 Copy Full JSON';
+        }, 2000);
+      } catch (e) {
+        console.error('[Telecom] Error copying answer JSON:', e);
+        const textarea = dialog.querySelector('#telecom-view-answer-json-full');
+        if (textarea) {
+          textarea.select();
+          copyFullBtn.textContent = 'Select & Copy manually';
+          setTimeout(() => {
+            copyFullBtn.textContent = '📋 Copy Full JSON';
+          }, 3000);
+        }
+      }
+    });
+  }
+  
+  // Close handlers
+  const closeBtn = dialog.querySelector('.telecom-view-answer-close');
+  const closeBtn2 = dialog.querySelector('#telecom-view-answer-close-btn');
+  const closeDialog = () => {
+    backdrop.remove();
+    dialog.remove();
+  };
+  
+  if (closeBtn) closeBtn.addEventListener('click', closeDialog);
+  if (closeBtn2) closeBtn2.addEventListener('click', closeDialog);
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) {
+      closeDialog();
+    }
+  });
 }
