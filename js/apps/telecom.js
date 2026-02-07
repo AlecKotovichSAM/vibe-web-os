@@ -1204,18 +1204,69 @@ function renderMainScreen(winId, config, storageKey, restoreState = null) {
  * Add blink effect to chat item when new message is received
  */
 function blinkChatItem(chatId) {
-  const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
-  telecomWindows.forEach(win => {
-    const selectedChatId = win.dataset.selectedChatId;
-    // Only blink if chat is not currently selected
-    if (selectedChatId !== chatId) {
-      const chatItem = win.querySelector(`.telecom-chat-item[data-chat-id="${chatId}"]`);
-      if (chatItem) {
-        chatItem.classList.add('telecom-chat-blink');
-        console.log('[Telecom] 💫 Added blink effect to chat:', chatId);
-      }
+  // Initialize global blinking chats Set if needed
+  if (!window._telecomBlinkingChats) {
+    window._telecomBlinkingChats = new Set();
+  }
+  
+  // Add to global Set first
+  window._telecomBlinkingChats.add(chatId);
+  console.log('[Telecom] 💫 Requesting blink for chat:', chatId);
+  
+  // Use setTimeout to ensure DOM is ready after any re-renders
+  setTimeout(() => {
+    // Use multiple selectors to find Telecom windows
+    const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+    console.log('[Telecom] Found', telecomWindows.length, 'Telecom windows for blink');
+    
+    if (telecomWindows.length === 0) {
+      console.warn('[Telecom] ⚠️ No Telecom windows found for blink');
+      return;
     }
-  });
+    
+    telecomWindows.forEach(winEl => {
+      const winId = winEl.dataset.winId;
+      if (!winId) {
+        console.warn('[Telecom] ⚠️ Window element has no winId');
+        return;
+      }
+      
+      // Verify via WindowManager
+      const win = WindowManager.findWindow(winId);
+      if (!win) {
+        console.warn('[Telecom] ⚠️ Window not found via WindowManager:', winId);
+        return;
+      }
+      
+      const selectedChatId = win.dataset.selectedChatId;
+      console.log('[Telecom] Checking blink - selected:', selectedChatId, 'target:', chatId);
+      
+      // Only blink if chat is not currently selected
+      if (selectedChatId !== chatId) {
+        const chatItem = win.querySelector(`.telecom-chat-item[data-chat-id="${chatId}"]`);
+        if (chatItem) {
+          chatItem.classList.add('telecom-chat-blink');
+          console.log('[Telecom] 💫 Added blink effect to chat:', chatId, 'in window:', winId);
+        } else {
+          console.warn('[Telecom] ⚠️ Chat item not found for blink:', chatId, 'in window:', winId, '- will retry');
+          // Retry after a bit more delay
+          setTimeout(() => {
+            const retryItem = win.querySelector(`.telecom-chat-item[data-chat-id="${chatId}"]`);
+            if (retryItem) {
+              retryItem.classList.add('telecom-chat-blink');
+              console.log('[Telecom] 💫 Added blink effect to chat (retry):', chatId);
+            } else {
+              console.error('[Telecom] ❌ Chat item still not found after retry:', chatId);
+            }
+          }, 300);
+        }
+      } else {
+        // Chat is selected - remove from blinking Set
+        window._telecomBlinkingChats.delete(chatId);
+        console.log('[Telecom] ℹ️ Skipping blink for selected chat:', chatId);
+      }
+    });
+  }, 200); // Increased delay to ensure DOM is ready after renderChatsList
 }
 
 /**
@@ -1224,6 +1275,21 @@ function blinkChatItem(chatId) {
 function renderChatsList(win, winId, config, storageKey) {
   const chatsList = win.querySelector('#telecom-chats-list');
   if (!chatsList) return;
+
+  // Initialize global blinking chats Set if needed
+  if (!window._telecomBlinkingChats) {
+    window._telecomBlinkingChats = new Set();
+  }
+
+  // Save which chats are currently blinking before re-rendering
+  const blinkingChats = new Set(window._telecomBlinkingChats);
+  const existingChatItems = chatsList.querySelectorAll('.telecom-chat-item.telecom-chat-blink');
+  existingChatItems.forEach(item => {
+    const chatId = item.dataset.chatId;
+    if (chatId) {
+      blinkingChats.add(chatId);
+    }
+  });
 
   const chats = getChats();
   
@@ -1294,6 +1360,17 @@ function renderChatsList(win, winId, config, storageKey) {
         item.style.background = 'transparent';
       }
     });
+    
+    // Restore blink effect if this chat was blinking before re-render
+    const chatId = item.dataset.chatId;
+    if (chatId && blinkingChats.has(chatId)) {
+      const selectedChatId = win.dataset.selectedChatId;
+      // Only restore blink if chat is not currently selected
+      if (selectedChatId !== chatId) {
+        item.classList.add('telecom-chat-blink');
+        console.log('[Telecom] 💫 Restored blink effect for chat:', chatId);
+      }
+    }
   });
 }
 
@@ -1381,6 +1458,10 @@ function selectChat(win, winId, chat, config, storageKey) {
     if (item.dataset.chatId === chat.id) {
       item.style.background = 'var(--panel-2)';
       item.classList.remove('telecom-chat-blink'); // Remove blink when chat is opened
+      // Also remove from global Set
+      if (window._telecomBlinkingChats) {
+        window._telecomBlinkingChats.delete(chat.id);
+      }
     } else {
       item.style.background = 'transparent';
     }
@@ -7747,21 +7828,51 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
               messages.push(newMessage);
               localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
               
-              // Update chat's last message
+              // Update chat's last message - use decrypted text, not encrypted
               const chats = getChats();
               const chat = chats.find(c => c.id === chatId);
               if (chat) {
+                // Use decrypted text for preview, but limit length for display
+                let previewText = decryptedText;
+                if (messageData.encrypted && decryptedText.startsWith('[Encrypted')) {
+                  // If decryption failed, show placeholder
+                  previewText = '[Encrypted message]';
+                } else if (previewText.length > 50) {
+                  // Truncate long messages for preview
+                  previewText = previewText.substring(0, 50) + '...';
+                }
+                
                 chat.lastMessage = {
-                  text: messageData.text,
+                  text: previewText,
                   timestamp: newMessage.timestamp
                 };
                 localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
               }
               
-              // Refresh UI if chat is currently selected
+              // Refresh UI - reload messages after saving
+              const updatedMessages = getChatMessages(chatId);
+              
+              // Find all Telecom windows using multiple selectors to be sure
               const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
-              telecomWindows.forEach(win => {
+              console.log('[Telecom] Found', telecomWindows.length, 'Telecom windows for UI update');
+              
+              telecomWindows.forEach(winEl => {
+                const winId = winEl.dataset.winId;
+                if (!winId) {
+                  console.warn('[Telecom] Window element has no winId');
+                  return;
+                }
+                
+                // Verify via WindowManager
+                const win = WindowManager.findWindow(winId);
+                if (!win) {
+                  console.warn('[Telecom] Window not found via WindowManager:', winId);
+                  return;
+                }
+                
                 const selectedChatId = win.dataset.selectedChatId;
+                console.log('[Telecom] Selected chat:', selectedChatId, 'Received message for:', chatId);
+                
                 // Get storageKey from context or use default
                 const effectiveStorageKey = storageKey || 'webos.telecom.v1';
                 // Get config from context if not available
@@ -7773,16 +7884,25 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                       effectiveConfig = JSON.parse(configData);
                     }
                   } catch (e) {
-                    console.warn('[Telecom] Error loading config for blink:', e);
+                    console.warn('[Telecom] Error loading config:', e);
                   }
                 }
                 
+                // Always refresh chats list first
+                renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                
                 if (selectedChatId === chatId) {
-                  renderMessages(win, messages, effectiveConfig);
-                  renderChatsList(win, win.dataset.winId, effectiveConfig, effectiveStorageKey);
+                  // Chat is selected - update messages immediately
+                  console.log('[Telecom] ✅ Chat is selected, updating messages immediately');
+                  renderMessages(win, updatedMessages, effectiveConfig);
+                  // Remove blink effect if it was active
+                  const chatItem = win.querySelector(`.telecom-chat-item[data-chat-id="${chatId}"]`);
+                  if (chatItem) {
+                    chatItem.classList.remove('telecom-chat-blink');
+                  }
                 } else {
-                  // Chat is not selected, refresh list and add blink effect
-                  renderChatsList(win, win.dataset.winId, effectiveConfig, effectiveStorageKey);
+                  // Chat is not selected - add blink effect
+                  console.log('[Telecom] ✅ Chat is not selected, adding blink effect');
                   blinkChatItem(chatId);
                 }
               });
@@ -7907,9 +8027,18 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                   localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
                 }
                 
-                // Refresh UI if chat is currently selected
-                const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
-                telecomWindows.forEach(win => {
+                // Refresh UI - reload messages after saving
+                const updatedMessages = getChatMessages(chatId);
+                
+                const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+                telecomWindows.forEach(winEl => {
+                  const winId = winEl.dataset.winId;
+                  if (!winId) return;
+                  
+                  // Verify via WindowManager
+                  const win = WindowManager.findWindow(winId);
+                  if (!win) return;
+                  
                   const selectedChatId = win.dataset.selectedChatId;
                   // Get storageKey from context or use default
                   const effectiveStorageKey = storageKey || 'webos.telecom.v1';
@@ -7922,16 +8051,25 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                         effectiveConfig = JSON.parse(configData);
                       }
                     } catch (e) {
-                      console.warn('[Telecom] Error loading config for blink:', e);
+                      console.warn('[Telecom] Error loading config:', e);
                     }
                   }
                   
+                  // Always refresh chats list first
+                  renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                  
                   if (selectedChatId === chatId) {
-                    renderMessages(win, messages, effectiveConfig);
-                    renderChatsList(win, win.dataset.winId, effectiveConfig, effectiveStorageKey);
+                    // Chat is selected - update messages immediately
+                    console.log('[Telecom] ✅ Chat is selected (incoming channel), updating messages immediately');
+                    renderMessages(win, updatedMessages, effectiveConfig);
+                    // Remove blink effect if it was active
+                    const chatItem = win.querySelector(`.telecom-chat-item[data-chat-id="${chatId}"]`);
+                    if (chatItem) {
+                      chatItem.classList.remove('telecom-chat-blink');
+                    }
                   } else {
-                    // Chat is not selected, refresh list and add blink effect
-                    renderChatsList(win, win.dataset.winId, effectiveConfig, effectiveStorageKey);
+                    // Chat is not selected - add blink effect
+                    console.log('[Telecom] ✅ Chat is not selected (incoming channel), adding blink effect');
                     blinkChatItem(chatId);
                   }
                 });
@@ -9050,28 +9188,40 @@ async function processWebRTCAnswer(invite, config, storageKey) {
             messages.push(newMessage);
             localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
             
-            // Update chat's last message
+            // Update chat's last message - use decrypted text, not encrypted
             const chats = getChats();
             const chat = chats.find(c => c.id === chatId);
             if (chat) {
+              // Use decrypted text for preview, but limit length for display
+              let previewText = decryptedText;
+              if (messageData.encrypted && decryptedText.startsWith('[Encrypted')) {
+                // If decryption failed, show placeholder
+                previewText = '[Encrypted message]';
+              } else if (previewText.length > 50) {
+                // Truncate long messages for preview
+                previewText = previewText.substring(0, 50) + '...';
+              }
+              
               chat.lastMessage = {
-                text: messageData.text,
+                text: previewText,
                 timestamp: newMessage.timestamp
               };
               localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
             }
             
-            // Refresh UI if chat is currently selected - use proper selector
-            const telecomWindows = document.querySelectorAll('.window[data-win-id^="telecom-"]');
-            telecomWindows.forEach(win => {
-              const winId = win.dataset.winId;
+            // Refresh UI - reload messages after saving
+            const updatedMessages = getChatMessages(chatId);
+            
+            const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+            telecomWindows.forEach(winEl => {
+              const winId = winEl.dataset.winId;
               if (!winId) return;
               
               // Verify via WindowManager
-              const verifiedWindow = WindowManager.findWindow(winId);
-              if (!verifiedWindow) return;
+              const win = WindowManager.findWindow(winId);
+              if (!win) return;
               
-              const selectedChatId = verifiedWindow.dataset.selectedChatId;
+              const selectedChatId = win.dataset.selectedChatId;
               // Get storageKey from context or use default
               const effectiveStorageKey = storageKey || 'webos.telecom.v1';
               // Get config from context if not available
@@ -9083,16 +9233,25 @@ async function processWebRTCAnswer(invite, config, storageKey) {
                     effectiveConfig = JSON.parse(configData);
                   }
                 } catch (e) {
-                  console.warn('[Telecom] Error loading config for blink:', e);
+                  console.warn('[Telecom] Error loading config:', e);
                 }
               }
               
+              // Always refresh chats list first
+              renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+              
               if (selectedChatId === chatId) {
-                renderMessages(verifiedWindow, messages, effectiveConfig);
-                renderChatsList(verifiedWindow, winId, effectiveConfig, effectiveStorageKey);
+                // Chat is selected - update messages immediately
+                console.log('[Telecom] ✅ Chat is selected (sender side), updating messages immediately');
+                renderMessages(win, updatedMessages, effectiveConfig);
+                // Remove blink effect if it was active
+                const chatItem = win.querySelector(`.telecom-chat-item[data-chat-id="${chatId}"]`);
+                if (chatItem) {
+                  chatItem.classList.remove('telecom-chat-blink');
+                }
               } else {
-                // Chat is not selected, refresh list and add blink effect
-                renderChatsList(verifiedWindow, winId, effectiveConfig, effectiveStorageKey);
+                // Chat is not selected - add blink effect
+                console.log('[Telecom] ✅ Chat is not selected (sender side), adding blink effect');
                 blinkChatItem(chatId);
               }
             });
