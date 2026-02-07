@@ -1463,9 +1463,19 @@ function renderChatsList(win, winId, config, storageKey) {
     `;
   }).join('');
 
-  // Add click handlers for chat items
+  // Add click handlers for chat items and clean up inline styles for blinking items
   const chatItems = chatsList.querySelectorAll('.telecom-chat-item');
   chatItems.forEach(item => {
+    // CRITICAL: For blinking items, remove ALL conflicting inline styles immediately after render
+    if (item.classList.contains('telecom-chat-blink')) {
+      item.style.removeProperty('background-color');
+      item.style.removeProperty('background');
+      item.style.removeProperty('animation');
+      item.style.removeProperty('border-left');
+      item.style.removeProperty('transition');
+      // Force reflow to ensure animation starts
+      void item.offsetWidth;
+    }
     item.addEventListener('click', () => {
       const chatId = item.dataset.chatId;
       const chat = chats.find(c => c.id === chatId);
@@ -1533,7 +1543,13 @@ function renderChatsList(win, winId, config, storageKey) {
         if (window._telecomBlinkingChats && !window._telecomBlinkingChats.has(chatId)) {
           window._telecomBlinkingChats.add(chatId);
         }
-        console.log('[Telecom] 💫✅ Restored blink effect for chat:', chatId, 'hasClass:', item.classList.contains('telecom-chat-blink'), 'computedAnimation:', window.getComputedStyle(item).animation);
+        const computed = window.getComputedStyle(item);
+        console.log('[Telecom] 💫✅ Restored blink effect for chat:', chatId, 
+          'hasClass:', item.classList.contains('telecom-chat-blink'), 
+          'computedAnimation:', computed.animation,
+          'computedBackground:', computed.backgroundColor,
+          'computedBorderLeft:', computed.borderLeft,
+          'inlineStyle:', item.getAttribute('style'));
       } else {
         // Chat is selected, remove from Set and ensure it has selected styling (not blink)
         if (window._telecomBlinkingChats) {
