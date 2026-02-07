@@ -5509,12 +5509,22 @@ function saveContacts(contacts) {
  * Send contact invite to user by GUID
  */
 async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid) {
+  console.log('[Telecom] ===== sendContactInvite START =====');
+  console.log('[Telecom] Parameters:', {
+    targetGuid,
+    senderAccount: senderAccount ? { guid: senderAccount.guid, username: senderAccount.username } : null,
+    senderEffectiveGuid
+  });
+  
   // Check if target is already a contact
   const contacts = getContacts();
   const isAlreadyContact = contacts.some(contact => contact.guid === targetGuid);
   if (isAlreadyContact) {
+    console.log('[Telecom] ⚠️ Target is already a contact, throwing error');
     throw new Error('User is already in contacts');
   }
+  
+  console.log('[Telecom] Target is not a contact, proceeding with invite creation');
   
   // Storage keys:
   // 1. By recipient GUID (for polling and receiving invites)
@@ -5648,9 +5658,15 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
   let webrtcOffer = null;
   
   // Check if WebRTC is available
+  console.log('[Telecom] Checking WebRTC availability:', {
+    RTCPeerConnectionAvailable: typeof RTCPeerConnection !== 'undefined',
+    RTCPeerConnectionType: typeof RTCPeerConnection,
+    windowNetworkAvailable: !!window.Network
+  });
+  
   if (typeof RTCPeerConnection !== 'undefined') {
     try {
-      console.log('[Telecom] Creating WebRTC offer for invite to:', targetGuid);
+      console.log('[Telecom] ✅ RTCPeerConnection is available, creating WebRTC offer for invite to:', targetGuid);
       
       // Create RTCPeerConnection with ICE servers from Network module configuration
       const iceServers = window.Network ? window.Network.getIceServersConfig() : [
@@ -5992,12 +6008,17 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
       });
       
     } catch (e) {
-      console.error('[Telecom] Error creating WebRTC offer:', e);
+      console.error('[Telecom] ❌ Error creating WebRTC offer:', e);
+      console.error('[Telecom] Error stack:', e.stack);
+      console.error('[Telecom] Error name:', e.name);
+      console.error('[Telecom] Error message:', e.message);
       // Continue without WebRTC if it fails
       webrtcOffer = null;
+      console.warn('[Telecom] ⚠️ Continuing without WebRTC offer due to error');
     }
   } else {
-    console.warn('[Telecom] RTCPeerConnection not available, skipping WebRTC offer creation');
+    console.warn('[Telecom] ⚠️ RTCPeerConnection not available, skipping WebRTC offer creation');
+    console.warn('[Telecom] RTCPeerConnection type:', typeof RTCPeerConnection);
   }
   
   // Get public key from account
@@ -6023,20 +6044,36 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
   
   // Only add webrtcOffer if it's valid (not null/undefined)
   // This prevents webrtcOffer: null from being saved, which can cause confusion
+  console.log('[Telecom] Final webrtcOffer check before adding to invite:', {
+    webrtcOfferExists: !!webrtcOffer,
+    webrtcOfferType: typeof webrtcOffer,
+    webrtcOfferValue: webrtcOffer,
+    hasSdp: webrtcOffer?.sdp ? true : false,
+    hasType: webrtcOffer?.type ? true : false,
+    sdpLength: webrtcOffer?.sdp?.length || 0
+  });
+  
   if (webrtcOffer && typeof webrtcOffer === 'object' && webrtcOffer.sdp && webrtcOffer.type) {
     invite.webrtcOffer = webrtcOffer;
-    console.log('[Telecom] Created invite with valid WebRTC offer:', {
+    console.log('[Telecom] ✅ Created invite with valid WebRTC offer:', {
       sdpLength: webrtcOffer.sdp.length,
       type: webrtcOffer.type,
       candidatesCount: webrtcOffer.iceCandidates?.length || 0
     });
   } else {
-    console.log('[Telecom] Created invite without WebRTC offer (WebRTC unavailable or failed)');
+    console.warn('[Telecom] ⚠️ Created invite WITHOUT WebRTC offer:', {
+      reason: !webrtcOffer ? 'webrtcOffer is null/undefined' : 
+              typeof webrtcOffer !== 'object' ? 'webrtcOffer is not an object' :
+              !webrtcOffer.sdp ? 'webrtcOffer missing sdp' :
+              !webrtcOffer.type ? 'webrtcOffer missing type' : 'unknown',
+      webrtcOfferValue: webrtcOffer
+    });
   }
   
   console.log('[Telecom] Created invite object with avatar:', invite.fromAvatar ? (invite.fromAvatar.substring(0, 50) + '...') : 'null');
   console.log('[Telecom] Invite object keys:', Object.keys(invite));
   console.log('[Telecom] Invite has webrtcOffer:', 'webrtcOffer' in invite, invite.webrtcOffer ? 'valid' : 'missing');
+  console.log('[Telecom] ===== sendContactInvite END =====');
 
   // Check: is there already a pending invite to this GUID?
   const sentInvitesData = localStorage.getItem(SENT_INVITES_STORAGE_KEY);
