@@ -7706,7 +7706,16 @@ async function processWebRTCAnswer(invite, config) {
           
           contacts.push(contactInfo);
           saveContacts(contacts);
-          console.log('[Telecom] Contact auto-added for sender:', contactGuid);
+          console.log('[Telecom] Contact auto-added for sender:', contactGuid, 'Total contacts:', contacts.length);
+          
+          // Verify contact was saved
+          const savedContacts = getContacts();
+          const savedContact = savedContacts.find(c => c.guid === contactGuid);
+          if (savedContact) {
+            console.log('[Telecom] ✅ Contact verified in storage:', savedContact.guid, 'displayName:', savedContact.displayName);
+          } else {
+            console.error('[Telecom] ❌ Contact NOT found in storage after save! Expected GUID:', contactGuid);
+          }
           
           // Create chat for this contact
           const chats = getChats();
@@ -7723,25 +7732,64 @@ async function processWebRTCAnswer(invite, config) {
             const CHATS_STORAGE_KEY = 'webos.telecom.chats.v1';
             localStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(chats));
             console.log('[Telecom] Chat created for auto-added contact:', contactGuid);
-            
-            // Refresh chats list if Telecom window is open
-            const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
-            telecomWindows.forEach(telecomWin => {
-              const winId = telecomWin.dataset.winId;
-              if (winId) {
-                renderChatsList(telecomWin, winId, config, storageKey);
-                
-                // Refresh contacts dialog if it's open
-                const windowContent = telecomWin.querySelector('.win-content');
-                if (windowContent) {
-                  const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
-                  if (contactsDialog) {
-                    refreshContactsDialog(contactsDialog, config, storageKey, winId);
-                  }
+          }
+          
+          // Refresh chats list and contacts dialog if Telecom window is open
+          const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+          telecomWindows.forEach(telecomWin => {
+            const winId = telecomWin.dataset.winId;
+            if (winId) {
+              renderChatsList(telecomWin, winId, config, storageKey);
+              
+              // Refresh contacts dialog if it's open
+              const windowContent = telecomWin.querySelector('.win-content');
+              if (windowContent) {
+                const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
+                if (contactsDialog) {
+                  refreshContactsDialog(contactsDialog, config, storageKey, winId);
                 }
               }
-            });
+            }
+          });
+        }
+        
+        // Update invite status to 'accepted' when connection is established
+        try {
+          const effectiveGuid = getEffectiveGuid(config);
+          if (effectiveGuid) {
+            const SENT_INVITES_STORAGE_KEY = `webos.telecom.sent_invites.guid_from.${effectiveGuid}`;
+            const sentInvitesData = localStorage.getItem(SENT_INVITES_STORAGE_KEY);
+            if (sentInvitesData) {
+              const sentInvites = JSON.parse(sentInvitesData);
+              // Find invite for this contact (toGuid should match contactGuid)
+              const inviteIndex = sentInvites.findIndex(inv => inv.toGuid === contactGuid && inv.status === 'pending');
+              if (inviteIndex !== -1) {
+                sentInvites[inviteIndex].status = 'accepted';
+                sentInvites[inviteIndex].respondedAt = new Date().toISOString();
+                localStorage.setItem(SENT_INVITES_STORAGE_KEY, JSON.stringify(sentInvites));
+                console.log('[Telecom] Updated invite status to accepted for contact:', contactGuid, 'invite ID:', sentInvites[inviteIndex].id);
+                
+                // Refresh contacts dialog if it's open to show updated status
+                const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+                telecomWindows.forEach(telecomWin => {
+                  const winId = telecomWin.dataset.winId;
+                  if (winId) {
+                    const windowContent = telecomWin.querySelector('.win-content');
+                    if (windowContent) {
+                      const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
+                      if (contactsDialog) {
+                        refreshContactsDialog(contactsDialog, config, storageKey, winId);
+                      }
+                    }
+                  }
+                });
+              } else {
+                console.log('[Telecom] No pending invite found for contact:', contactGuid);
+              }
+            }
           }
+        } catch (e) {
+          console.error('[Telecom] Error updating invite status:', e);
         }
         
         // Update connection status indicator in chat header
