@@ -33,6 +33,297 @@
   }
 })();
 
+/**
+ * Encryption/Decryption functions for Telecom messages
+ * Uses RSA-OAEP for small messages, hybrid RSA+AES for large messages
+ */
+
+/**
+ * Import public key from base64 SPKI format
+ */
+async function importPublicKey(publicKeyBase64) {
+  const binaryString = atob(publicKeyBase64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  
+  const publicKey = await crypto.subtle.importKey(
+    'spki',
+    bytes.buffer,
+    {
+      name: 'RSA-OAEP',
+      hash: 'SHA-256'
+    },
+    false,
+    ['encrypt']
+  );
+  
+  return publicKey;
+}
+
+/**
+ * Import private key from base64 PKCS8 format
+ */
+async function importPrivateKey(privateKeyBase64) {
+  const binaryString = atob(privateKeyBase64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  
+  const privateKey = await crypto.subtle.importKey(
+    'pkcs8',
+    bytes.buffer,
+    {
+      name: 'RSA-OAEP',
+      hash: 'SHA-256'
+    },
+    false,
+    ['decrypt']
+  );
+  
+  return privateKey;
+}
+
+/**
+ * Encrypt message with public key (uses hybrid encryption for large messages)
+ * @param {string} message - Message to encrypt
+ * @param {string} publicKeyBase64 - Public key in base64 SPKI format
+ * @returns {Promise<string>} Encrypted message (JSON string for hybrid, base64 for small)
+ */
+async function encryptMessageForTelecom(message, publicKeyBase64) {
+  if (!publicKeyBase64) {
+    console.warn('[Telecom] ⚠️ No public key provided, sending unencrypted message');
+    return message; // Return unencrypted if no key
+  }
+  
+  const encoder = new TextEncoder();
+  const messageData = encoder.encode(message);
+  
+  // Use hybrid encryption for messages > 150 bytes (RSA-OAEP limit is ~190 bytes)
+  if (messageData.length > 150) {
+    console.log('[Telecom] 🔒 Encrypting large message using hybrid encryption (RSA + AES)');
+    
+    // Generate random AES-GCM key
+    const aesKey = await crypto.subtle.generateKey(
+      {
+        name: 'AES-GCM',
+        length: 256
+      },
+      true,
+      ['encrypt']
+    );
+    
+    // Generate random IV (12 bytes for AES-GCM)
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    
+    // Encrypt message with AES
+    const encryptedData = await crypto.subtle.encrypt(
+      {
+        name: 'AES-GCM',
+        iv: iv
+      },
+      aesKey,
+      messageData
+    );
+    
+    // Export AES key
+    const exportedAesKey = await crypto.subtle.exportKey('raw', aesKey);
+    
+    // Encrypt AES key with RSA public key
+    const publicKey = await importPublicKey(publicKeyBase64);
+    const encryptedKey = await crypto.subtle.encrypt(
+      {
+        name: 'RSA-OAEP'
+      },
+      publicKey,
+      exportedAesKey
+    );
+    
+    // Convert to base64
+    const encryptedKeyArray = new Uint8Array(encryptedKey);
+    const encryptedKeyBase64 = btoa(String.fromCharCode(...encryptedKeyArray));
+    
+    const encryptedDataArray = new Uint8Array(encryptedData);
+    const encryptedDataBase64 = btoa(String.fromCharCode(...encryptedDataArray));
+    
+    const ivArray = new Uint8Array(iv);
+    const ivBase64 = btoa(String.fromCharCode(...ivArray));
+    
+    const encrypted = JSON.stringify({
+      encrypted: true,
+      hybrid: true,
+      encryptedKey: encryptedKeyBase64,
+      encryptedData: encryptedDataBase64,
+      iv: ivBase64
+    });
+    
+    console.log('[Telecom] ✅ Large message encrypted (hybrid):', {
+      originalLength: message.length,
+      encryptedLength: encrypted.length,
+      method: 'RSA-OAEP + AES-GCM'
+    });
+    
+    return encrypted;
+  } else {
+    console.log('[Telecom] 🔒 Encrypting small message using RSA-OAEP');
+    
+    // Encrypt directly with RSA for small messages
+    const publicKey = await importPublicKey(publicKeyBase64);
+    const encrypted = await crypto.subtle.encrypt(
+      {
+        name: 'RSA-OAEP'
+      },
+      publicKey,
+      messageData
+    );
+    
+    const encryptedArray = new Uint8Array(encrypted);
+    const encryptedBase64 = btoa(String.fromCharCode(...encryptedArray));
+    
+    const encryptedJson = JSON.stringify({
+      encrypted: true,
+      hybrid: false,
+      data: encryptedBase64
+    });
+    
+    console.log('[Telecom] ✅ Small message encrypted (RSA-OAEP):', {
+      originalLength: message.length,
+      encryptedLength: encryptedJson.length,
+      method: 'RSA-OAEP'
+    });
+    
+    return encryptedJson;
+  }
+}
+
+/**
+ * Decrypt message with private key
+ * @param {string} encryptedData - Encrypted message (JSON string or base64)
+ * @param {string} privateKeyBase64 - Private key in base64 PKCS8 format
+ * @returns {Promise<string>} Decrypted message
+ */
+async function decryptMessageForTelecom(encryptedData, privateKeyBase64) {
+  if (!privateKeyBase64) {
+    console.warn('[Telecom] ⚠️ No private key provided, cannot decrypt');
+    return encryptedData; // Return as-is if no key
+  }
+  
+  try {
+    // Check if it's a JSON object (encrypted) or plain text (unencrypted)
+    let encryptedObj;
+    try {
+      encryptedObj = JSON.parse(encryptedData);
+    } catch (e) {
+      // Not JSON, might be unencrypted message
+      console.log('[Telecom] 📝 Message is not encrypted (not JSON), returning as-is');
+      return encryptedData;
+    }
+    
+    if (!encryptedObj.encrypted) {
+      console.log('[Telecom] 📝 Message is not encrypted (no encrypted flag), returning as-is');
+      return encryptedData;
+    }
+    
+    const privateKey = await importPrivateKey(privateKeyBase64);
+    
+    if (encryptedObj.hybrid) {
+      console.log('[Telecom] 🔓 Decrypting large message using hybrid decryption (RSA + AES)');
+      
+      // Decode base64 strings
+      const encryptedKeyBinary = atob(encryptedObj.encryptedKey);
+      const encryptedKeyBytes = new Uint8Array(encryptedKeyBinary.length);
+      for (let i = 0; i < encryptedKeyBinary.length; i++) {
+        encryptedKeyBytes[i] = encryptedKeyBinary.charCodeAt(i);
+      }
+      
+      const encryptedDataBinary = atob(encryptedObj.encryptedData);
+      const encryptedDataBytes = new Uint8Array(encryptedDataBinary.length);
+      for (let i = 0; i < encryptedDataBinary.length; i++) {
+        encryptedDataBytes[i] = encryptedDataBinary.charCodeAt(i);
+      }
+      
+      const ivBinary = atob(encryptedObj.iv);
+      const ivBytes = new Uint8Array(ivBinary.length);
+      for (let i = 0; i < ivBinary.length; i++) {
+        ivBytes[i] = ivBinary.charCodeAt(i);
+      }
+      
+      // Decrypt AES key with RSA private key
+      const decryptedKeyBuffer = await crypto.subtle.decrypt(
+        {
+          name: 'RSA-OAEP'
+        },
+        privateKey,
+        encryptedKeyBytes.buffer
+      );
+      
+      // Import decrypted AES key
+      const aesKey = await crypto.subtle.importKey(
+        'raw',
+        decryptedKeyBuffer,
+        {
+          name: 'AES-GCM',
+          length: 256
+        },
+        false,
+        ['decrypt']
+      );
+      
+      // Decrypt message with AES
+      const decryptedData = await crypto.subtle.decrypt(
+        {
+          name: 'AES-GCM',
+          iv: ivBytes
+        },
+        aesKey,
+        encryptedDataBytes.buffer
+      );
+      
+      const decoder = new TextDecoder();
+      const message = decoder.decode(decryptedData);
+      
+      console.log('[Telecom] ✅ Large message decrypted (hybrid):', {
+        decryptedLength: message.length,
+        method: 'RSA-OAEP + AES-GCM'
+      });
+      
+      return message;
+    } else {
+      console.log('[Telecom] 🔓 Decrypting small message using RSA-OAEP');
+      
+      // Decrypt directly with RSA
+      const encryptedBinary = atob(encryptedObj.data);
+      const encryptedBytes = new Uint8Array(encryptedBinary.length);
+      for (let i = 0; i < encryptedBinary.length; i++) {
+        encryptedBytes[i] = encryptedBinary.charCodeAt(i);
+      }
+      
+      const decrypted = await crypto.subtle.decrypt(
+        {
+          name: 'RSA-OAEP'
+        },
+        privateKey,
+        encryptedBytes.buffer
+      );
+      
+      const decoder = new TextDecoder();
+      const message = decoder.decode(decrypted);
+      
+      console.log('[Telecom] ✅ Small message decrypted (RSA-OAEP):', {
+        decryptedLength: message.length,
+        method: 'RSA-OAEP'
+      });
+      
+      return message;
+    }
+  } catch (e) {
+    console.error('[Telecom] ❌ Error decrypting message:', e);
+    throw e;
+  }
+}
+
 // Telecom Messenger App
 Apps.register({
   id: 'telecom',
@@ -6251,6 +6542,21 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
   // Get public key from account
   const publicKey = senderAccount.publicKey || null;
   
+  console.log('[Telecom] Sender account data for invite:', {
+    username: senderAccount.username,
+    displayName: displayName,
+    firstName: firstName,
+    lastName: lastName,
+    email: email ? 'present' : 'missing',
+    publicKey: publicKey ? `present (${publicKey.length} chars)` : 'missing'
+  });
+  
+  if (!publicKey) {
+    console.warn('[Telecom] ⚠️ WARNING: Public key is missing from sender account!');
+    console.warn('[Telecom] ⚠️ Encryption will not be possible without public key.');
+    console.warn('[Telecom] ⚠️ Check that account has publicKey field set.');
+  }
+  
   // Create invite object - use effective GUID as fromGuid
   // Only include webrtcOffer if it's valid (not null/undefined)
   const invite = {
@@ -6263,11 +6569,21 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
     fromFirstName: firstName, // Only if visible
     fromLastName: lastName, // Only if visible
     fromEmail: email, // Only if visible
-    fromPublicKey: publicKey, // Public key from account (RSA 2048, base64, ~294 chars)
+    fromPublicKey: publicKey, // Public key from account (RSA 2048, base64, ~294 chars) - REQUIRED for encryption
     toGuid: targetGuid,
     timestamp: new Date().toISOString(),
     status: 'pending' // pending, accepted, declined
   };
+  
+  console.log('[Telecom] Created invite with fields:', {
+    hasUsername: !!invite.fromUsername,
+    hasDisplayName: !!invite.fromDisplayName,
+    hasFirstName: !!invite.fromFirstName,
+    hasLastName: !!invite.fromLastName,
+    hasEmail: !!invite.fromEmail,
+    hasPublicKey: !!invite.fromPublicKey,
+    publicKeyLength: invite.fromPublicKey ? invite.fromPublicKey.length : 0
+  });
   
   // Only add webrtcOffer if it's valid (not null/undefined)
   // This prevents webrtcOffer: null from being saved, which can cause confusion
@@ -6890,23 +7206,61 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
           updateConnectionStatusForChat(inviteForAnswer.fromGuid, 'connected');
         };
         
-        dataChannel.onmessage = (event) => {
+        dataChannel.onmessage = async (event) => {
           try {
             const messageData = JSON.parse(event.data);
-            console.log('[Telecom] Received message via WebRTC (recipient):', inviteForAnswer.fromGuid, 'data:', messageData);
+            console.log('[Telecom] 📥 Received message via WebRTC (recipient):', inviteForAnswer.fromGuid, 'encrypted:', messageData.encrypted || false);
             
             // Handle incoming WebRTC message
             if (messageData.type === 'message' && messageData.text) {
+              // Decrypt message if it's encrypted
+              let decryptedText = messageData.text;
+              if (messageData.encrypted) {
+                try {
+                  console.log('[Telecom] 🔓 Decrypting received message (recipient side)...');
+                  
+                  // Get recipient's private key for decryption
+                  const systemAccount = window.Auth ? window.Auth.getAccount() : null;
+                  if (!systemAccount || !systemAccount.privateKeyEncrypted) {
+                    console.warn('[Telecom] ⚠️ Cannot decrypt: private key not available');
+                    decryptedText = '[Encrypted message - decryption failed: private key not available]';
+                  } else {
+                    // Try to get decrypted private key from session cache
+                    const cachedPrivateKey = sessionStorage.getItem('telecom.decryptedPrivateKey');
+                    if (cachedPrivateKey) {
+                      console.log('[Telecom] Using cached decrypted private key (recipient side)');
+                      try {
+                        decryptedText = await decryptMessageForTelecom(messageData.text, cachedPrivateKey);
+                        console.log('[Telecom] ✅ Message decrypted successfully (recipient side)');
+                      } catch (e) {
+                        console.error('[Telecom] ❌ Error decrypting with cached key:', e);
+                        decryptedText = '[Encrypted message - decryption failed]';
+                      }
+                    } else {
+                      console.warn('[Telecom] ⚠️ No cached private key - message cannot be decrypted automatically');
+                      console.warn('[Telecom] 💡 To enable automatic decryption, enter your password once in Telecom settings');
+                      decryptedText = '[Encrypted message - enter password to decrypt]';
+                    }
+                  }
+                } catch (e) {
+                  console.error('[Telecom] ❌ Error decrypting message:', e);
+                  decryptedText = '[Encrypted message - decryption failed]';
+                }
+              } else {
+                console.log('[Telecom] 📝 Message is not encrypted, using as-is');
+              }
+              
               const chatId = `contact-${inviteForAnswer.fromGuid}`;
               const newMessage = {
                 id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
                 chatId: chatId,
                 senderId: inviteForAnswer.fromGuid,
                 senderName: messageData.senderName || inviteForAnswer.fromGuid.substring(0, 8) + '...',
-                text: messageData.text,
+                text: decryptedText,
                 timestamp: messageData.timestamp || new Date().toISOString(),
                 type: 'user',
-                viaWebRTC: true
+                viaWebRTC: true,
+                wasEncrypted: messageData.encrypted || false
               };
               
               // Save message
@@ -6964,23 +7318,61 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
             updateConnectionStatusForChat(inviteForAnswer.fromGuid, 'connected');
           };
           
-          incomingChannel.onmessage = (event) => {
+          incomingChannel.onmessage = async (event) => {
             try {
               const messageData = JSON.parse(event.data);
-              console.log('[Telecom] Received message via incoming WebRTC channel (recipient):', inviteForAnswer.fromGuid, 'data:', messageData);
+              console.log('[Telecom] 📥 Received message via incoming WebRTC channel (recipient):', inviteForAnswer.fromGuid, 'encrypted:', messageData.encrypted || false);
               
               // Handle incoming WebRTC message (same as above)
               if (messageData.type === 'message' && messageData.text) {
+                // Decrypt message if it's encrypted
+                let decryptedText = messageData.text;
+                if (messageData.encrypted) {
+                  try {
+                    console.log('[Telecom] 🔓 Decrypting received message (recipient side, incoming channel)...');
+                    
+                    // Get recipient's private key for decryption
+                    const systemAccount = window.Auth ? window.Auth.getAccount() : null;
+                    if (!systemAccount || !systemAccount.privateKeyEncrypted) {
+                      console.warn('[Telecom] ⚠️ Cannot decrypt: private key not available');
+                      decryptedText = '[Encrypted message - decryption failed: private key not available]';
+                    } else {
+                      // Try to get decrypted private key from session cache
+                      const cachedPrivateKey = sessionStorage.getItem('telecom.decryptedPrivateKey');
+                      if (cachedPrivateKey) {
+                        console.log('[Telecom] Using cached decrypted private key (recipient side, incoming channel)');
+                        try {
+                          decryptedText = await decryptMessageForTelecom(messageData.text, cachedPrivateKey);
+                          console.log('[Telecom] ✅ Message decrypted successfully (recipient side, incoming channel)');
+                        } catch (e) {
+                          console.error('[Telecom] ❌ Error decrypting with cached key:', e);
+                          decryptedText = '[Encrypted message - decryption failed]';
+                        }
+                      } else {
+                        console.warn('[Telecom] ⚠️ No cached private key - message cannot be decrypted automatically');
+                        console.warn('[Telecom] 💡 To enable automatic decryption, enter your password once in Telecom settings');
+                        decryptedText = '[Encrypted message - enter password to decrypt]';
+                      }
+                    }
+                  } catch (e) {
+                    console.error('[Telecom] ❌ Error decrypting message:', e);
+                    decryptedText = '[Encrypted message - decryption failed]';
+                  }
+                } else {
+                  console.log('[Telecom] 📝 Message is not encrypted, using as-is');
+                }
+                
                 const chatId = `contact-${inviteForAnswer.fromGuid}`;
                 const newMessage = {
                   id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
                   chatId: chatId,
                   senderId: inviteForAnswer.fromGuid,
                   senderName: messageData.senderName || inviteForAnswer.fromGuid.substring(0, 8) + '...',
-                  text: messageData.text,
+                  text: decryptedText,
                   timestamp: messageData.timestamp || new Date().toISOString(),
                   type: 'user',
-                  viaWebRTC: true
+                  viaWebRTC: true,
+                  wasEncrypted: messageData.encrypted || false
                 };
                 
                 // Save message
@@ -7402,11 +7794,44 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         // Add answer to invite in recipient storage
         recipientInvites[recipientInviteIndex].webrtcAnswer = webrtcAnswer;
         
+        // Get recipient's account data for answer
+        const systemAccount = window.Auth ? window.Auth.getAccount() : null;
+        if (!systemAccount) {
+          console.error('[Telecom] System account not found when creating answer');
+        }
+        
+        // Get recipient's profile data from config
+        const recipientDisplayName = config.firstName && config.lastName 
+          ? `${config.firstName} ${config.lastName}` 
+          : config.username || systemAccount?.username || null;
+        const recipientUsername = config.username || systemAccount?.username || null;
+        const recipientFirstName = config.firstName || null;
+        const recipientLastName = config.lastName || null;
+        const recipientEmail = config.email || systemAccount?.email || null;
+        const recipientPublicKey = systemAccount?.publicKey || null;
+        
+        console.log('[Telecom] Adding recipient data to answer:', {
+          username: recipientUsername,
+          displayName: recipientDisplayName,
+          firstName: recipientFirstName,
+          lastName: recipientLastName,
+          email: recipientEmail ? 'present' : 'missing',
+          publicKey: recipientPublicKey ? 'present' : 'missing'
+        });
+        
         // Create updated invite with answer for sharing back to sender
+        // Include recipient's data (toGuid is recipient, so these are "to" fields)
         const inviteWithAnswer = {
           ...inviteForAnswer,
           webrtcAnswer: webrtcAnswer,
-          status: 'accepted'
+          status: 'accepted',
+          // Add recipient's data (since recipient is sending answer back to sender)
+          toUsername: recipientUsername,
+          toDisplayName: recipientDisplayName,
+          toFirstName: recipientFirstName,
+          toLastName: recipientLastName,
+          toEmail: recipientEmail,
+          toPublicKey: recipientPublicKey
         };
         
         // Show dialog to share answer back to sender
@@ -7472,6 +7897,22 @@ async function processWebRTCAnswer(invite, config) {
   // Check if answer exists and WebRTC is available
   if (!invite.webrtcAnswer || typeof RTCPeerConnection === 'undefined') {
     return;
+  }
+
+  // Load config if not provided
+  if (!config) {
+    const STORAGE_KEY = 'webos.telecom.v1';
+    try {
+      const configData = localStorage.getItem(STORAGE_KEY);
+      if (configData) {
+        config = JSON.parse(configData);
+        console.log('[Telecom] Loaded config from localStorage in processWebRTCAnswer');
+      } else {
+        console.warn('[Telecom] ⚠️ No config found in localStorage');
+      }
+    } catch (e) {
+      console.error('[Telecom] Error loading config:', e);
+    }
   }
 
   // For sender processing answer: contactGuid is the recipient's GUID (toGuid)
@@ -7691,18 +8132,52 @@ async function processWebRTCAnswer(invite, config) {
         if (!existingContact) {
           console.log('[Telecom] Auto-adding contact for sender:', contactGuid);
           
-          // Try to find contact info from recipient's account data if available
-          // For now, we'll use GUID as display name, but in future we can query recipient's profile
-          const contactInfo = {
+          // Try to get contact info from invite with answer (if available)
+          let contactInfo = {
             guid: contactGuid,
-            username: null, // We don't have username for recipient yet
-            displayName: contactGuid.substring(0, 8) + '...', // Use GUID prefix as display name
+            username: null,
+            displayName: contactGuid.substring(0, 8) + '...',
+            firstName: null,
+            lastName: null,
+            email: null,
+            publicKey: null,
             addedAt: new Date().toISOString()
           };
           
-          // Try to get better display name from recipient's account if available
-          // Note: This would require a way to query recipient's profile, which is not implemented yet
-          // For now, we use GUID prefix
+          // Try to find invite with answer data in sent invites storage
+          try {
+            const effectiveGuid = getEffectiveGuid(config);
+            if (effectiveGuid) {
+              const SENT_INVITES_STORAGE_KEY = `webos.telecom.sent_invites.guid_from.${effectiveGuid}`;
+              const sentInvitesData = localStorage.getItem(SENT_INVITES_STORAGE_KEY);
+              if (sentInvitesData) {
+                const sentInvites = JSON.parse(sentInvitesData);
+                // Find invite for this contact (by toGuid or by invite ID if we have it)
+                const inviteWithAnswer = sentInvites.find(inv => 
+                  (inv.toGuid === contactGuid || inv.id === invite?.id) && inv.webrtcAnswer
+                );
+                
+                if (inviteWithAnswer && inviteWithAnswer.webrtcAnswer) {
+                  // Use data from answer (recipient's data)
+                  contactInfo.username = inviteWithAnswer.toUsername || null;
+                  contactInfo.displayName = inviteWithAnswer.toDisplayName || inviteWithAnswer.toUsername || contactGuid.substring(0, 8) + '...';
+                  contactInfo.firstName = inviteWithAnswer.toFirstName || null;
+                  contactInfo.lastName = inviteWithAnswer.toLastName || null;
+                  contactInfo.email = inviteWithAnswer.toEmail || null;
+                  contactInfo.publicKey = inviteWithAnswer.toPublicKey || null;
+                  console.log('[Telecom] Using contact data from invite with answer:', {
+                    username: contactInfo.username,
+                    displayName: contactInfo.displayName,
+                    publicKey: contactInfo.publicKey ? 'present' : 'missing'
+                  });
+                } else {
+                  console.log('[Telecom] No invite with answer found, using default contact info');
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('[Telecom] Error getting contact info from invite:', e);
+          }
           
           contacts.push(contactInfo);
           saveContacts(contacts);
@@ -7950,23 +8425,62 @@ async function processWebRTCAnswer(invite, config) {
         updateConnectionStatusForChat(contactGuid, 'connected');
       };
       
-      dataChannel.onmessage = (event) => {
+      dataChannel.onmessage = async (event) => {
         try {
           const messageData = JSON.parse(event.data);
-          console.log('[Telecom] Received message via WebRTC from contact:', contactGuid, 'data:', messageData);
+          console.log('[Telecom] 📥 Received message via WebRTC from contact (sender side):', contactGuid, 'encrypted:', messageData.encrypted || false);
           
           // Handle incoming WebRTC message
           if (messageData.type === 'message' && messageData.text) {
+            // Decrypt message if it's encrypted
+            let decryptedText = messageData.text;
+            if (messageData.encrypted) {
+              try {
+                console.log('[Telecom] 🔓 Decrypting received message (sender side)...');
+                
+                // Get sender's private key for decryption
+                const systemAccount = window.Auth ? window.Auth.getAccount() : null;
+                if (!systemAccount || !systemAccount.privateKeyEncrypted) {
+                  console.warn('[Telecom] ⚠️ Cannot decrypt: private key not available');
+                  decryptedText = '[Encrypted message - decryption failed: private key not available]';
+                } else {
+                  // Try to get decrypted private key from session cache or prompt for password
+                  // Check if we have cached decrypted private key in sessionStorage
+                  const cachedPrivateKey = sessionStorage.getItem('telecom.decryptedPrivateKey');
+                  if (cachedPrivateKey) {
+                    console.log('[Telecom] Using cached decrypted private key');
+                    try {
+                      decryptedText = await decryptMessageForTelecom(messageData.text, cachedPrivateKey);
+                      console.log('[Telecom] ✅ Message decrypted successfully (sender side)');
+                    } catch (e) {
+                      console.error('[Telecom] ❌ Error decrypting with cached key:', e);
+                      decryptedText = '[Encrypted message - decryption failed]';
+                    }
+                  } else {
+                    console.warn('[Telecom] ⚠️ No cached private key - message cannot be decrypted automatically');
+                    console.warn('[Telecom] 💡 To enable automatic decryption, enter your password once in Telecom settings');
+                    decryptedText = '[Encrypted message - enter password to decrypt]';
+                  }
+                }
+              } catch (e) {
+                console.error('[Telecom] ❌ Error decrypting message:', e);
+                decryptedText = '[Encrypted message - decryption failed]';
+              }
+            } else {
+              console.log('[Telecom] 📝 Message is not encrypted, using as-is');
+            }
+            
             const chatId = `contact-${contactGuid}`;
             const newMessage = {
               id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
               chatId: chatId,
               senderId: contactGuid,
               senderName: messageData.senderName || contactGuid.substring(0, 8) + '...',
-              text: messageData.text,
+              text: decryptedText,
               timestamp: messageData.timestamp || new Date().toISOString(),
               type: 'user',
-              viaWebRTC: true
+              viaWebRTC: true,
+              wasEncrypted: messageData.encrypted || false
             };
             
             // Save message
@@ -8013,6 +8527,145 @@ async function processWebRTCAnswer(invite, config) {
     }
     
     console.log('[Telecom] WebRTC answer processed successfully for contact:', contactGuid);
+    
+    // Update invite status to 'accepted' and add contact immediately after processing answer
+    try {
+      console.log('[Telecom] 🔄 Updating invite status and adding contact after processing answer...');
+      console.log('[Telecom]   contactGuid:', contactGuid);
+      console.log('[Telecom]   invite.id:', invite.id);
+      console.log('[Telecom]   invite.toGuid:', invite.toGuid);
+      console.log('[Telecom]   config:', config ? 'present' : 'missing');
+      
+      const effectiveGuid = getEffectiveGuid(config);
+      console.log('[Telecom]   effectiveGuid:', effectiveGuid);
+      
+      if (effectiveGuid) {
+        const SENT_INVITES_STORAGE_KEY = `webos.telecom.sent_invites.guid_from.${effectiveGuid}`;
+        console.log('[Telecom]   SENT_INVITES_STORAGE_KEY:', SENT_INVITES_STORAGE_KEY);
+        
+        const sentInvitesData = localStorage.getItem(SENT_INVITES_STORAGE_KEY);
+        if (sentInvitesData) {
+          const sentInvites = JSON.parse(sentInvitesData);
+          console.log('[Telecom]   Found', sentInvites.length, 'sent invites');
+          
+          // Try to find by invite ID first (most reliable)
+          let inviteIndex = -1;
+          if (invite.id) {
+            inviteIndex = sentInvites.findIndex(inv => inv.id === invite.id);
+            console.log('[Telecom]   Searching by invite.id:', invite.id, 'found:', inviteIndex !== -1);
+          }
+          
+          // If not found by ID, try by toGuid
+          if (inviteIndex === -1) {
+            inviteIndex = sentInvites.findIndex(inv => inv.toGuid === contactGuid && inv.status === 'pending');
+            console.log('[Telecom]   Searching by toGuid:', contactGuid, 'status: pending, found:', inviteIndex !== -1);
+          }
+          
+          if (inviteIndex !== -1) {
+            console.log('[Telecom]   Found invite at index:', inviteIndex, 'current status:', sentInvites[inviteIndex].status);
+            sentInvites[inviteIndex].status = 'accepted';
+            sentInvites[inviteIndex].respondedAt = new Date().toISOString();
+            localStorage.setItem(SENT_INVITES_STORAGE_KEY, JSON.stringify(sentInvites));
+            console.log('[Telecom] ✅ Updated invite status to accepted for contact:', contactGuid, 'invite ID:', sentInvites[inviteIndex].id);
+          } else {
+            console.warn('[Telecom] ⚠️ No invite found! Searched by:');
+            console.warn('[Telecom]   - invite.id:', invite.id);
+            console.warn('[Telecom]   - toGuid:', contactGuid, 'status: pending');
+            console.warn('[Telecom]   Available invites:', sentInvites.map(inv => ({ id: inv.id, toGuid: inv.toGuid, status: inv.status })));
+          }
+        } else {
+          console.warn('[Telecom] ⚠️ No sent invites storage found for GUID:', effectiveGuid);
+        }
+      } else {
+        console.warn('[Telecom] ⚠️ Could not get effective GUID for updating invite status');
+        console.warn('[Telecom]   config keys:', config ? Object.keys(config) : 'config is null/undefined');
+      }
+    } catch (e) {
+      console.error('[Telecom] ❌ Error updating invite status after processing answer:', e);
+      console.error('[Telecom]   Stack:', e.stack);
+    }
+    
+    // Add contact automatically after processing answer
+    try {
+      const contacts = getContacts();
+      const existingContact = contacts.find(c => c.guid === contactGuid);
+      if (!existingContact) {
+        console.log('[Telecom] Auto-adding contact after processing answer:', contactGuid);
+        
+        // Try to get contact info from answer (recipient's data)
+        const contactInfo = {
+          guid: contactGuid,
+          username: invite.toUsername || null,
+          displayName: invite.toDisplayName || invite.toUsername || contactGuid.substring(0, 8) + '...',
+          firstName: invite.toFirstName || null,
+          lastName: invite.toLastName || null,
+          email: invite.toEmail || null,
+          publicKey: invite.toPublicKey || null, // Public key for encryption
+          addedAt: new Date().toISOString()
+        };
+        
+        console.log('[Telecom] Contact info from answer:', {
+          username: contactInfo.username,
+          displayName: contactInfo.displayName,
+          firstName: contactInfo.firstName,
+          lastName: contactInfo.lastName,
+          email: contactInfo.email ? 'present' : 'missing',
+          publicKey: contactInfo.publicKey ? 'present' : 'missing'
+        });
+        
+        contacts.push(contactInfo);
+        saveContacts(contacts);
+        console.log('[Telecom] ✅ Contact auto-added after processing answer:', contactGuid, 'Total contacts:', contacts.length);
+        
+        // Verify contact was saved
+        const savedContacts = getContacts();
+        const savedContact = savedContacts.find(c => c.guid === contactGuid);
+        if (savedContact) {
+          console.log('[Telecom] ✅ Contact verified in storage:', savedContact.guid, 'displayName:', savedContact.displayName);
+        } else {
+          console.error('[Telecom] ❌ Contact NOT found in storage after save! Expected GUID:', contactGuid);
+        }
+        
+        // Create chat for this contact
+        const chats = getChats();
+        const chatId = `contact-${contactGuid}`;
+        const existingChat = chats.find(c => c.id === chatId);
+        if (!existingChat) {
+          chats.push({
+            id: chatId,
+            name: contactInfo.displayName,
+            type: 'contact',
+            contactGuid: contactGuid,
+            createdAt: new Date().toISOString()
+          });
+          const CHATS_STORAGE_KEY = 'webos.telecom.chats.v1';
+          localStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(chats));
+          console.log('[Telecom] Chat created for auto-added contact:', contactGuid);
+        }
+        
+        // Refresh UI if Telecom window is open
+        const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+        telecomWindows.forEach(telecomWin => {
+          const winId = telecomWin.dataset.winId;
+          if (winId) {
+            renderChatsList(telecomWin, winId, config, storageKey);
+            
+            // Refresh contacts dialog if it's open
+            const windowContent = telecomWin.querySelector('.win-content');
+            if (windowContent) {
+              const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
+              if (contactsDialog) {
+                refreshContactsDialog(contactsDialog, config, storageKey, winId);
+              }
+            }
+          }
+        });
+      } else {
+        console.log('[Telecom] Contact already exists:', contactGuid);
+      }
+    } catch (e) {
+      console.error('[Telecom] Error adding contact after processing answer:', e);
+    }
     
   } catch (e) {
     console.error('[Telecom] Error processing WebRTC answer:', e);
@@ -8447,7 +9100,7 @@ function renderReceivedPendingInvitesInContactsDialog(dialog, invites, config, s
 /**
  * Send message handler
  */
-function sendMessage(win, winId, config, storageKey) {
+async function sendMessage(win, winId, config, storageKey) {
   const messageInput = win.querySelector('#telecom-message-input');
   if (!messageInput) return;
 
@@ -8481,16 +9134,53 @@ function sendMessage(win, winId, config, storageKey) {
   const dataChannel = window._telecomDataChannels?.get(peerId);
   if (dataChannel && dataChannel.readyState === 'open') {
     try {
+      // Get recipient's public key for encryption
+      const contacts = getContacts();
+      const contact = contacts.find(c => c.guid === peerId);
+      const recipientPublicKey = contact?.publicKey || null;
+      
+      console.log('[Telecom] 📤 Preparing to send message:', {
+        to: peerId,
+        messageLength: message.length,
+        hasRecipientPublicKey: !!recipientPublicKey,
+        publicKeyLength: recipientPublicKey ? recipientPublicKey.length : 0
+      });
+      
+      // Encrypt message with recipient's public key
+      let encryptedText = message;
+      if (recipientPublicKey) {
+        try {
+          console.log('[Telecom] 🔒 Encrypting message with recipient public key...');
+          encryptedText = await encryptMessageForTelecom(message, recipientPublicKey);
+          console.log('[Telecom] ✅ Message encrypted successfully');
+        } catch (e) {
+          console.error('[Telecom] ❌ Error encrypting message:', e);
+          console.warn('[Telecom] ⚠️ Sending unencrypted message due to encryption error');
+          // Continue with unencrypted message if encryption fails
+        }
+      } else {
+        console.warn('[Telecom] ⚠️ No public key for recipient, sending unencrypted message');
+      }
+      
       // Send message via WebRTC data channel
       const messagePayload = {
         type: 'message',
-        text: message,
+        text: encryptedText, // Send encrypted text
+        encrypted: !!recipientPublicKey, // Flag indicating if message is encrypted
         senderId: effectiveGuid || config.systemGuid,
         senderName: config.firstName && config.lastName ? `${config.firstName} ${config.lastName}` : config.username || effectiveGuid,
         timestamp: newMessage.timestamp
       };
-      dataChannel.send(JSON.stringify(messagePayload));
-      console.log('[Telecom] Message sent via WebRTC to contact:', peerId);
+      
+      const payloadJson = JSON.stringify(messagePayload);
+      console.log('[Telecom] 📤 Sending message payload:', {
+        encrypted: messagePayload.encrypted,
+        payloadLength: payloadJson.length,
+        originalMessageLength: message.length
+      });
+      
+      dataChannel.send(payloadJson);
+      console.log('[Telecom] ✅ Message sent via WebRTC to contact:', peerId);
     } catch (e) {
       console.error('[Telecom] Error sending message via WebRTC:', e);
       // Fallback to localStorage-based messaging
