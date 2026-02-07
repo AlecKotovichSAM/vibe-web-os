@@ -291,6 +291,77 @@ All scripts loaded via `<script>` tags in `index.html` in dependency order:
 - Validate user input (check for empty strings, nulls)
 - Handle missing DOM elements: `const el = win.querySelector('#id'); if (!el) return;`
 
+### User Notifications and Dialogs
+
+**🚨 CRITICAL: Do NOT use `alert()`, `confirm()`, or `prompt()` - use `Dialog` module instead.**
+
+**Dialog Module:**
+- **Alert:** `await window.Dialog.alert(message, title)` - Shows informational message
+- **Confirm:** `await window.Dialog.confirm(message, title)` - Shows confirmation dialog, returns `true`/`false`
+- **Prompt:** `await window.Dialog.prompt(message, defaultValue, title)` - Shows input dialog, returns string or `null`
+
+**Usage:**
+```javascript
+// ✅ CORRECT - Use Dialog module
+if (window.Dialog && window.Dialog.alert) {
+  await window.Dialog.alert('Operation completed successfully');
+} else {
+  // Fallback only if Dialog is not available (should be rare)
+  alert('Operation completed successfully');
+}
+
+// ❌ WRONG - Never use native alert/confirm/prompt directly
+alert('Operation completed successfully'); // DON'T DO THIS
+```
+
+**Why:**
+- Native browser dialogs (`alert`, `confirm`, `prompt`) are:
+  - Not styled consistently with the OS theme
+  - Blocking and poor UX
+  - Cannot be customized
+  - Look unprofessional
+  
+- `Dialog` module provides:
+  - Consistent styling with OS theme
+  - Non-blocking async API
+  - Customizable appearance
+  - Better user experience
+
+**Exceptions:**
+- Only use native `alert()`/`confirm()`/`prompt()` as a fallback if `Dialog` module is not available (should be extremely rare)
+- For fatal errors that require immediate attention, you may use native dialogs, but prefer `Dialog.alert()` even then
+
+**Examples:**
+```javascript
+// Error handling
+try {
+  await someOperation();
+  if (window.Dialog && window.Dialog.alert) {
+    await window.Dialog.alert('Operation completed successfully');
+  } else {
+    alert('Operation completed successfully');
+  }
+} catch (e) {
+  if (window.Dialog && window.Dialog.alert) {
+    await window.Dialog.alert(e.message || 'An error occurred');
+  } else {
+    alert(e.message || 'An error occurred');
+  }
+}
+
+// Confirmation
+if (window.Dialog && window.Dialog.confirm) {
+  const confirmed = await window.Dialog.confirm('Are you sure?');
+  if (confirmed) {
+    // Proceed
+  }
+} else {
+  if (confirm('Are you sure?')) {
+    // Proceed
+  }
+}
+```
+
 ### Service Worker
 
 - Pre-cache all core files in `ASSETS` array

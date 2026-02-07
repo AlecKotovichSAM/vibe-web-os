@@ -762,7 +762,7 @@ function renderSetupScreen(winId, systemAccount, storageKey) {
   // Handle continue button
   const continueBtn = win.querySelector('#telecom-setup-continue');
   if (continueBtn) {
-    continueBtn.addEventListener('click', () => {
+    continueBtn.addEventListener('click', async () => {
       // Save Telecom configuration
       // Note: avatar is NOT saved here - it will use system avatar as default but can be changed independently
       const config = {
@@ -790,7 +790,11 @@ function renderSetupScreen(winId, systemAccount, storageKey) {
         }, 300);
       } catch (e) {
         console.error('[Telecom] Error saving config:', e);
-        alert(I18n.t('telecom.setupError'));
+        if (window.Dialog && window.Dialog.alert) {
+          await window.Dialog.alert(I18n.t('telecom.setupError'));
+        } else {
+          alert(I18n.t('telecom.setupError'));
+        }
       }
     });
   }
@@ -2697,11 +2701,19 @@ function showProfileDialog(win, winId, config, storageKey) {
             showProfileDialog(win, winId, config, storageKey);
           } catch (e) {
             console.error('[Telecom] Error saving config:', e);
-            alert(I18n.t('telecom.profileDeleteAvatarError'));
+            if (window.Dialog && window.Dialog.alert) {
+              await window.Dialog.alert(I18n.t('telecom.profileDeleteAvatarError'));
+            } else {
+              alert(I18n.t('telecom.profileDeleteAvatarError'));
+            }
           }
         } catch (error) {
           console.error('[Telecom] Error deleting/disabling avatar:', error);
-          alert(I18n.t('telecom.profileDeleteAvatarError'));
+          if (window.Dialog && window.Dialog.alert) {
+            await window.Dialog.alert(I18n.t('telecom.profileDeleteAvatarError'));
+          } else {
+            alert(I18n.t('telecom.profileDeleteAvatarError'));
+          }
         }
       }
     });
@@ -3069,6 +3081,163 @@ function resetTelecomData() {
 }
 
 /**
+ * Show progress dialog with optional verbose logging
+ * @param {string} winId - Window ID
+ * @param {string} title - Dialog title
+ * @param {boolean} verboseLogging - Whether to show verbose logs
+ * @returns {Object} - { dialog, backdrop, logTextarea, close } - Dialog elements and close function
+ */
+function showProgressDialog(winId, title, verboseLogging = false) {
+  // Find the actual window element
+  const windowElement = WindowManager.findWindow(winId);
+  if (!windowElement) {
+    console.error('[Telecom] Window not found:', winId);
+    return null;
+  }
+
+  // Find the window content area
+  const windowContent = windowElement.querySelector('.win-content');
+  if (!windowContent) {
+    console.error('[Telecom] Window content not found');
+    return null;
+  }
+
+  // Create backdrop
+  const backdrop = document.createElement('div');
+  backdrop.className = 'telecom-progress-backdrop';
+  backdrop.style.cssText = `
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 1004;
+    animation: fadeIn 0.2s ease;
+  `;
+
+  // Create dialog
+  const dialog = document.createElement('div');
+  dialog.className = 'telecom-progress-dialog';
+  dialog.style.cssText = `
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: ${verboseLogging ? '600px' : '400px'};
+    max-width: 90%;
+    max-height: ${verboseLogging ? '80vh' : 'auto'};
+    background: var(--panel);
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    z-index: 1005;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: fadeIn 0.2s ease;
+  `;
+
+  // Dialog header
+  const header = document.createElement('div');
+  header.style.cssText = `
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--panel-2);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  `;
+  header.innerHTML = `
+    <div style="width:20px; height:20px; border:2px solid var(--accent); border-top-color:transparent; border-radius:50%; animation:spin 1s linear infinite;"></div>
+    <h3 style="margin:0; font-size:18px; font-weight:500; flex:1;">${title}</h3>
+  `;
+
+  // Dialog content
+  const content = document.createElement('div');
+  content.style.cssText = `
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    ${verboseLogging ? 'display: flex; flex-direction: column;' : ''}
+  `;
+
+  if (verboseLogging) {
+    const logLabel = document.createElement('div');
+    logLabel.style.cssText = 'font-size:12px; color:var(--muted); margin-bottom:8px;';
+    logLabel.textContent = 'Logs:';
+    
+    const logTextarea = document.createElement('textarea');
+    logTextarea.readOnly = true;
+    logTextarea.style.cssText = `
+      flex: 1;
+      min-height: 300px;
+      padding: 12px;
+      background: var(--bg);
+      border: 1px solid var(--panel-2);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: monospace;
+      font-size: 11px;
+      resize: none;
+      outline: none;
+    `;
+    logTextarea.value = '';
+
+    content.appendChild(logLabel);
+    content.appendChild(logTextarea);
+    dialog.appendChild(header);
+    dialog.appendChild(content);
+    
+    // Store reference to logTextarea
+    dialog._logTextarea = logTextarea;
+  } else {
+    const message = document.createElement('div');
+    message.style.cssText = 'font-size:14px; color:var(--muted); text-align:center;';
+    message.textContent = 'Please wait...';
+    content.appendChild(message);
+    dialog.appendChild(header);
+    dialog.appendChild(content);
+  }
+
+  // Add to window content
+  windowContent.appendChild(backdrop);
+  windowContent.appendChild(dialog);
+  
+  // Ensure window content has relative positioning
+  if (windowContent.style.position !== 'relative' && windowContent.style.position !== 'absolute') {
+    windowContent.style.position = 'relative';
+  }
+
+  // Add CSS animation for spinner
+  if (!document.getElementById('telecom-progress-spinner-style')) {
+    const style = document.createElement('style');
+    style.id = 'telecom-progress-spinner-style';
+    style.textContent = `
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // Function to add log message
+  const addLog = (message) => {
+    if (verboseLogging && dialog._logTextarea) {
+      const timestamp = new Date().toLocaleTimeString();
+      dialog._logTextarea.value += `[${timestamp}] ${message}\n`;
+      dialog._logTextarea.scrollTop = dialog._logTextarea.scrollHeight;
+    }
+    // Always log to console
+    console.log(message);
+  };
+
+  // Function to close dialog
+  const close = () => {
+    backdrop.remove();
+    dialog.remove();
+  };
+
+  return { dialog, backdrop, addLog, close };
+}
+
+/**
  * Show settings dialog
  */
 function showSettingsDialog(win, winId, config, storageKey) {
@@ -3174,16 +3343,22 @@ function showSettingsDialog(win, winId, config, storageKey) {
       </h4>
       
       <!-- System GUID (always shown, default) -->
-      <div style="padding:12px; border-radius:6px; background:var(--panel-2); margin-bottom:12px;">
+      <div style="padding:12px; border-radius:6px; background:var(--panel-2); margin-bottom:12px; ${!hasApplicationGuid ? 'border-left:3px solid var(--accent);' : ''}">
         <div style="display:flex; align-items:center; justify-content:space-between;">
           <div style="flex:1;">
             <div style="font-weight:500; font-size:14px; margin-bottom:4px;">
-              ${I18n.t('telecom.settingsGuidTypeSystem')} ${!hasApplicationGuid ? '<span style="font-size:11px; color:var(--muted); font-weight:normal;">(Active)</span>' : ''}
+              ${I18n.t('telecom.settingsGuidTypeSystem')} ${!hasApplicationGuid ? '<span style="font-size:11px; color:var(--accent); font-weight:normal;">(Active)</span>' : ''}
             </div>
             <div style="font-size:12px; color:var(--muted); font-family:monospace;">
               ${systemGuid || I18n.t('telecom.settingsGuidTypeSystemHint')}
             </div>
           </div>
+          ${!hasApplicationGuid && systemGuid ? `
+            <button id="telecom-settings-copy-system-guid" 
+              style="padding:6px 12px; background:var(--panel); color:var(--text); border:1px solid var(--panel-2); border-radius:6px; cursor:pointer; font-size:12px; font-weight:500; margin-left:12px;">
+              Copy
+            </button>
+          ` : ''}
         </div>
       </div>
       
@@ -3199,10 +3374,16 @@ function showSettingsDialog(win, winId, config, storageKey) {
                 ${config.applicationGuid}
               </div>
             </div>
-            <button id="telecom-settings-delete-application-guid" 
-              style="padding:6px 12px; background:var(--panel); color:var(--text); border:1px solid var(--panel-2); border-radius:6px; cursor:pointer; font-size:12px; font-weight:500; margin-left:12px;">
-              ✕ Delete
-            </button>
+            <div style="display:flex; gap:8px;">
+              <button id="telecom-settings-copy-application-guid" 
+                style="padding:6px 12px; background:var(--panel); color:var(--text); border:1px solid var(--panel-2); border-radius:6px; cursor:pointer; font-size:12px; font-weight:500;">
+                Copy
+              </button>
+              <button id="telecom-settings-delete-application-guid" 
+                style="padding:6px 12px; background:var(--panel); color:var(--text); border:1px solid var(--panel-2); border-radius:6px; cursor:pointer; font-size:12px; font-weight:500;">
+                ✕ Delete
+              </button>
+            </div>
           </div>
         </div>
       ` : `
@@ -3211,6 +3392,33 @@ function showSettingsDialog(win, winId, config, storageKey) {
           <span style="font-size:18px;">+</span> Add Application GUID
         </button>
       `}
+    </div>
+  `;
+
+  // Verbose Logging Toggle
+  const verboseLogging = config.verboseLogging !== undefined ? config.verboseLogging : false;
+  content.innerHTML += `
+    <div style="margin-top:30px; padding-top:20px; border-top:1px solid var(--panel-2);">
+      <h4 style="margin:0 0 12px 0; font-size:14px; font-weight:500; color:var(--text);">
+        ${I18n.t('telecom.settingsVerboseLogging')}
+      </h4>
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:12px; border-radius:6px; background:var(--panel-2);">
+        <div style="flex:1;">
+          <div style="font-weight:500; font-size:14px; margin-bottom:4px;">
+            ${I18n.t('telecom.settingsVerboseLoggingTitle')}
+          </div>
+          <div style="font-size:12px; color:var(--muted);">
+            ${I18n.t('telecom.settingsVerboseLoggingHint')}
+          </div>
+        </div>
+        <label style="position:relative; display:inline-block; width:44px; height:24px;">
+          <input type="checkbox" id="telecom-settings-verbose-logging" ${verboseLogging ? 'checked' : ''} 
+            style="opacity:0; width:0; height:0;">
+          <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:${verboseLogging ? 'var(--accent)' : '#ccc'}; transition:.4s; border-radius:24px;">
+            <span style="position:absolute; content:''; height:18px; width:18px; left:3px; bottom:3px; background-color:white; transition:.4s; border-radius:50%; transform:translateX(${verboseLogging ? '20px' : '0'});"></span>
+          </span>
+        </label>
+      </div>
     </div>
   `;
 
@@ -3287,6 +3495,60 @@ function showSettingsDialog(win, winId, config, storageKey) {
     });
   }
 
+  // Handle copy system GUID button
+  const copySystemGuidBtn = dialog.querySelector('#telecom-settings-copy-system-guid');
+  if (copySystemGuidBtn && systemGuid) {
+    copySystemGuidBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(systemGuid);
+        copySystemGuidBtn.textContent = 'Copied!';
+        setTimeout(() => {
+          copySystemGuidBtn.textContent = 'Copy';
+        }, 2000);
+      } catch (e) {
+        console.error('[Telecom] Error copying system GUID:', e);
+        // Fallback: select text
+        const tempInput = document.createElement('input');
+        tempInput.value = systemGuid;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        document.execCommand('copy');
+        document.body.removeChild(tempInput);
+        copySystemGuidBtn.textContent = 'Copied!';
+        setTimeout(() => {
+          copySystemGuidBtn.textContent = 'Copy';
+        }, 2000);
+      }
+    });
+  }
+
+  // Handle copy application GUID button
+  const copyApplicationGuidBtn = dialog.querySelector('#telecom-settings-copy-application-guid');
+  if (copyApplicationGuidBtn && config.applicationGuid) {
+    copyApplicationGuidBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(config.applicationGuid);
+        copyApplicationGuidBtn.textContent = 'Copied!';
+        setTimeout(() => {
+          copyApplicationGuidBtn.textContent = 'Copy';
+        }, 2000);
+      } catch (e) {
+        console.error('[Telecom] Error copying application GUID:', e);
+        // Fallback: select text
+        const tempInput = document.createElement('input');
+        tempInput.value = config.applicationGuid;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        document.execCommand('copy');
+        document.body.removeChild(tempInput);
+        copyApplicationGuidBtn.textContent = 'Copied!';
+        setTimeout(() => {
+          copyApplicationGuidBtn.textContent = 'Copy';
+        }, 2000);
+      }
+    });
+  }
+
   // Handle delete application GUID button
   const deleteApplicationGuidBtn = dialog.querySelector('#telecom-settings-delete-application-guid');
   if (deleteApplicationGuidBtn) {
@@ -3298,6 +3560,28 @@ function showSettingsDialog(win, winId, config, storageKey) {
         backdrop.remove();
         dialog.remove();
         showSettingsDialog(win, winId, config, storageKey);
+      }
+    });
+  }
+
+  // Handle verbose logging toggle
+  const verboseLoggingToggle = dialog.querySelector('#telecom-settings-verbose-logging');
+  if (verboseLoggingToggle) {
+    verboseLoggingToggle.addEventListener('change', () => {
+      config.verboseLogging = verboseLoggingToggle.checked;
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(config));
+      } catch (e) {
+        console.error('[Telecom] Error saving verbose logging setting:', e);
+      }
+      // Update toggle visual state
+      const toggleSpan = verboseLoggingToggle.nextElementSibling;
+      if (toggleSpan) {
+        toggleSpan.style.backgroundColor = config.verboseLogging ? 'var(--accent)' : '#ccc';
+        const toggleCircle = toggleSpan.querySelector('span');
+        if (toggleCircle) {
+          toggleCircle.style.transform = `translateX(${config.verboseLogging ? '20px' : '0'})`;
+        }
       }
     });
   }
@@ -4327,14 +4611,79 @@ function showAddContactDialog(win, winId, config, storageKey) {
     sendBtn.disabled = true;
     sendBtn.textContent = 'Sending...';
 
+    // Close add contact dialog first
+    nestedBackdrop.remove();
+    nestedDialog.remove();
+
     try {
       // Send invite using effective GUID
       const effectiveGuid = getEffectiveGuid(config);
       if (!effectiveGuid) {
-        alert('GUID not available. Please check your settings.');
+        if (window.Dialog && window.Dialog.alert) {
+          await window.Dialog.alert('GUID not available. Please check your settings.');
+        } else {
+          alert('GUID not available. Please check your settings.');
+        }
+        sendBtn.disabled = false;
+        sendBtn.textContent = I18n.t('telecom.contactsAddContactSend');
         return;
       }
+
+      // Show progress dialog
+      const verboseLogging = config.verboseLogging !== undefined ? config.verboseLogging : false;
+      const progressDialog = showProgressDialog(winId, 'Creating Invite...', verboseLogging);
+      
+      if (!progressDialog) {
+        if (window.Dialog && window.Dialog.alert) {
+          await window.Dialog.alert('Error showing progress dialog');
+        } else {
+          alert('Error showing progress dialog');
+        }
+        sendBtn.disabled = false;
+        sendBtn.textContent = I18n.t('telecom.contactsAddContactSend');
+        return;
+      }
+
+      // Intercept console.log to capture logs if verbose logging is enabled
+      const originalConsoleLog = console.log;
+      const originalConsoleWarn = console.warn;
+      const originalConsoleError = console.error;
+      
+      if (verboseLogging) {
+        console.log = (...args) => {
+          originalConsoleLog.apply(console, args);
+          const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+          if (message.includes('[Telecom]') || message.includes('[ICE]')) {
+            progressDialog.addLog(message);
+          }
+        };
+        console.warn = (...args) => {
+          originalConsoleWarn.apply(console, args);
+          const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+          if (message.includes('[Telecom]') || message.includes('[ICE]')) {
+            progressDialog.addLog('⚠️ ' + message);
+          }
+        };
+        console.error = (...args) => {
+          originalConsoleError.apply(console, args);
+          const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+          if (message.includes('[Telecom]') || message.includes('[ICE]')) {
+            progressDialog.addLog('❌ ' + message);
+          }
+        };
+      }
+
       const result = await sendContactInvite(targetGuid, systemAccount, effectiveGuid);
+      
+      // Restore console functions
+      if (verboseLogging) {
+        console.log = originalConsoleLog;
+        console.warn = originalConsoleWarn;
+        console.error = originalConsoleError;
+      }
+      
+      // Close progress dialog
+      progressDialog.close();
       
       // If invite was already sent, just return (warning already logged)
       if (result === false) {
@@ -4342,10 +4691,6 @@ function showAddContactDialog(win, winId, config, storageKey) {
         sendBtn.textContent = I18n.t('telecom.contactsAddContactSend');
         return;
       }
-      
-      // Close only the add contact dialog
-      nestedBackdrop.remove();
-      nestedDialog.remove();
       
       // Refresh contacts dialog to show pending invites (keep it open)
       const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
@@ -4365,11 +4710,19 @@ function showAddContactDialog(win, winId, config, storageKey) {
         refreshContactsDialog(contactsDialog, config, storageKey, winId);
       } else {
         // If contacts dialog is not open, show success message
-        alert(I18n.t('telecom.contactsAddContactSuccess'));
+        if (window.Dialog && window.Dialog.alert) {
+          await window.Dialog.alert(I18n.t('telecom.contactsAddContactSuccess'));
+        } else {
+          alert(I18n.t('telecom.contactsAddContactSuccess'));
+        }
       }
     } catch (e) {
       console.error('[Telecom] Error sending invite:', e);
-      alert(e.message || I18n.t('telecom.contactsAddContactError'));
+      if (window.Dialog && window.Dialog.alert) {
+        await window.Dialog.alert(e.message || I18n.t('telecom.contactsAddContactError'));
+      } else {
+        alert(e.message || I18n.t('telecom.contactsAddContactError'));
+      }
       sendBtn.disabled = false;
       sendBtn.textContent = I18n.t('telecom.contactsAddContactSend');
     }
@@ -4543,11 +4896,15 @@ function showEnterGuidDialog(win, winId, config, storageKey) {
     cancelBtn.addEventListener('click', closeDialog);
 
     // Handle create button
-    createBtn.addEventListener('click', () => {
+    createBtn.addEventListener('click', async () => {
       const targetGuid = guidInput.value.trim();
       
       if (!targetGuid) {
-        alert(I18n.t('telecom.contactsAddContactGuidPlaceholder'));
+        if (window.Dialog && window.Dialog.alert) {
+          await window.Dialog.alert(I18n.t('telecom.contactsAddContactGuidPlaceholder'));
+        } else {
+          alert(I18n.t('telecom.contactsAddContactGuidPlaceholder'));
+        }
         return;
       }
 
@@ -4625,7 +4982,11 @@ async function showCreateInviteDialog(win, winId, config, storageKey, existingIn
     const applicationGuid = config.applicationGuid || null;
     
     if (!effectiveGuid && !systemGuid) {
-      alert('GUID not available. Please check your settings.');
+      if (window.Dialog && window.Dialog.alert) {
+        await window.Dialog.alert('GUID not available. Please check your settings.');
+      } else {
+        alert('GUID not available. Please check your settings.');
+      }
       return;
     }
     
@@ -4643,7 +5004,11 @@ async function showCreateInviteDialog(win, winId, config, storageKey, existingIn
     
     if (!isSentInvite && !isReceivedInvite) {
       const userGuids = [effectiveGuid, systemGuid, applicationGuid].filter(Boolean).join(', ');
-      alert(`This invite does not belong to you. Your GUIDs: ${userGuids}, Invite fromGuid: ${existingInvite.fromGuid}, toGuid: ${existingInvite.toGuid}`);
+      if (window.Dialog && window.Dialog.alert) {
+        await window.Dialog.alert(`This invite does not belong to you. Your GUIDs: ${userGuids}, Invite fromGuid: ${existingInvite.fromGuid}, toGuid: ${existingInvite.toGuid}`);
+      } else {
+        alert(`This invite does not belong to you. Your GUIDs: ${userGuids}, Invite fromGuid: ${existingInvite.fromGuid}, toGuid: ${existingInvite.toGuid}`);
+      }
       return;
     }
     
@@ -4652,13 +5017,21 @@ async function showCreateInviteDialog(win, winId, config, storageKey, existingIn
     // Get current user info
     const systemAccount = window.Auth ? window.Auth.getAccount() : null;
     if (!systemAccount) {
-      alert('Account not available. Please check your settings.');
+      if (window.Dialog && window.Dialog.alert) {
+        await window.Dialog.alert('Account not available. Please check your settings.');
+      } else {
+        alert('Account not available. Please check your settings.');
+      }
       return;
     }
 
     const effectiveGuid = getEffectiveGuid(config);
     if (!effectiveGuid) {
-      alert('GUID not available. Please check your settings.');
+      if (window.Dialog && window.Dialog.alert) {
+        await window.Dialog.alert('GUID not available. Please check your settings.');
+      } else {
+        alert('GUID not available. Please check your settings.');
+      }
       return;
     }
 
@@ -4672,26 +5045,101 @@ async function showCreateInviteDialog(win, winId, config, storageKey, existingIn
 
     // Check if trying to add yourself
     if (trimmedGuid === systemAccount.guid || trimmedGuid === effectiveGuid) {
-      alert('Cannot invite yourself');
+      if (window.Dialog && window.Dialog.alert) {
+        await window.Dialog.alert('Cannot invite yourself');
+      } else {
+        alert('Cannot invite yourself');
+      }
       return;
     }
 
     // Check if contact already exists
     const contacts = getContacts();
     if (contacts.find(c => c.guid === trimmedGuid)) {
-      alert('This contact already exists');
+      if (window.Dialog && window.Dialog.alert) {
+        await window.Dialog.alert('This contact already exists');
+      } else {
+        alert('This contact already exists');
+      }
       return;
+    }
+
+    // Show progress dialog
+    const verboseLogging = config.verboseLogging !== undefined ? config.verboseLogging : false;
+    const progressDialog = showProgressDialog(winId, 'Creating Invite...', verboseLogging);
+    
+    if (!progressDialog) {
+      if (window.Dialog && window.Dialog.alert) {
+        await window.Dialog.alert('Error showing progress dialog');
+      } else {
+        alert('Error showing progress dialog');
+      }
+      return;
+    }
+
+    // Intercept console.log to capture logs if verbose logging is enabled
+    const originalConsoleLog = console.log;
+    const originalConsoleWarn = console.warn;
+    const originalConsoleError = console.error;
+    
+    if (verboseLogging) {
+      console.log = (...args) => {
+        originalConsoleLog.apply(console, args);
+        const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+        if (message.includes('[Telecom]') || message.includes('[ICE]')) {
+          progressDialog.addLog(message);
+        }
+      };
+      console.warn = (...args) => {
+        originalConsoleWarn.apply(console, args);
+        const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+        if (message.includes('[Telecom]') || message.includes('[ICE]')) {
+          progressDialog.addLog('⚠️ ' + message);
+        }
+      };
+      console.error = (...args) => {
+        originalConsoleError.apply(console, args);
+        const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+        if (message.includes('[Telecom]') || message.includes('[ICE]')) {
+          progressDialog.addLog('❌ ' + message);
+        }
+      };
     }
 
     // Create invite
     try {
       invite = await sendContactInvite(trimmedGuid, systemAccount, effectiveGuid);
+      
+      // Restore console functions
+      if (verboseLogging) {
+        console.log = originalConsoleLog;
+        console.warn = originalConsoleWarn;
+        console.error = originalConsoleError;
+      }
+      
+      // Close progress dialog
+      progressDialog.close();
+      
       if (!invite) {
         return; // Already sent
       }
     } catch (e) {
+      // Restore console functions
+      if (verboseLogging) {
+        console.log = originalConsoleLog;
+        console.warn = originalConsoleWarn;
+        console.error = originalConsoleError;
+      }
+      
+      // Close progress dialog
+      progressDialog.close();
+      
       console.error('[Telecom] Error creating invite:', e);
-      alert(e.message || 'Error creating invite. Please try again.');
+      if (window.Dialog && window.Dialog.alert) {
+        await window.Dialog.alert(e.message || 'Error creating invite. Please try again.');
+      } else {
+        alert(e.message || 'Error creating invite. Please try again.');
+      }
       return;
     }
   }
@@ -5015,7 +5463,11 @@ async function showCreateInviteDialog(win, winId, config, storageKey, existingIn
     copyQrBtn.addEventListener('click', async () => {
     const canvas = qrContainer.querySelector('canvas');
     if (!canvas) {
-      alert('QR code not generated yet. Please wait...');
+      if (window.Dialog && window.Dialog.alert) {
+        await window.Dialog.alert('QR code not generated yet. Please wait...');
+      } else {
+        alert('QR code not generated yet. Please wait...');
+      }
       return;
     }
     
@@ -5040,14 +5492,22 @@ async function showCreateInviteDialog(win, winId, config, storageKey, existingIn
           a.click();
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
-          alert('QR code image downloaded (clipboard API not available)');
+          if (window.Dialog && window.Dialog.alert) {
+            await window.Dialog.alert('QR code image downloaded (clipboard API not available)');
+          } else {
+            alert('QR code image downloaded (clipboard API not available)');
+          }
         }
       }, 'image/png');
     } catch (e) {
       console.error('[Telecom] Error copying QR code:', e);
-      alert('Failed to copy QR code. Please right-click and save the image manually.');
+      if (window.Dialog && window.Dialog.alert) {
+        await window.Dialog.alert('Failed to copy QR code. Please right-click and save the image manually.');
+      } else {
+        alert('Failed to copy QR code. Please right-click and save the image manually.');
+      }
     }
-    });
+  });
   }
 
   // Handle copy JSON button
@@ -5066,9 +5526,13 @@ async function showCreateInviteDialog(win, winId, config, storageKey, existingIn
         setTimeout(() => {
           copyBtn.textContent = '📋 Copy JSON';
         }, 2000);
-      }).catch(err => {
+      }).catch(async (err) => {
         console.error('[Telecom] Error copying to clipboard:', err);
-        alert('Failed to copy. Please select and copy manually.');
+        if (window.Dialog && window.Dialog.alert) {
+          await window.Dialog.alert('Failed to copy. Please select and copy manually.');
+        } else {
+          alert('Failed to copy. Please select and copy manually.');
+        }
       });
     }
   });
@@ -5339,7 +5803,7 @@ function showShareAnswerDialog(winId, inviteWithAnswer, config, storageKey) {
     
     // Window might not be ready yet - retry after a delay
     console.warn('[Telecom] No Telecom windows found in DOM, retrying in 1000ms...');
-    setTimeout(() => {
+    setTimeout(async () => {
       const retryWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
       console.log('[Telecom] Retry: found windows:', retryWindows.length);
       if (retryWindows.length > 0) {
@@ -5349,7 +5813,11 @@ function showShareAnswerDialog(winId, inviteWithAnswer, config, storageKey) {
       } else {
         console.error('[Telecom] Still no Telecom windows found after retry');
         // Last resort: show alert with data
-        alert('WebRTC Answer generated! Please copy this data:\n\n' + JSON.stringify(inviteWithAnswer, null, 2).substring(0, 500) + '...');
+        if (window.Dialog && window.Dialog.alert) {
+          await window.Dialog.alert('WebRTC Answer generated! Please copy this data:\n\n' + JSON.stringify(inviteWithAnswer, null, 2).substring(0, 500) + '...');
+        } else {
+          alert('WebRTC Answer generated! Please copy this data:\n\n' + JSON.stringify(inviteWithAnswer, null, 2).substring(0, 500) + '...');
+        }
       }
     }, 1000);
     return; // Exit early, will retry
@@ -5830,7 +6298,7 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
   }, 100);
   
   // Function to validate and show preview dialog
-  const validateAndShowPreview = (inviteData) => {
+  const validateAndShowPreview = async (inviteData) => {
     if (!inviteData || !inviteData.trim()) return;
     
     try {
@@ -5845,7 +6313,11 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
       // Check if invite is for current user or from current user
       const effectiveGuid = getEffectiveGuid(config);
       if (!effectiveGuid) {
-        alert('GUID not available. Please check your settings.');
+        if (window.Dialog && window.Dialog.alert) {
+          await window.Dialog.alert('GUID not available. Please check your settings.');
+        } else {
+          alert('GUID not available. Please check your settings.');
+        }
         return;
       }
       
@@ -5964,7 +6436,7 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
           toEmail: inviteToProcess.toEmail ? 'present' : 'missing',
           toPublicKey: inviteToProcess.toPublicKey ? 'present' : 'missing'
         });
-        processWebRTCAnswer(inviteToProcess, config, storageKey).then(() => {
+        processWebRTCAnswer(inviteToProcess, config, storageKey).then(async () => {
           // Force refresh UI after processing
           setTimeout(() => {
             const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
@@ -5983,14 +6455,22 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
             });
           }, 200);
           
-          alert('WebRTC answer processed successfully. Connection should be established.');
+          if (window.Dialog && window.Dialog.alert) {
+            await window.Dialog.alert('WebRTC answer processed successfully. Connection should be established.');
+          } else {
+            alert('WebRTC answer processed successfully. Connection should be established.');
+          }
           // Clear textarea
           jsonTextarea.value = '';
           fileNameDiv.textContent = '';
           closeDialog();
-        }).catch(e => {
+        }).catch(async (e) => {
           console.error('[Telecom] Error processing WebRTC answer:', e);
-          alert('Error processing WebRTC answer: ' + e.message);
+          if (window.Dialog && window.Dialog.alert) {
+            await window.Dialog.alert('Error processing WebRTC answer: ' + e.message);
+          } else {
+            alert('Error processing WebRTC answer: ' + e.message);
+          }
         });
         return;
       }
@@ -6000,11 +6480,19 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
         // Valid received invite, continue to preview
       } else if (!isSentInvite && !isReceivedInvite) {
         const allUserGuids = [effectiveGuid, systemGuid, applicationGuid].filter(Boolean).filter((g, i, arr) => arr.indexOf(g) === i);
-        alert(`This invite does not belong to you.\n\nYour active GUID: ${effectiveGuid}\nInvite fromGuid: ${invite.fromGuid}\nInvite toGuid: ${invite.toGuid}\n\nAll your GUIDs: ${allUserGuids.join(', ')}`);
+        if (window.Dialog && window.Dialog.alert) {
+          await window.Dialog.alert(`This invite does not belong to you.\n\nYour active GUID: ${effectiveGuid}\nInvite fromGuid: ${invite.fromGuid}\nInvite toGuid: ${invite.toGuid}\n\nAll your GUIDs: ${allUserGuids.join(', ')}`);
+        } else {
+          alert(`This invite does not belong to you.\n\nYour active GUID: ${effectiveGuid}\nInvite fromGuid: ${invite.fromGuid}\nInvite toGuid: ${invite.toGuid}\n\nAll your GUIDs: ${allUserGuids.join(', ')}`);
+        }
         return;
       } else {
         // Sent invite without answer - nothing to do
-        alert('This is your sent invite. Wait for the recipient to accept and share the answer.');
+        if (window.Dialog && window.Dialog.alert) {
+          await window.Dialog.alert('This is your sent invite. Wait for the recipient to accept and share the answer.');
+        } else {
+          alert('This is your sent invite. Wait for the recipient to accept and share the answer.');
+        }
         return;
       }
 
@@ -6079,10 +6567,72 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
             console.error('[Telecom] Error saving recipient invites:', e);
           }
 
+          // Close accept invite dialog first
+          nestedBackdrop.remove();
+          nestedDialog.remove();
+
+          // Show progress dialog
+          const verboseLogging = config.verboseLogging !== undefined ? config.verboseLogging : false;
+          const progressDialog = showProgressDialog(winId, 'Contact adding...', verboseLogging);
+          
+          if (!progressDialog) {
+            if (window.Dialog && window.Dialog.alert) {
+              await window.Dialog.alert('Error showing progress dialog');
+            } else {
+              alert('Error showing progress dialog');
+            }
+            return;
+          }
+
+          // Intercept console.log to capture logs if verbose logging is enabled
+          const originalConsoleLog = console.log;
+          const originalConsoleWarn = console.warn;
+          const originalConsoleError = console.error;
+          
+          if (verboseLogging) {
+            console.log = (...args) => {
+              originalConsoleLog.apply(console, args);
+              const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+              if (message.includes('[Telecom]') || message.includes('[ICE]') || message.includes('[ICE-RECIPIENT]')) {
+                progressDialog.addLog(message);
+              }
+            };
+            console.warn = (...args) => {
+              originalConsoleWarn.apply(console, args);
+              const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+              if (message.includes('[Telecom]') || message.includes('[ICE]') || message.includes('[ICE-RECIPIENT]')) {
+                progressDialog.addLog('⚠️ ' + message);
+              }
+            };
+            console.error = (...args) => {
+              originalConsoleError.apply(console, args);
+              const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+              if (message.includes('[Telecom]') || message.includes('[ICE]') || message.includes('[ICE-RECIPIENT]')) {
+                progressDialog.addLog('❌ ' + message);
+              }
+            };
+          }
+
           // Process invite acceptance (this will update status to 'accepted' and add contact)
           try {
             await handleInviteResponse(invite, 'accepted', config, storageKey, winId);
-            alert(I18n.t('telecom.contactsInviteAccepted'));
+            
+            // Restore console functions
+            if (verboseLogging) {
+              console.log = originalConsoleLog;
+              console.warn = originalConsoleWarn;
+              console.error = originalConsoleError;
+            }
+            
+            // Close progress dialog
+            progressDialog.close();
+            
+            // Show success message
+            if (window.Dialog && window.Dialog.alert) {
+              await window.Dialog.alert(I18n.t('telecom.contactsInviteAccepted'));
+            } else {
+              alert(I18n.t('telecom.contactsInviteAccepted'));
+            }
             
             // Refresh contacts dialog if it's open
             const windowElement = WindowManager.findWindow(winId);
@@ -6096,8 +6646,22 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
               }
             }
           } catch (e) {
+            // Restore console functions
+            if (verboseLogging) {
+              console.log = originalConsoleLog;
+              console.warn = originalConsoleWarn;
+              console.error = originalConsoleError;
+            }
+            
+            // Close progress dialog
+            progressDialog.close();
+            
             console.error('[Telecom] Error accepting invite:', e);
-            alert(I18n.t('telecom.contactsAddContactError'));
+            if (window.Dialog && window.Dialog.alert) {
+              await window.Dialog.alert(I18n.t('telecom.contactsAddContactError'));
+            } else {
+              alert(I18n.t('telecom.contactsAddContactError'));
+            }
           }
         },
         // onReject - just close the accept invite dialog
@@ -6140,7 +6704,7 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
   };
 
   // Function to process image and decode QR code
-  const processImageFile = (file) => {
+  const processImageFile = async (file) => {
     if (!file) return;
     
     fileNameDiv.textContent = `Processing: ${file.name}`;
@@ -6148,14 +6712,14 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
     
     // Read image and decode QR code
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const imageDataUrl = event.target.result;
       
       // Try to decode QR code from image
       if (typeof jsQR !== 'undefined') {
         // Create image element to load the image
         const img = new Image();
-        img.onload = () => {
+        img.onload = async () => {
           // Create canvas to get image data
           const canvas = document.createElement('canvas');
           canvas.width = img.width;
@@ -6238,28 +6802,44 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
             fileNameDiv.style.color = 'var(--ok)';
             
             // Automatically show preview dialog
-            validateAndShowPreview(decodedData);
+            await validateAndShowPreview(decodedData);
           } else {
             // No QR code found
             fileNameDiv.textContent = `✗ No QR code found in ${file.name}`;
             fileNameDiv.style.color = 'var(--danger)';
-            alert('No QR code found in the image. Please check the image or paste JSON data manually.');
+            if (window.Dialog && window.Dialog.alert) {
+              await window.Dialog.alert('No QR code found in the image. Please check the image or paste JSON data manually.');
+            } else {
+              alert('No QR code found in the image. Please check the image or paste JSON data manually.');
+            }
           }
         };
-        img.onerror = () => {
-          alert('Error loading image file');
+        img.onerror = async () => {
+          if (window.Dialog && window.Dialog.alert) {
+            await window.Dialog.alert('Error loading image file');
+          } else {
+            alert('Error loading image file');
+          }
           fileNameDiv.textContent = '';
         };
         img.src = imageDataUrl;
       } else {
         // Library not available
         console.warn('[Telecom] jsQR library not available');
-        alert('QR code decoding library not available. Please paste JSON data manually.');
+        if (window.Dialog && window.Dialog.alert) {
+          await window.Dialog.alert('QR code decoding library not available. Please paste JSON data manually.');
+        } else {
+          alert('QR code decoding library not available. Please paste JSON data manually.');
+        }
         fileNameDiv.textContent = '';
       }
     };
-    reader.onerror = () => {
-      alert('Error reading image file');
+    reader.onerror = async () => {
+      if (window.Dialog && window.Dialog.alert) {
+        await window.Dialog.alert('Error reading image file');
+      } else {
+        alert('Error reading image file');
+      }
       fileNameDiv.textContent = '';
     };
     reader.readAsDataURL(file);
@@ -6301,7 +6881,7 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
     imageDropArea.style.background = 'transparent';
   });
 
-  imageDropArea.addEventListener('drop', (e) => {
+  imageDropArea.addEventListener('drop', async (e) => {
     e.preventDefault();
     e.stopPropagation();
     imageDropArea.style.borderColor = 'var(--panel-2)';
@@ -6313,7 +6893,11 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
       if (file.type.startsWith('image/')) {
         processImageFile(file);
       } else {
-        alert('Please drop an image file');
+        if (window.Dialog && window.Dialog.alert) {
+          await window.Dialog.alert('Please drop an image file');
+        } else {
+          alert('Please drop an image file');
+        }
       }
     }
   });
@@ -6360,10 +6944,10 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
     }
     
     // Wait 500ms after user stops typing before validating
-    textareaTimeout = setTimeout(() => {
+    textareaTimeout = setTimeout(async () => {
       const inviteData = jsonTextarea.value.trim();
       if (inviteData) {
-        validateAndShowPreview(inviteData);
+        await validateAndShowPreview(inviteData);
       }
     }, 500);
   });
@@ -6379,16 +6963,20 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
   };
 
   // Handle accept button (now just validates and shows preview)
-  acceptBtn.addEventListener('click', () => {
+  acceptBtn.addEventListener('click', async () => {
     const inviteData = jsonTextarea.value.trim();
     
     if (!inviteData) {
-      alert('Please paste invite data or upload QR code image');
+      if (window.Dialog && window.Dialog.alert) {
+        await window.Dialog.alert('Please paste invite data or upload QR code image');
+      } else {
+        alert('Please paste invite data or upload QR code image');
+      }
       return;
     }
 
     // Validate and show preview dialog
-    validateAndShowPreview(inviteData);
+    await validateAndShowPreview(inviteData);
   });
 
   // Close on backdrop click
@@ -6460,7 +7048,7 @@ function renderContactItem(contact, dialog, config, storageKey, winId) {
     chatBtn.style.opacity = '0.8';
     chatBtn.style.transform = 'scale(1)';
   });
-  chatBtn.addEventListener('click', () => {
+  chatBtn.addEventListener('click', async () => {
     try {
       const windowElement = WindowManager.findWindow(winId);
       if (!windowElement) {
@@ -6489,7 +7077,11 @@ function renderContactItem(contact, dialog, config, storageKey, winId) {
       // WebRTC connection establishment removed - using localStorage-based messaging instead
     } catch (e) {
       console.error('[Telecom] Error opening chat for contact:', e);
-      alert(I18n.t('telecom.contactsOpenChatError') || 'Error opening chat');
+      if (window.Dialog && window.Dialog.alert) {
+        await window.Dialog.alert(I18n.t('telecom.contactsOpenChatError') || 'Error opening chat');
+      } else {
+        alert(I18n.t('telecom.contactsOpenChatError') || 'Error opening chat');
+      }
     }
   });
   contactElement.appendChild(chatBtn);
@@ -6509,7 +7101,7 @@ function renderContactItem(contact, dialog, config, storageKey, winId) {
     deleteBtn.style.opacity = '0.7';
     deleteBtn.style.color = 'var(--muted)';
   });
-  deleteBtn.addEventListener('click', () => {
+  deleteBtn.addEventListener('click', async () => {
     const contactName = contact.displayName || contact.username || contact.guid;
     const confirmMessage = I18n.t('telecom.contactsDeleteContactConfirm', { name: contactName }) || `Are you sure you want to delete ${contactName} from your contacts?`;
     if (window.confirm(confirmMessage)) {
@@ -6564,7 +7156,11 @@ function renderContactItem(contact, dialog, config, storageKey, winId) {
         }
       } catch (e) {
         console.error('[Telecom] Error deleting contact:', e);
-        alert(I18n.t('telecom.contactsDeleteContactError') || 'Error deleting contact');
+        if (window.Dialog && window.Dialog.alert) {
+          await window.Dialog.alert(I18n.t('telecom.contactsDeleteContactError') || 'Error deleting contact');
+        } else {
+          alert(I18n.t('telecom.contactsDeleteContactError') || 'Error deleting contact');
+        }
       }
     }
   });
@@ -7329,7 +7925,11 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
     const hasPending = sentInvites.some(inv => inv.toGuid === targetGuid && inv.status === 'pending');
     if (hasPending) {
       console.warn('[Telecom] Invite already sent to', targetGuid);
-      alert('Invite already sent to this user');
+      if (window.Dialog && window.Dialog.alert) {
+        await window.Dialog.alert('Invite already sent to this user');
+      } else {
+        alert('Invite already sent to this user');
+      }
       return false; // Return false to indicate invite already exists
     }
   }
@@ -7382,7 +7982,11 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
       
       const errorMsg = `Storage quota exceeded!\n\nCurrent usage: ${sizeMB} MB (${sizeKB} KB)\n\nPlease delete old invites, messages, or contacts to free up space.\n\nYou can:\n- Delete old invites in Contacts > Invites tab\n- Delete old chats\n- Clear old messages`;
       console.error('[Telecom]', errorMsg);
-      alert(errorMsg);
+      if (window.Dialog && window.Dialog.alert) {
+        await window.Dialog.alert(errorMsg);
+      } else {
+        alert(errorMsg);
+      }
       throw new Error('Storage quota exceeded. Please free up space by deleting old data.');
     }
     
@@ -7628,11 +8232,71 @@ function showInviteReceivedDialog(winId, invite, config, storageKey) {
   const acceptBtn = dialog.querySelector('#telecom-invite-accept');
   if (acceptBtn) {
     acceptBtn.addEventListener('click', async () => {
+      // Close invite received dialog first
+      backdrop.remove();
+      dialog.remove();
+
+      // Show progress dialog
+      const verboseLogging = config.verboseLogging !== undefined ? config.verboseLogging : false;
+      const progressDialog = showProgressDialog(winId, 'Contact adding...', verboseLogging);
+      
+      if (!progressDialog) {
+        if (window.Dialog && window.Dialog.alert) {
+          await window.Dialog.alert('Error showing progress dialog');
+        } else {
+          alert('Error showing progress dialog');
+        }
+        return;
+      }
+
+      // Intercept console.log to capture logs if verbose logging is enabled
+      const originalConsoleLog = console.log;
+      const originalConsoleWarn = console.warn;
+      const originalConsoleError = console.error;
+      
+      if (verboseLogging) {
+        console.log = (...args) => {
+          originalConsoleLog.apply(console, args);
+          const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+          if (message.includes('[Telecom]') || message.includes('[ICE]') || message.includes('[ICE-RECIPIENT]')) {
+            progressDialog.addLog(message);
+          }
+        };
+        console.warn = (...args) => {
+          originalConsoleWarn.apply(console, args);
+          const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+          if (message.includes('[Telecom]') || message.includes('[ICE]') || message.includes('[ICE-RECIPIENT]')) {
+            progressDialog.addLog('⚠️ ' + message);
+          }
+        };
+        console.error = (...args) => {
+          originalConsoleError.apply(console, args);
+          const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+          if (message.includes('[Telecom]') || message.includes('[ICE]') || message.includes('[ICE-RECIPIENT]')) {
+            progressDialog.addLog('❌ ' + message);
+          }
+        };
+      }
+
       try {
         await handleInviteResponse(invite, 'accepted', config, storageKey, winId);
-        backdrop.remove();
-        dialog.remove();
-        alert(I18n.t('telecom.contactsInviteAccepted'));
+        
+        // Restore console functions
+        if (verboseLogging) {
+          console.log = originalConsoleLog;
+          console.warn = originalConsoleWarn;
+          console.error = originalConsoleError;
+        }
+        
+        // Close progress dialog
+        progressDialog.close();
+        
+        // Show success message
+        if (window.Dialog && window.Dialog.alert) {
+          await window.Dialog.alert(I18n.t('telecom.contactsInviteAccepted'));
+        } else {
+          alert(I18n.t('telecom.contactsInviteAccepted'));
+        }
         
         // Refresh contacts dialog if it's open
         const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
@@ -7640,8 +8304,22 @@ function showInviteReceivedDialog(winId, invite, config, storageKey) {
           showContactsDialog(null, winId, config, storageKey);
         }
       } catch (e) {
+        // Restore console functions
+        if (verboseLogging) {
+          console.log = originalConsoleLog;
+          console.warn = originalConsoleWarn;
+          console.error = originalConsoleError;
+        }
+        
+        // Close progress dialog
+        progressDialog.close();
+        
         console.error('[Telecom] Error accepting invite:', e);
-        alert(I18n.t('telecom.contactsAddContactError'));
+        if (window.Dialog && window.Dialog.alert) {
+          await window.Dialog.alert(I18n.t('telecom.contactsAddContactError'));
+        } else {
+          alert(I18n.t('telecom.contactsAddContactError'));
+        }
       }
     });
   }
@@ -8893,11 +9571,13 @@ async function processWebRTCAnswer(invite, config, storageKey) {
       console.warn('[Telecom] The answer was processed, but connection cannot be established.');
       
       // Show user-friendly message
-      alert('WebRTC connection cannot be established because the original connection was lost (page may have been reloaded).\n\n' +
+      if (window.Dialog && window.Dialog.alert) {
+        await window.Dialog.alert('WebRTC connection cannot be established because the original connection was lost (page may have been reloaded).\n\n' +
             'To establish a connection:\n' +
             '1. Create a new invite\n' +
             '2. Have the recipient accept it\n' +
             '3. Process the answer while the page is still loaded');
+      }
       
       return; // Exit early - cannot process answer without original peer connection
     }
@@ -10130,7 +10810,11 @@ function renderPendingInvitesInContactsDialog(dialog, invites, config, storageKe
           refreshContactsDialog(dialog, config, storageKey, winId);
         } catch (e) {
           console.error('[Telecom] Error canceling invite:', e);
-          alert(I18n.t('telecom.contactsCancelInviteError'));
+          if (window.Dialog && window.Dialog.alert) {
+            await window.Dialog.alert(I18n.t('telecom.contactsCancelInviteError'));
+          } else {
+            alert(I18n.t('telecom.contactsCancelInviteError'));
+          }
         }
       }
     });
@@ -10542,9 +11226,14 @@ function createInviteElement(invite, config, storageKey, winId, type, status) {
           }
         } catch (e) {
           console.error('[Telecom] Error canceling/deleting invite:', e);
-          alert(type === 'sent' 
+          const errorMsg = type === 'sent' 
             ? (I18n.t('telecom.contactsCancelInviteError') || 'Error canceling invite. Please try again.')
-            : (I18n.t('telecom.contactsDeleteInviteError') || 'Error deleting invite. Please try again.'));
+            : (I18n.t('telecom.contactsDeleteInviteError') || 'Error deleting invite. Please try again.');
+          if (window.Dialog && window.Dialog.alert) {
+            await window.Dialog.alert(errorMsg);
+          } else {
+            alert(errorMsg);
+          }
         }
       }
     });
@@ -10559,9 +11248,13 @@ function createInviteElement(invite, config, storageKey, winId, type, status) {
 /**
  * Show Answer dialog (similar to showShareAnswerDialog but for viewing existing answer)
  */
-function showAnswerDialog(winId, invite, config, storageKey) {
+async function showAnswerDialog(winId, invite, config, storageKey) {
   if (!invite.webrtcAnswer) {
-    alert('No answer available for this invite');
+    if (window.Dialog && window.Dialog.alert) {
+      await window.Dialog.alert('No answer available for this invite');
+    } else {
+      alert('No answer available for this invite');
+    }
     return;
   }
   
