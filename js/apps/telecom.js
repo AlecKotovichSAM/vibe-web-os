@@ -1472,18 +1472,15 @@ function renderChatsList(win, winId, config, storageKey) {
       item.style.removeProperty('background-color');
       item.style.removeProperty('background');
       item.style.removeProperty('animation');
+      item.style.removeProperty('-webkit-animation');
       item.style.removeProperty('border-left');
       item.style.removeProperty('transition');
-      // Force reflow to ensure animation starts
+      // Force reflow and restart animation
       void item.offsetWidth;
-      // Double-check: ensure animation is running
-      const computed = window.getComputedStyle(item);
-      console.log('[Telecom] 🔍 Blink check after cleanup:', {
-        hasClass: item.classList.contains('telecom-chat-blink'),
-        animation: computed.animation,
-        backgroundColor: computed.backgroundColor,
-        inlineStyle: item.getAttribute('style')
-      });
+      // Explicitly restart animation by toggling it
+      item.style.animation = 'none';
+      void item.offsetWidth;
+      item.style.animation = '';
     }
     item.addEventListener('click', () => {
       const chatId = item.dataset.chatId;
