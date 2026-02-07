@@ -3125,65 +3125,115 @@ function showNewChannelDialog(win, winId, config, storageKey) {
  */
 function showPasswordDialog(winId) {
   return new Promise((resolve) => {
-    // Find the actual window element
+    // Find the actual window element using WindowManager
     let windowElement = null;
+    
+    // Method 1: Try WindowManager.findWindow with provided winId
     if (winId) {
       windowElement = WindowManager.findWindow(winId);
-    }
-    
-    // If window not found by winId, try to find any Telecom window
-    if (!windowElement) {
-      const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
-      if (telecomWindows.length > 0) {
-        windowElement = telecomWindows[0];
-        winId = windowElement.dataset.winId || null;
-        console.log('[Telecom] Found Telecom window automatically, winId:', winId);
+      if (windowElement) {
+        console.log('[Telecom] Found window via WindowManager.findWindow with winId:', winId);
       }
     }
     
+    // Method 2: If not found, try to find any Telecom window using proper selector
     if (!windowElement) {
-      console.error('[Telecom] Window not found, winId:', winId);
-      resolve(null);
-      return;
+      // Use proper selector for Telecom windows (same as in core.apps.js findAppWindow)
+      const telecomWindows = document.querySelectorAll('.window[data-win-id^="telecom-"]');
+      if (telecomWindows.length > 0) {
+        // Get the first Telecom window and extract its winId
+        windowElement = telecomWindows[0];
+        winId = windowElement.dataset.winId || null;
+        console.log('[Telecom] Found Telecom window via querySelector, winId:', winId);
+        
+        // Verify via WindowManager
+        if (winId) {
+          const verifiedWindow = WindowManager.findWindow(winId);
+          if (verifiedWindow) {
+            windowElement = verifiedWindow;
+            console.log('[Telecom] Verified window via WindowManager.findWindow');
+          }
+        }
+      }
     }
-
-    const windowContent = windowElement.querySelector('.win-content');
-    if (!windowContent) {
-      console.error('[Telecom] Window content not found');
-      resolve(null);
-      return;
+    
+    // Determine where to attach the dialog
+    let containerElement = null;
+    let isGlobalDialog = false;
+    
+    if (windowElement) {
+      const windowContent = windowElement.querySelector('.win-content');
+      if (windowContent) {
+        containerElement = windowContent;
+      }
+    }
+    
+    // If no window found, create global dialog on body
+    if (!containerElement) {
+      containerElement = document.body;
+      isGlobalDialog = true;
+      console.log('[Telecom] No Telecom window found, creating global password dialog');
     }
 
     // Create backdrop
     const backdrop = document.createElement('div');
     backdrop.className = 'telecom-password-backdrop';
-    backdrop.style.cssText = `
-      position: absolute;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.7);
-      z-index: 2000;
-      animation: fadeIn 0.2s ease;
-    `;
+    if (isGlobalDialog) {
+      backdrop.style.cssText = `
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 9999;
+        animation: fadeIn 0.2s ease;
+      `;
+    } else {
+      backdrop.style.cssText = `
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 2000;
+        animation: fadeIn 0.2s ease;
+      `;
+    }
 
     // Create dialog
     const dialog = document.createElement('div');
     dialog.className = 'telecom-password-dialog';
-    dialog.style.cssText = `
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      width: 400px;
-      max-width: 90%;
-      background: var(--panel);
-      border-radius: 8px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-      z-index: 2001;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      animation: fadeIn 0.2s ease;
-    `;
+    if (isGlobalDialog) {
+      dialog.style.cssText = `
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 400px;
+        max-width: 90%;
+        background: var(--panel);
+        border-radius: 8px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        animation: fadeIn 0.2s ease;
+      `;
+    } else {
+      dialog.style.cssText = `
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 400px;
+        max-width: 90%;
+        background: var(--panel);
+        border-radius: 8px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        z-index: 2001;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        animation: fadeIn 0.2s ease;
+      `;
+    }
 
     // Dialog header
     const header = document.createElement('div');
@@ -3236,8 +3286,13 @@ function showPasswordDialog(winId) {
     dialog.appendChild(header);
     dialog.appendChild(body);
     dialog.appendChild(footer);
-    windowContent.appendChild(backdrop);
-    windowContent.appendChild(dialog);
+    containerElement.appendChild(backdrop);
+    containerElement.appendChild(dialog);
+    
+    // Ensure container has relative positioning if it's window content
+    if (!isGlobalDialog && containerElement.style.position !== 'relative' && containerElement.style.position !== 'absolute') {
+      containerElement.style.position = 'relative';
+    }
 
     const passwordInput = dialog.querySelector('#telecom-password-input');
     const errorDiv = dialog.querySelector('#telecom-password-error');
@@ -3331,12 +3386,22 @@ async function getDecryptedPrivateKey(winId) {
     return null;
   }
 
-  // If winId not provided, try to find Telecom window
+  // If winId not provided, try to find Telecom window using proper selector
   if (!winId) {
-    const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+    // Use proper selector for Telecom windows (same as in core.apps.js findAppWindow)
+    const telecomWindows = document.querySelectorAll('.window[data-win-id^="telecom-"]');
     if (telecomWindows.length > 0) {
-      winId = telecomWindows[0].dataset.winId || null;
+      const windowElement = telecomWindows[0];
+      winId = windowElement.dataset.winId || null;
       console.log('[Telecom] Found Telecom window, using winId:', winId);
+      
+      // Verify via WindowManager
+      if (winId && WindowManager.findWindow(winId)) {
+        console.log('[Telecom] Verified Telecom window via WindowManager.findWindow');
+      } else {
+        console.warn('[Telecom] ⚠️ Telecom window found but WindowManager.findWindow failed');
+        winId = null;
+      }
     }
   }
 
@@ -3736,6 +3801,8 @@ function showContactsDialog(win, winId, config, storageKey) {
  * Refresh contacts dialog content (update pending invites and contacts list)
  */
 function refreshContactsDialog(dialog, config, storageKey, winId) {
+  console.log('[Telecom] 🔄 refreshContactsDialog called');
+  
   // Get system account
   const systemAccount = window.Auth ? window.Auth.getAccount() : null;
   if (!systemAccount) {
@@ -3762,9 +3829,18 @@ function refreshContactsDialog(dialog, config, storageKey, winId) {
   const allSentInvites = getPendingInvites(effectiveGuid, false); // Get all, not just pending
   const allReceivedInvites = getReceivedPendingInvites(effectiveGuid, false); // Get all, not just pending
   
+  console.log('[Telecom] 📊 Refresh data:', {
+    contactsCount: contacts.length,
+    pendingInvitesCount: pendingInvites.length,
+    receivedPendingInvitesCount: receivedPendingInvites.length,
+    allSentInvitesCount: allSentInvites.length,
+    acceptedSentInvitesCount: allSentInvites.filter(inv => inv.status === 'accepted').length
+  });
+  
   // Refresh Contacts tab
   const contactsList = dialog.querySelector('#telecom-contacts-list');
   if (contactsList) {
+    console.log('[Telecom] ✅ Found contacts list, refreshing with', contacts.length, 'contacts');
     contactsList.innerHTML = '';
     if (contacts.length === 0) {
       contactsList.innerHTML = `
@@ -3778,11 +3854,14 @@ function refreshContactsDialog(dialog, config, storageKey, winId) {
         contactsList.appendChild(contactElement);
       });
     }
+  } else {
+    console.log('[Telecom] ⚠️ Contacts list not found in dialog');
   }
   
   // Refresh Invites tab - Pending section
   const pendingInvitesContainer = dialog.querySelector('#telecom-contacts-pending-invites');
   if (pendingInvitesContainer) {
+    console.log('[Telecom] ✅ Found pending invites container, refreshing');
     pendingInvitesContainer.innerHTML = '';
     if (pendingInvites.length === 0 && receivedPendingInvites.length === 0) {
       pendingInvitesContainer.innerHTML = `
@@ -3803,9 +3882,14 @@ function refreshContactsDialog(dialog, config, storageKey, winId) {
   // Refresh Invites tab - Accepted section
   const acceptedInvitesContainer = dialog.querySelector('#telecom-contacts-accepted-invites');
   if (acceptedInvitesContainer) {
+    console.log('[Telecom] ✅ Found accepted invites container, refreshing');
     acceptedInvitesContainer.innerHTML = '';
     const acceptedSentInvites = allSentInvites.filter(inv => inv.status === 'accepted');
     const acceptedReceivedInvites = allReceivedInvites.filter(inv => inv.status === 'accepted');
+    console.log('[Telecom] 📊 Accepted invites:', {
+      sent: acceptedSentInvites.length,
+      received: acceptedReceivedInvites.length
+    });
     
     if (acceptedSentInvites.length === 0 && acceptedReceivedInvites.length === 0) {
       acceptedInvitesContainer.innerHTML = `
@@ -5502,7 +5586,7 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
     
     try {
       // Parse JSON
-      const invite = JSON.parse(inviteData);
+      let invite = JSON.parse(inviteData);
       
       // Validate invite structure
       if (!invite.id || !invite.fromGuid || !invite.toGuid) {
@@ -5632,6 +5716,24 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
           toPublicKey: inviteToProcess.toPublicKey ? 'present' : 'missing'
         });
         processWebRTCAnswer(inviteToProcess, config, storageKey).then(() => {
+          // Force refresh UI after processing
+          setTimeout(() => {
+            const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+            telecomWindows.forEach(telecomWin => {
+              const winId = telecomWin.dataset.winId;
+              if (winId) {
+                renderChatsList(telecomWin, winId, config, storageKey);
+                const windowContent = telecomWin.querySelector('.win-content');
+                if (windowContent) {
+                  const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
+                  if (contactsDialog) {
+                    refreshContactsDialog(contactsDialog, config, storageKey, winId);
+                  }
+                }
+              }
+            });
+          }, 200);
+          
           alert('WebRTC answer processed successfully. Connection should be established.');
           // Clear textarea
           jsonTextarea.value = '';
@@ -8903,10 +9005,28 @@ async function processWebRTCAnswer(invite, config, storageKey) {
                   decryptedText = '[Encrypted message - decryption failed: private key not available]';
                 } else {
                   // Try to get decrypted private key (will show password dialog if needed)
-                  // Find Telecom window to get winId
-                  const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
-                  const telecomWin = telecomWindows[0]; // Use first Telecom window
-                  const winId = telecomWin?.dataset?.winId || null;
+                  // Find Telecom window to get winId using proper WindowManager mechanism
+                  let winId = null;
+                  
+                  // Use proper selector for Telecom windows (same as in core.apps.js findAppWindow)
+                  const telecomWindows = document.querySelectorAll('.window[data-win-id^="telecom-"]');
+                  if (telecomWindows.length > 0) {
+                    // Get the first Telecom window and extract its winId
+                    const windowElement = telecomWindows[0];
+                    winId = windowElement.dataset.winId || null;
+                    console.log('[Telecom] Found Telecom window for password dialog, winId:', winId);
+                    
+                    // Verify via WindowManager
+                    if (winId && WindowManager.findWindow(winId)) {
+                      console.log('[Telecom] Verified Telecom window via WindowManager.findWindow');
+                    } else {
+                      console.warn('[Telecom] ⚠️ Telecom window found but WindowManager.findWindow failed');
+                      winId = null;
+                    }
+                  } else {
+                    console.log('[Telecom] No Telecom windows found');
+                  }
+                  
                   const privateKey = await getDecryptedPrivateKey(winId);
                   if (privateKey) {
                     console.log('[Telecom] Using decrypted private key (sender side)');
@@ -8960,10 +9080,17 @@ async function processWebRTCAnswer(invite, config, storageKey) {
               localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
             }
             
-            // Refresh UI if chat is currently selected
-            const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+            // Refresh UI if chat is currently selected - use proper selector
+            const telecomWindows = document.querySelectorAll('.window[data-win-id^="telecom-"]');
             telecomWindows.forEach(win => {
-              const selectedChatId = win.dataset.selectedChatId;
+              const winId = win.dataset.winId;
+              if (!winId) return;
+              
+              // Verify via WindowManager
+              const verifiedWindow = WindowManager.findWindow(winId);
+              if (!verifiedWindow) return;
+              
+              const selectedChatId = verifiedWindow.dataset.selectedChatId;
               // Get storageKey from context or use default
               const effectiveStorageKey = storageKey || 'webos.telecom.v1';
               // Get config from context if not available
@@ -8980,11 +9107,11 @@ async function processWebRTCAnswer(invite, config, storageKey) {
               }
               
               if (selectedChatId === chatId) {
-                renderMessages(win, messages, effectiveConfig);
-                renderChatsList(win, win.dataset.winId, effectiveConfig, effectiveStorageKey);
+                renderMessages(verifiedWindow, messages, effectiveConfig);
+                renderChatsList(verifiedWindow, winId, effectiveConfig, effectiveStorageKey);
               } else {
                 // Chat is not selected, refresh list and add blink effect
-                renderChatsList(win, win.dataset.winId, effectiveConfig, effectiveStorageKey);
+                renderChatsList(verifiedWindow, winId, effectiveConfig, effectiveStorageKey);
                 blinkChatItem(chatId);
               }
             });
@@ -9133,6 +9260,15 @@ async function processWebRTCAnswer(invite, config, storageKey) {
           localStorage.setItem(SENT_INVITES_STORAGE_KEY, JSON.stringify(sentInvites));
           console.log('[Telecom] ✅ Invite status updated to accepted, ID:', foundInvite.id);
           
+          // Verify invite was saved correctly
+          const verifyInvites = JSON.parse(localStorage.getItem(SENT_INVITES_STORAGE_KEY));
+          const verifyInvite = verifyInvites.find(inv => inv.id === foundInvite.id);
+          if (verifyInvite && verifyInvite.status === 'accepted') {
+            console.log('[Telecom] ✅ Verified: Invite saved with accepted status');
+          } else {
+            console.error('[Telecom] ❌ ERROR: Invite NOT saved correctly!');
+          }
+          
           // Add contact immediately
           const contacts = getContacts();
           const existingContact = contacts.find(c => c.guid === contactGuid);
@@ -9157,15 +9293,7 @@ async function processWebRTCAnswer(invite, config, storageKey) {
               firstName: contactInfo.firstName,
               lastName: contactInfo.lastName,
               email: contactInfo.email ? 'present' : 'missing',
-              publicKey: contactInfo.publicKey ? 'present (' + (contactInfo.publicKey?.length || 0) + ' chars)' : 'missing',
-              sourceData: {
-                foundInvite_toUsername: foundInvite.toUsername,
-                foundInvite_toDisplayName: foundInvite.toDisplayName,
-                foundInvite_toFirstName: foundInvite.toFirstName,
-                foundInvite_toLastName: foundInvite.toLastName,
-                foundInvite_toEmail: foundInvite.toEmail,
-                foundInvite_toPublicKey: foundInvite.toPublicKey ? 'present' : 'missing'
-              }
+              publicKey: contactInfo.publicKey ? 'present (' + (contactInfo.publicKey?.length || 0) + ' chars)' : 'missing'
             });
             
             contacts.push(contactInfo);
@@ -9180,15 +9308,11 @@ async function processWebRTCAnswer(invite, config, storageKey) {
                 username: savedContact.username,
                 displayName: savedContact.displayName,
                 firstName: savedContact.firstName,
-                lastName: savedContact.lastName,
-                email: savedContact.email ? 'present' : 'missing',
-                publicKey: savedContact.publicKey ? 'present' : 'missing'
+                lastName: savedContact.lastName
               });
             } else {
               console.error('[Telecom] ❌ Contact NOT found after save!');
             }
-            
-            console.log('[Telecom] ✅ Contact added:', contactInfo.displayName, 'username:', contactInfo.username);
             
             // Create chat
             const chats = getChats();
@@ -9207,23 +9331,63 @@ async function processWebRTCAnswer(invite, config, storageKey) {
             console.log('[Telecom] Contact already exists:', contactGuid);
           }
           
-          // Refresh UI immediately
-          const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+          // Refresh UI immediately - SIMPLE AND DIRECT
+          console.log('[Telecom] 🔄 Refreshing UI after saving invite and contact...');
+          
+          // Reload config one more time to ensure we have latest data
+          let finalConfig = effectiveConfig;
+          try {
+            const configData = localStorage.getItem(effectiveStorageKey);
+            if (configData) {
+              finalConfig = JSON.parse(configData);
+              console.log('[Telecom] ✅ Reloaded config for UI refresh');
+            }
+          } catch (e) {
+            console.error('[Telecom] Error reloading config:', e);
+          }
+          
+          // Refresh all Telecom windows using proper selector
+          const telecomWindows = document.querySelectorAll('.window[data-win-id^="telecom-"]');
+          console.log('[Telecom] Found', telecomWindows.length, 'Telecom windows to refresh');
+          
           telecomWindows.forEach(telecomWin => {
             const winId = telecomWin.dataset.winId;
-            if (winId) {
-              renderChatsList(telecomWin, winId, effectiveConfig, effectiveStorageKey);
-              
-              const windowContent = telecomWin.querySelector('.win-content');
-              if (windowContent) {
-                const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
-                if (contactsDialog) {
-                  refreshContactsDialog(contactsDialog, effectiveConfig, effectiveStorageKey, winId);
-                  console.log('[Telecom] ✅ Contacts dialog refreshed');
-                }
-              }
+            if (!winId) {
+              console.log('[Telecom] ⚠️ Window has no winId, skipping');
+              return;
+            }
+            
+            // Verify via WindowManager
+            const verifiedWindow = WindowManager.findWindow(winId);
+            if (!verifiedWindow) {
+              console.log('[Telecom] ⚠️ Window not found via WindowManager, skipping winId:', winId);
+              return;
+            }
+            
+            console.log('[Telecom] Refreshing window:', winId);
+            
+            // Refresh chats list (use verified window)
+            renderChatsList(verifiedWindow, winId, finalConfig, effectiveStorageKey);
+            console.log('[Telecom] ✅ Chats list refreshed for window:', winId);
+            
+            // Find and refresh contacts dialog
+            const windowContent = verifiedWindow.querySelector('.win-content');
+            if (!windowContent) {
+              console.log('[Telecom] ⚠️ Window content not found for window:', winId);
+              return;
+            }
+            
+            const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
+            if (contactsDialog) {
+              console.log('[Telecom] ✅ Found contacts dialog, refreshing for window:', winId);
+              refreshContactsDialog(contactsDialog, finalConfig, effectiveStorageKey, winId);
+              console.log('[Telecom] ✅ Contacts dialog refreshed for window:', winId);
+            } else {
+              console.log('[Telecom] ⚠️ Contacts dialog not found (may not be open) for window:', winId);
             }
           });
+          
+          console.log('[Telecom] ✅ UI refresh complete');
         } else {
           console.warn('[Telecom] ⚠️ Invite not found in sent invites');
         }
