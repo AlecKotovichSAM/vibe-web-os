@@ -1328,14 +1328,14 @@ function blinkChatItem(chatId) {
         const chatItem = verifiedWin.querySelector(`.telecom-chat-item[data-chat-id="${chatId}"]`);
         if (chatItem) {
           chatItem.classList.add('telecom-chat-blink');
-          // CRITICAL: Remove ALL inline background styles FIRST - they override CSS animation
+          // CRITICAL: Remove ALL inline styles that conflict with CSS animation
           chatItem.style.backgroundColor = '';
           chatItem.style.background = '';
+          chatItem.style.animation = '';
+          chatItem.style.borderLeft = '';
           // CRITICAL: Remove transition - it conflicts with animation
           chatItem.style.transition = 'none';
-          // Then set animation and border - CSS class will handle the rest
-          chatItem.style.animation = 'blinkOrange 1s ease-in-out infinite';
-          chatItem.style.borderLeft = '3px solid rgba(255, 165, 0, 0.9)';
+          // CSS class will handle animation and border via !important
           console.log('[Telecom] 💫✅ Added blink effect to chat:', chatId, 'in window:', winId);
           applied = true;
         } else {
@@ -1429,16 +1429,17 @@ function renderChatsList(win, winId, config, storageKey) {
     const shouldBlink = blinkingChats.has(chat.id) && !isSelected;
     
     // Visual styling for selected chat (but don't override blink)
-    // If chat should blink, don't set background inline - let animation handle it
+    // If chat should blink, don't set background/border/animation inline - let CSS class handle it
     const backgroundColor = shouldBlink ? '' : (isSelected ? 'var(--panel-2)' : 'transparent');
-    const borderLeft = shouldBlink ? '3px solid rgba(255, 165, 0, 0.9)' : (isSelected ? '3px solid var(--accent)' : 'none');
-    const animation = shouldBlink ? 'blinkOrange 1s ease-in-out infinite' : 'none';
+    const borderLeft = shouldBlink ? '' : (isSelected ? '3px solid var(--accent)' : 'none');
+    // CRITICAL: Don't set animation inline for blinking items - CSS class handles it
+    const animation = shouldBlink ? '' : 'none';
     // CRITICAL: Remove transition for blinking items - it conflicts with animation
     const transition = shouldBlink ? 'none' : 'background 0.2s ease';
     
     return `
       <div class="telecom-chat-item${shouldBlink ? ' telecom-chat-blink' : ''}" data-chat-id="${chat.id}" 
-        style="padding:10px 12px; display:flex; align-items:center; gap:12px; cursor:pointer; transition:${transition}; border-bottom:1px solid var(--panel-2);${backgroundColor ? ` background:${backgroundColor};` : ''} border-left:${borderLeft}; animation:${animation};">
+        style="padding:10px 12px; display:flex; align-items:center; gap:12px; cursor:pointer; transition:${transition}; border-bottom:1px solid var(--panel-2);${backgroundColor ? ` background:${backgroundColor};` : ''}${borderLeft ? ` border-left:${borderLeft};` : ''}${animation ? ` animation:${animation};` : ''}">
         <div style="width:48px; height:48px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0;">
           ${chat.icon || '💬'}
         </div>
@@ -1516,14 +1517,14 @@ function renderChatsList(win, winId, config, storageKey) {
       // Only restore blink if chat is not currently selected
       if (!isCurrentlySelected) {
         item.classList.add('telecom-chat-blink');
-        // CRITICAL: Remove ALL inline background styles FIRST - they override CSS animation
+        // CRITICAL: Remove ALL inline styles that conflict with CSS animation
         item.style.backgroundColor = '';
         item.style.background = '';
+        item.style.animation = '';
+        item.style.borderLeft = '';
         // CRITICAL: Remove transition - it conflicts with animation
         item.style.transition = 'none';
-        // Then set animation and border - CSS class with !important will handle the animation
-        item.style.animation = 'blinkOrange 1s ease-in-out infinite';
-        item.style.borderLeft = '3px solid rgba(255, 165, 0, 0.9)';
+        // CSS class will handle animation and border via !important
         // Ensure it's in global Set
         if (window._telecomBlinkingChats && !window._telecomBlinkingChats.has(chatId)) {
           window._telecomBlinkingChats.add(chatId);
