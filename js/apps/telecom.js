@@ -7698,8 +7698,22 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                     decryptedText = '[Encrypted message - decryption failed: private key not available]';
                   } else {
                     // Try to get decrypted private key (will show password dialog if needed)
-                    const winId = win?.dataset?.winId || null;
-                    const privateKey = await getDecryptedPrivateKey(winId);
+                    // Find Telecom window to get winId using WindowManager
+                    let foundWinId = winId || null;
+                    
+                    if (!foundWinId) {
+                      // Try to find any Telecom window
+                      const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+                      if (telecomWindows.length > 0) {
+                        const candidateWinId = telecomWindows[0].dataset.winId || null;
+                        if (candidateWinId && WindowManager.findWindow(candidateWinId)) {
+                          foundWinId = candidateWinId;
+                          console.log('[Telecom] Found Telecom window for password dialog via WindowManager, winId:', foundWinId);
+                        }
+                      }
+                    }
+                    
+                    const privateKey = await getDecryptedPrivateKey(foundWinId);
                     if (privateKey) {
                       console.log('[Telecom] Using decrypted private key (recipient side)');
                       try {
@@ -7833,8 +7847,22 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                       decryptedText = '[Encrypted message - decryption failed: private key not available]';
                     } else {
                       // Try to get decrypted private key (will show password dialog if needed)
-                      const winId = win?.dataset?.winId || null;
-                      const privateKey = await getDecryptedPrivateKey(winId);
+                      // Find Telecom window to get winId using WindowManager
+                      let foundWinId = winId || null;
+                      
+                      if (!foundWinId) {
+                        // Try to find any Telecom window
+                        const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+                        if (telecomWindows.length > 0) {
+                          const candidateWinId = telecomWindows[0].dataset.winId || null;
+                          if (candidateWinId && WindowManager.findWindow(candidateWinId)) {
+                            foundWinId = candidateWinId;
+                            console.log('[Telecom] Found Telecom window for password dialog via WindowManager, winId:', foundWinId);
+                          }
+                        }
+                      }
+                      
+                      const privateKey = await getDecryptedPrivateKey(foundWinId);
                       if (privateKey) {
                         console.log('[Telecom] Using decrypted private key (recipient side, incoming channel)');
                         try {
