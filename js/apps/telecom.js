@@ -1213,17 +1213,17 @@ function blinkChatItem(chatId) {
   window._telecomBlinkingChats.add(chatId);
   console.log('[Telecom] 💫 Requesting blink for chat:', chatId);
   
-  // Use setTimeout to ensure DOM is ready after any re-renders
-  setTimeout(() => {
-    // Use multiple selectors to find Telecom windows
+  // Try immediately first
+  const applyBlink = () => {
     const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
     console.log('[Telecom] Found', telecomWindows.length, 'Telecom windows for blink');
     
     if (telecomWindows.length === 0) {
       console.warn('[Telecom] ⚠️ No Telecom windows found for blink');
-      return;
+      return false;
     }
     
+    let applied = false;
     telecomWindows.forEach(winEl => {
       const winId = winEl.dataset.winId;
       if (!winId) {
@@ -1246,19 +1246,10 @@ function blinkChatItem(chatId) {
         const chatItem = win.querySelector(`.telecom-chat-item[data-chat-id="${chatId}"]`);
         if (chatItem) {
           chatItem.classList.add('telecom-chat-blink');
-          console.log('[Telecom] 💫 Added blink effect to chat:', chatId, 'in window:', winId);
+          console.log('[Telecom] 💫✅ Added blink effect to chat:', chatId, 'in window:', winId);
+          applied = true;
         } else {
-          console.warn('[Telecom] ⚠️ Chat item not found for blink:', chatId, 'in window:', winId, '- will retry');
-          // Retry after a bit more delay
-          setTimeout(() => {
-            const retryItem = win.querySelector(`.telecom-chat-item[data-chat-id="${chatId}"]`);
-            if (retryItem) {
-              retryItem.classList.add('telecom-chat-blink');
-              console.log('[Telecom] 💫 Added blink effect to chat (retry):', chatId);
-            } else {
-              console.error('[Telecom] ❌ Chat item still not found after retry:', chatId);
-            }
-          }, 300);
+          console.warn('[Telecom] ⚠️ Chat item not found for blink:', chatId, 'in window:', winId);
         }
       } else {
         // Chat is selected - remove from blinking Set
@@ -1266,7 +1257,22 @@ function blinkChatItem(chatId) {
         console.log('[Telecom] ℹ️ Skipping blink for selected chat:', chatId);
       }
     });
-  }, 200); // Increased delay to ensure DOM is ready after renderChatsList
+    
+    return applied;
+  };
+  
+  // Try immediately
+  if (!applyBlink()) {
+    // If not found, retry after delay
+    setTimeout(() => {
+      if (!applyBlink()) {
+        // Final retry
+        setTimeout(() => {
+          applyBlink();
+        }, 300);
+      }
+    }, 200);
+  }
 }
 
 /**
@@ -1368,7 +1374,14 @@ function renderChatsList(win, winId, config, storageKey) {
       // Only restore blink if chat is not currently selected
       if (selectedChatId !== chatId) {
         item.classList.add('telecom-chat-blink');
-        console.log('[Telecom] 💫 Restored blink effect for chat:', chatId);
+        // Force style application
+        item.style.animation = 'blinkOrange 1s ease-in-out infinite';
+        item.style.borderLeft = '3px solid rgba(255, 165, 0, 0.9)';
+        console.log('[Telecom] 💫✅ Restored blink effect for chat:', chatId, 'classList:', item.classList.toString());
+      } else {
+        // Chat is selected, remove from Set
+        window._telecomBlinkingChats.delete(chatId);
+        console.log('[Telecom] ℹ️ Removed blink from selected chat:', chatId);
       }
     }
   });
@@ -7758,6 +7771,9 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
             
             // Handle incoming WebRTC message
             if (messageData.type === 'message' && messageData.text) {
+              // Determine chatId BEFORE decryption so we can blink immediately after
+              const chatId = `contact-${inviteForAnswer.fromGuid}`;
+              
               // Decrypt message if it's encrypted
               let decryptedText = messageData.text;
               if (messageData.encrypted) {
@@ -7792,6 +7808,10 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                       try {
                         decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
                         console.log('[Telecom] ✅ Message decrypted successfully (recipient side):', decryptedText);
+                        // BLINK IMMEDIATELY AFTER SUCCESSFUL DECRYPTION
+                        if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
+                        window._telecomBlinkingChats.add(chatId);
+                        blinkChatItem(chatId);
                       } catch (e) {
                         console.error('[Telecom] ❌ Error decrypting with private key:', e);
                         decryptedText = '[Encrypted message - decryption failed]';
@@ -7807,9 +7827,12 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                 }
               } else {
                 console.log('[Telecom] 📝 Message is not encrypted, using as-is:', decryptedText);
+                // BLINK IMMEDIATELY FOR UNENCRYPTED MESSAGES TOO
+                if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
+                window._telecomBlinkingChats.add(chatId);
+                blinkChatItem(chatId);
               }
               
-              const chatId = `contact-${inviteForAnswer.fromGuid}`;
               const newMessage = {
                 id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
                 chatId: chatId,
@@ -7850,14 +7873,12 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
               }
               
               // Refresh UI - use same logic as selectChat
-              // Reuse chat variable from above
-              
               if (!chat) {
                 console.warn('[Telecom] Chat not found for UI update:', chatId);
                 return;
               }
               
-              // Initialize blinking chats Set
+              // Initialize blinking chats Set BEFORE any UI updates
               if (!window._telecomBlinkingChats) {
                 window._telecomBlinkingChats = new Set();
               }
@@ -7900,13 +7921,13 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                 
                 if (selectedChatId === chatId) {
                   // Chat is selected - use selectChat to refresh (same as clicking on chat)
+                  // This will also remove blink effect if it was active
                   console.log('[Telecom] ✅ Chat is selected, refreshing using selectChat');
                   selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
                 } else {
-                  // Chat is not selected - add to blinking Set and refresh list
-                  console.log('[Telecom] ✅ Chat is not selected, adding to blink Set');
-                  window._telecomBlinkingChats.add(chatId);
-                  // Refresh chats list (will restore blink effect)
+                  // Chat is not selected - blink was already added to Set after decryption
+                  // renderChatsList will restore blink effect from Set
+                  console.log('[Telecom] ✅ Chat is not selected, refreshing list (blink already in Set)');
                   renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
                 }
               });
@@ -7950,6 +7971,9 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
               
               // Handle incoming WebRTC message (same as above)
               if (messageData.type === 'message' && messageData.text) {
+                // Determine chatId BEFORE decryption so we can blink immediately after
+                const chatId = `contact-${inviteForAnswer.fromGuid}`;
+                
                 // Decrypt message if it's encrypted
                 let decryptedText = messageData.text;
                 if (messageData.encrypted) {
@@ -7984,6 +8008,10 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                         try {
                           decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
                           console.log('[Telecom] ✅ Message decrypted successfully (recipient side, incoming channel):', decryptedText);
+                          // BLINK IMMEDIATELY AFTER SUCCESSFUL DECRYPTION
+                          if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
+                          window._telecomBlinkingChats.add(chatId);
+                          blinkChatItem(chatId);
                         } catch (e) {
                           console.error('[Telecom] ❌ Error decrypting with private key:', e);
                           decryptedText = '[Encrypted message - decryption failed]';
@@ -7999,9 +8027,12 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                   }
                 } else {
                   console.log('[Telecom] 📝 Message is not encrypted, using as-is:', decryptedText);
+                  // BLINK IMMEDIATELY FOR UNENCRYPTED MESSAGES TOO
+                  if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
+                  window._telecomBlinkingChats.add(chatId);
+                  blinkChatItem(chatId);
                 }
                 
-                const chatId = `contact-${inviteForAnswer.fromGuid}`;
                 const newMessage = {
                   id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
                   chatId: chatId,
@@ -8076,27 +8107,25 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                   }
                   
                   // Refresh UI - use same logic as selectChat
-                  // Reuse chat variable from above
-                  
                   if (!chat) {
                     console.warn('[Telecom] Chat not found for UI update:', chatId);
                     return;
                   }
                   
-                  // Initialize blinking chats Set
+                  // Initialize blinking chats Set BEFORE any UI updates
                   if (!window._telecomBlinkingChats) {
                     window._telecomBlinkingChats = new Set();
                   }
                   
                   if (selectedChatId === chatId) {
                     // Chat is selected - use selectChat to refresh (same as clicking on chat)
+                    // This will also remove blink effect if it was active
                     console.log('[Telecom] ✅ Chat is selected (incoming channel), refreshing using selectChat');
                     selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
                   } else {
-                    // Chat is not selected - add to blinking Set and refresh list
-                    console.log('[Telecom] ✅ Chat is not selected (incoming channel), adding to blink Set');
-                    window._telecomBlinkingChats.add(chatId);
-                    // Refresh chats list (will restore blink effect)
+                    // Chat is not selected - blink was already added to Set after decryption
+                    // renderChatsList will restore blink effect from Set
+                    console.log('[Telecom] ✅ Chat is not selected (incoming channel), refreshing list (blink already in Set)');
                     renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
                   }
                 });
@@ -9139,6 +9168,9 @@ async function processWebRTCAnswer(invite, config, storageKey) {
           
           // Handle incoming WebRTC message
           if (messageData.type === 'message' && messageData.text) {
+            // Determine chatId BEFORE decryption so we can blink immediately after
+            const chatId = `contact-${contactGuid}`;
+            
             // Decrypt message if it's encrypted
             let decryptedText = messageData.text;
             if (messageData.encrypted) {
@@ -9153,18 +9185,18 @@ async function processWebRTCAnswer(invite, config, storageKey) {
                 } else {
                   // Try to get decrypted private key (will show password dialog if needed)
                   // Find Telecom window to get winId using WindowManager
-                  let winId = null;
+                  let foundWinId = null;
                   
                   // Find Telecom windows using proper selector
                   const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
                   if (telecomWindows.length > 0) {
-                    const foundWinId = telecomWindows[0].dataset.winId || null;
-                    if (foundWinId) {
+                    const candidateWinId = telecomWindows[0].dataset.winId || null;
+                    if (candidateWinId) {
                       // Verify via WindowManager
-                      const verifiedWindow = WindowManager.findWindow(foundWinId);
+                      const verifiedWindow = WindowManager.findWindow(candidateWinId);
                       if (verifiedWindow) {
-                        winId = foundWinId;
-                        console.log('[Telecom] Found Telecom window via WindowManager, winId:', winId);
+                        foundWinId = candidateWinId;
+                        console.log('[Telecom] Found Telecom window via WindowManager, winId:', foundWinId);
                       } else {
                         console.warn('[Telecom] ⚠️ Telecom window found but WindowManager.findWindow failed');
                       }
@@ -9173,12 +9205,16 @@ async function processWebRTCAnswer(invite, config, storageKey) {
                     console.log('[Telecom] No Telecom windows found');
                   }
                   
-                  const privateKey = await getDecryptedPrivateKey(winId);
+                  const privateKey = await getDecryptedPrivateKey(foundWinId);
                   if (privateKey) {
                     console.log('[Telecom] Using decrypted private key (sender side)');
                     try {
                       decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
                       console.log('[Telecom] ✅ Message decrypted successfully (sender side):', decryptedText);
+                      // BLINK IMMEDIATELY AFTER SUCCESSFUL DECRYPTION
+                      if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
+                      window._telecomBlinkingChats.add(chatId);
+                      blinkChatItem(chatId);
                     } catch (e) {
                       console.error('[Telecom] ❌ Error decrypting with private key:', e);
                       decryptedText = '[Encrypted message - decryption failed]';
@@ -9194,9 +9230,12 @@ async function processWebRTCAnswer(invite, config, storageKey) {
               }
             } else {
               console.log('[Telecom] 📝 Message is not encrypted, using as-is:', decryptedText);
+              // BLINK IMMEDIATELY FOR UNENCRYPTED MESSAGES TOO
+              if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
+              window._telecomBlinkingChats.add(chatId);
+              blinkChatItem(chatId);
             }
             
-            const chatId = `contact-${contactGuid}`;
             const newMessage = {
               id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
               chatId: chatId,
@@ -9237,14 +9276,12 @@ async function processWebRTCAnswer(invite, config, storageKey) {
             }
             
             // Refresh UI - use same logic as selectChat
-            // Reuse chat variable from above
-            
             if (!chat) {
               console.warn('[Telecom] Chat not found for UI update:', chatId);
               return;
             }
             
-            // Initialize blinking chats Set
+            // Initialize blinking chats Set BEFORE any UI updates
             if (!window._telecomBlinkingChats) {
               window._telecomBlinkingChats = new Set();
             }
@@ -9284,13 +9321,13 @@ async function processWebRTCAnswer(invite, config, storageKey) {
               
               if (selectedChatId === chatId) {
                 // Chat is selected - use selectChat to refresh (same as clicking on chat)
+                // This will also remove blink effect if it was active
                 console.log('[Telecom] ✅ Chat is selected (sender side), refreshing using selectChat');
                 selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
               } else {
-                // Chat is not selected - add to blinking Set and refresh list
-                console.log('[Telecom] ✅ Chat is not selected (sender side), adding to blink Set');
-                window._telecomBlinkingChats.add(chatId);
-                // Refresh chats list (will restore blink effect)
+                // Chat is not selected - blink was already added to Set after decryption
+                // renderChatsList will restore blink effect from Set
+                console.log('[Telecom] ✅ Chat is not selected (sender side), refreshing list (blink already in Set)');
                 renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
               }
             });
