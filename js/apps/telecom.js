@@ -1468,6 +1468,7 @@ function renderChatsList(win, winId, config, storageKey) {
   chatItems.forEach(item => {
     // CRITICAL: For blinking items, remove ALL conflicting inline styles immediately after render
     if (item.classList.contains('telecom-chat-blink')) {
+      // Remove ALL inline styles that could conflict with CSS animation
       item.style.removeProperty('background-color');
       item.style.removeProperty('background');
       item.style.removeProperty('animation');
@@ -1475,6 +1476,14 @@ function renderChatsList(win, winId, config, storageKey) {
       item.style.removeProperty('transition');
       // Force reflow to ensure animation starts
       void item.offsetWidth;
+      // Double-check: ensure animation is running
+      const computed = window.getComputedStyle(item);
+      console.log('[Telecom] 🔍 Blink check after cleanup:', {
+        hasClass: item.classList.contains('telecom-chat-blink'),
+        animation: computed.animation,
+        backgroundColor: computed.backgroundColor,
+        inlineStyle: item.getAttribute('style')
+      });
     }
     item.addEventListener('click', () => {
       const chatId = item.dataset.chatId;

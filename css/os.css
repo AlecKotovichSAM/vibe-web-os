@@ -2016,43 +2016,21 @@ html:not([data-theme]) #datetime-digital-clock {
 }
 
 @keyframes blinkOrange {
-  0% {
-    background-color: rgba(255, 165, 0, 0.15) !important;
-    background: rgba(255, 165, 0, 0.15) !important;
-    box-shadow: 0 0 10px rgba(255, 165, 0, 0.4) !important;
-    transform: scale(1) !important;
-    border-left-color: rgba(255, 165, 0, 0.7) !important;
+  0%, 100% {
+    background-color: rgba(255, 165, 0, 0.2) !important;
+    box-shadow: 0 0 5px rgba(255, 165, 0, 0.3) !important;
   }
   50% {
-    background-color: rgba(255, 165, 0, 0.6) !important;
-    background: rgba(255, 165, 0, 0.6) !important;
-    box-shadow: 0 0 25px rgba(255, 165, 0, 1), inset 0 0 20px rgba(255, 165, 0, 0.5) !important;
-    transform: scale(1.02) !important;
-    border-left-color: rgba(255, 165, 0, 1) !important;
-    border-left-width: 4px !important;
-  }
-  100% {
-    background-color: rgba(255, 165, 0, 0.15) !important;
-    background: rgba(255, 165, 0, 0.15) !important;
-    box-shadow: 0 0 10px rgba(255, 165, 0, 0.4) !important;
-    transform: scale(1) !important;
-    border-left-color: rgba(255, 165, 0, 0.7) !important;
+    background-color: rgba(255, 165, 0, 0.5) !important;
+    box-shadow: 0 0 15px rgba(255, 165, 0, 0.8) !important;
   }
 }
 
 .telecom-chat-item.telecom-chat-blink {
-  animation: blinkOrange 1.5s ease-in-out infinite !important;
+  animation: blinkOrange 1s ease-in-out infinite !important;
   border-left: 3px solid rgba(255, 165, 0, 0.9) !important;
-  /* CRITICAL: Don't set static background - let animation handle it */
-  /* background-color and background are animated in @keyframes */
-  /* Ensure smooth animation */
-  will-change: background-color, box-shadow, transform, border-left-color, border-left-width !important;
-  /* Make sure animation is visible */
-  position: relative !important;
-  z-index: 1 !important;
-  /* Force hardware acceleration */
-  backface-visibility: hidden !important;
-  -webkit-backface-visibility: hidden !important;
+  background-color: rgba(255, 165, 0, 0.2) !important;
+  will-change: background-color, box-shadow !important;
 }
 
 .telecom-menu-item:hover {
