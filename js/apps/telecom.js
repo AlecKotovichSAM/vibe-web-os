@@ -1327,6 +1327,8 @@ function blinkChatItem(chatId) {
           // CRITICAL: Remove ALL inline background styles FIRST - they override CSS animation
           chatItem.style.backgroundColor = '';
           chatItem.style.background = '';
+          // CRITICAL: Remove transition - it conflicts with animation
+          chatItem.style.transition = 'none';
           // Then set animation and border - CSS class will handle the rest
           chatItem.style.animation = 'blinkOrange 1s ease-in-out infinite';
           chatItem.style.borderLeft = '3px solid rgba(255, 165, 0, 0.9)';
@@ -1427,10 +1429,12 @@ function renderChatsList(win, winId, config, storageKey) {
     const backgroundColor = shouldBlink ? '' : (isSelected ? 'var(--panel-2)' : 'transparent');
     const borderLeft = shouldBlink ? '3px solid rgba(255, 165, 0, 0.9)' : (isSelected ? '3px solid var(--accent)' : 'none');
     const animation = shouldBlink ? 'blinkOrange 1s ease-in-out infinite' : 'none';
+    // CRITICAL: Remove transition for blinking items - it conflicts with animation
+    const transition = shouldBlink ? 'none' : 'background 0.2s ease';
     
     return `
       <div class="telecom-chat-item${shouldBlink ? ' telecom-chat-blink' : ''}" data-chat-id="${chat.id}" 
-        style="padding:10px 12px; display:flex; align-items:center; gap:12px; cursor:pointer; transition:background 0.2s ease; border-bottom:1px solid var(--panel-2);${backgroundColor ? ` background:${backgroundColor};` : ''} border-left:${borderLeft}; animation:${animation};">
+        style="padding:10px 12px; display:flex; align-items:center; gap:12px; cursor:pointer; transition:${transition}; border-bottom:1px solid var(--panel-2);${backgroundColor ? ` background:${backgroundColor};` : ''} border-left:${borderLeft}; animation:${animation};">
         <div style="width:48px; height:48px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0;">
           ${chat.icon || '💬'}
         </div>
@@ -1511,6 +1515,8 @@ function renderChatsList(win, winId, config, storageKey) {
         // CRITICAL: Remove ALL inline background styles FIRST - they override CSS animation
         item.style.backgroundColor = '';
         item.style.background = '';
+        // CRITICAL: Remove transition - it conflicts with animation
+        item.style.transition = 'none';
         // Then set animation and border - CSS class with !important will handle the animation
         item.style.animation = 'blinkOrange 1s ease-in-out infinite';
         item.style.borderLeft = '3px solid rgba(255, 165, 0, 0.9)';
