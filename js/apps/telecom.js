@@ -5130,13 +5130,40 @@ function showShareAnswerDialog(winId, inviteWithAnswer, config, storageKey) {
     id: inviteWithAnswer.id,
     fromGuid: inviteWithAnswer.fromGuid,
     toGuid: inviteWithAnswer.toGuid,
-    webrtcAnswer: inviteWithAnswer.webrtcAnswer
-    // Exclude: timestamp, status, webrtcOffer, avatar, displayName, username, etc.
-    // These are not needed to process the answer - only webrtcAnswer is essential
+    webrtcAnswer: inviteWithAnswer.webrtcAnswer,
+    // Include recipient data for contact creation
+    toUsername: inviteWithAnswer.toUsername,
+    toDisplayName: inviteWithAnswer.toDisplayName,
+    toFirstName: inviteWithAnswer.toFirstName,
+    toLastName: inviteWithAnswer.toLastName,
+    toEmail: inviteWithAnswer.toEmail,
+    toPublicKey: inviteWithAnswer.toPublicKey
   };
   const inviteJsonCompact = JSON.stringify(inviteForQR);
   
-  // Log QR code data size
+  // Full JSON with all data (for manual copy) - MUST include recipient data
+  const inviteJsonFull = JSON.stringify(inviteWithAnswer, null, 2);
+  
+  // Verify recipient data is included
+  console.log('[Telecom] 📋 Full JSON includes recipient data:', {
+    toUsername: inviteWithAnswer.toUsername,
+    toDisplayName: inviteWithAnswer.toDisplayName,
+    toFirstName: inviteWithAnswer.toFirstName,
+    toLastName: inviteWithAnswer.toLastName,
+    toEmail: inviteWithAnswer.toEmail ? 'present' : 'missing',
+    toPublicKey: inviteWithAnswer.toPublicKey ? 'present' : 'missing',
+    jsonLength: inviteJsonFull.length
+  });
+  
+  // Log data
+  console.log('[Telecom] 📋 inviteWithAnswer data:', {
+    toUsername: inviteWithAnswer.toUsername,
+    toDisplayName: inviteWithAnswer.toDisplayName,
+    toFirstName: inviteWithAnswer.toFirstName,
+    toLastName: inviteWithAnswer.toLastName,
+    toEmail: inviteWithAnswer.toEmail ? 'present' : 'missing',
+    toPublicKey: inviteWithAnswer.toPublicKey ? 'present' : 'missing'
+  });
   console.log('[Telecom] QR code data size for answer:', inviteJsonCompact.length, 'chars');
   if (inviteJsonCompact.length > 2000) {
     console.warn('[Telecom] ⚠️ QR code data is large (', inviteJsonCompact.length, 'chars). QR code generation may fail.');
@@ -5187,7 +5214,7 @@ function showShareAnswerDialog(winId, inviteWithAnswer, config, storageKey) {
         style="width:100%; min-height:120px; max-height:200px; padding:12px; background:var(--panel-2); border:1px solid var(--panel-2); border-radius:6px; color:var(--text); font-size:11px; font-family:'Courier New', monospace; outline:none; box-sizing:border-box; resize:vertical; line-height:1.4;"
       ></textarea>
       <div style="margin-top:6px; font-size:11px; color:var(--muted); display:flex; align-items:center; gap:4px;">
-        <span>📊</span> <span>${inviteJsonCompact.length} characters</span>
+        <span>📊</span> <span>${inviteJsonFull.length} characters (full data with recipient info)</span>
       </div>
     </div>
 
@@ -5229,10 +5256,11 @@ function showShareAnswerDialog(winId, inviteWithAnswer, config, storageKey) {
   
   console.log('[Telecom] Answer dialog should now be visible');
 
-  // Set JSON textarea value
+  // Set JSON textarea value - use FULL JSON with recipient data
   const jsonTextarea = dialog.querySelector('#telecom-share-answer-json');
   if (jsonTextarea) {
-    jsonTextarea.value = inviteJsonCompact;
+    jsonTextarea.value = inviteJsonFull; // Use full JSON, not compact
+    console.log('[Telecom] ✅ Set JSON textarea with full inviteWithAnswer data');
   }
 
   // Generate QR code
@@ -5261,12 +5289,14 @@ function showShareAnswerDialog(winId, inviteWithAnswer, config, storageKey) {
     }
   }
 
-  // Copy JSON button
+  // Copy JSON button - MUST copy FULL JSON with recipient data
   const copyBtn = dialog.querySelector('#telecom-share-answer-copy');
   if (copyBtn) {
     copyBtn.addEventListener('click', async () => {
       try {
-        await navigator.clipboard.writeText(inviteJsonCompact);
+        // IMPORTANT: Copy FULL JSON with recipient data, not compact version
+        await navigator.clipboard.writeText(inviteJsonFull);
+        console.log('[Telecom] ✅ Copied FULL JSON with recipient data to clipboard');
         const originalHTML = copyBtn.innerHTML;
         copyBtn.innerHTML = '<span>✓</span> Copied!';
         copyBtn.style.background = 'var(--ok)';
@@ -5276,11 +5306,11 @@ function showShareAnswerDialog(winId, inviteWithAnswer, config, storageKey) {
         }, 2000);
       } catch (e) {
         console.error('[Telecom] Error copying answer JSON:', e);
-        // Fallback: select text in textarea
+        // Fallback: select text in textarea (which contains full JSON)
         const textarea = dialog.querySelector('#telecom-share-answer-json');
         if (textarea) {
           textarea.select();
-          textarea.setSelectionRange(0, inviteJsonCompact.length);
+          textarea.setSelectionRange(0, inviteJsonFull.length);
           copyBtn.innerHTML = '<span>⚠️</span> Select & Copy manually';
           setTimeout(() => {
             copyBtn.innerHTML = '<span>📋</span> Copy JSON';
@@ -5499,6 +5529,19 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
       // If this is a sent invite with WebRTC answer, save it to localStorage first, then process
       if (isSentInvite && invite.webrtcAnswer) {
         console.log('[Telecom] Received invite with WebRTC answer, saving to localStorage first...');
+        console.log('[Telecom] 📋 Received invite data:', {
+          id: invite.id,
+          toGuid: invite.toGuid,
+          toUsername: invite.toUsername,
+          toDisplayName: invite.toDisplayName,
+          toFirstName: invite.toFirstName,
+          toLastName: invite.toLastName,
+          toEmail: invite.toEmail,
+          toPublicKey: invite.toPublicKey ? 'present (' + (invite.toPublicKey?.length || 0) + ' chars)' : 'missing',
+          hasWebrtcAnswer: !!invite.webrtcAnswer,
+          allKeys: Object.keys(invite), // Log all keys to see what's actually in the invite
+          inviteString: JSON.stringify(invite).substring(0, 500) // Log first 500 chars to see structure
+        });
         
         // Save updated invite with answer to sender's sent invites storage
         try {
@@ -5513,19 +5556,35 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
           // Find and update the invite with answer data
           const inviteIndex = sentInvites.findIndex(inv => inv.id === invite.id || inv.toGuid === invite.toGuid);
           if (inviteIndex !== -1) {
-            // Merge answer data into existing invite
-            sentInvites[inviteIndex] = {
+            // Merge answer data into existing invite - PRESERVE recipient data from invite parameter
+            const updatedInvite = {
               ...sentInvites[inviteIndex],
               ...invite, // This includes webrtcAnswer and recipient's data (toUsername, toDisplayName, etc.)
               status: 'accepted',
               respondedAt: new Date().toISOString()
             };
+            
+            // Explicitly set recipient data if present in invite
+            if (invite.toUsername !== undefined) updatedInvite.toUsername = invite.toUsername;
+            if (invite.toDisplayName !== undefined) updatedInvite.toDisplayName = invite.toDisplayName;
+            if (invite.toFirstName !== undefined) updatedInvite.toFirstName = invite.toFirstName;
+            if (invite.toLastName !== undefined) updatedInvite.toLastName = invite.toLastName;
+            if (invite.toEmail !== undefined) updatedInvite.toEmail = invite.toEmail;
+            if (invite.toPublicKey !== undefined) updatedInvite.toPublicKey = invite.toPublicKey;
+            if (invite.webrtcAnswer) updatedInvite.webrtcAnswer = invite.webrtcAnswer;
+            
+            sentInvites[inviteIndex] = updatedInvite;
+            
             console.log('[Telecom] ✅ Updated invite in localStorage with answer and recipient data:', {
-              id: sentInvites[inviteIndex].id,
-              toGuid: sentInvites[inviteIndex].toGuid,
-              toUsername: sentInvites[inviteIndex].toUsername,
-              toDisplayName: sentInvites[inviteIndex].toDisplayName,
-              hasWebrtcAnswer: !!sentInvites[inviteIndex].webrtcAnswer
+              id: updatedInvite.id,
+              toGuid: updatedInvite.toGuid,
+              toUsername: updatedInvite.toUsername,
+              toDisplayName: updatedInvite.toDisplayName,
+              toFirstName: updatedInvite.toFirstName,
+              toLastName: updatedInvite.toLastName,
+              toEmail: updatedInvite.toEmail ? 'present' : 'missing',
+              toPublicKey: updatedInvite.toPublicKey ? 'present' : 'missing',
+              hasWebrtcAnswer: !!updatedInvite.webrtcAnswer
             });
           } else {
             // Add new invite with answer
@@ -5539,12 +5598,40 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
           
           localStorage.setItem(SENT_INVITES_STORAGE_KEY, JSON.stringify(sentInvites));
           console.log('[Telecom] ✅ Saved invite with answer to localStorage');
+          
+          // Reload the updated invite from localStorage to use it in processWebRTCAnswer
+          const reloadedInvites = JSON.parse(localStorage.getItem(SENT_INVITES_STORAGE_KEY));
+          const reloadedInvite = reloadedInvites.find(inv => inv.id === invite.id || inv.toGuid === invite.toGuid);
+          if (reloadedInvite) {
+            console.log('[Telecom] ✅ Reloaded invite from localStorage:', {
+              toUsername: reloadedInvite.toUsername,
+              toDisplayName: reloadedInvite.toDisplayName,
+              toFirstName: reloadedInvite.toFirstName,
+              toLastName: reloadedInvite.toLastName,
+              toEmail: reloadedInvite.toEmail ? 'present' : 'missing',
+              toPublicKey: reloadedInvite.toPublicKey ? 'present' : 'missing'
+            });
+            // Use reloaded invite instead of original invite
+            invite = reloadedInvite;
+          } else {
+            console.warn('[Telecom] ⚠️ Could not reload invite from localStorage, using original');
+          }
         } catch (e) {
           console.error('[Telecom] Error saving invite with answer to localStorage:', e);
         }
         
         console.log('[Telecom] Processing WebRTC answer...');
-        processWebRTCAnswer(invite, config, storageKey).then(() => {
+        // Use the reloaded invite if available, otherwise use original invite
+        const inviteToProcess = invite; // This is now the reloaded invite with recipient data
+        console.log('[Telecom] 📋 Processing with invite data:', {
+          toUsername: inviteToProcess.toUsername,
+          toDisplayName: inviteToProcess.toDisplayName,
+          toFirstName: inviteToProcess.toFirstName,
+          toLastName: inviteToProcess.toLastName,
+          toEmail: inviteToProcess.toEmail ? 'present' : 'missing',
+          toPublicKey: inviteToProcess.toPublicKey ? 'present' : 'missing'
+        });
+        processWebRTCAnswer(inviteToProcess, config, storageKey).then(() => {
           alert('WebRTC answer processed successfully. Connection should be established.');
           // Clear textarea
           jsonTextarea.value = '';
@@ -8938,300 +9025,215 @@ async function processWebRTCAnswer(invite, config, storageKey) {
       }
     }
     
-    // Update invite status to 'accepted' and add contact immediately after processing answer
-    try {
-      console.log('[Telecom] 🔄 Updating invite status and adding contact after processing answer...');
-      console.log('[Telecom]   contactGuid:', contactGuid);
-      console.log('[Telecom]   invite.id:', invite.id);
-      console.log('[Telecom]   invite.toGuid:', invite.toGuid);
-      console.log('[Telecom]   config:', effectiveConfig ? 'present' : 'missing');
-      console.log('[Telecom]   storageKey:', effectiveStorageKey);
+    // ===== IMMEDIATELY UPDATE INVITE STATUS AND ADD CONTACT =====
+    // Do this RIGHT HERE, synchronously, before any async handlers
+    console.log('[Telecom] 🔄 IMMEDIATELY updating invite status and adding contact...');
+    
+    const effectiveGuid = getEffectiveGuid(effectiveConfig);
+    if (effectiveGuid) {
+      const SENT_INVITES_STORAGE_KEY = `webos.telecom.sent_invites.guid_from.${effectiveGuid}`;
+      const sentInvitesData = localStorage.getItem(SENT_INVITES_STORAGE_KEY);
       
-      const effectiveGuid = getEffectiveGuid(effectiveConfig);
-      console.log('[Telecom]   effectiveGuid:', effectiveGuid);
-      
-      if (effectiveGuid) {
-        const SENT_INVITES_STORAGE_KEY = `webos.telecom.sent_invites.guid_from.${effectiveGuid}`;
-        console.log('[Telecom]   SENT_INVITES_STORAGE_KEY:', SENT_INVITES_STORAGE_KEY);
+      if (sentInvitesData) {
+        const sentInvites = JSON.parse(sentInvitesData);
         
-        const sentInvitesData = localStorage.getItem(SENT_INVITES_STORAGE_KEY);
-        if (sentInvitesData) {
-          const sentInvites = JSON.parse(sentInvitesData);
-          console.log('[Telecom]   Found', sentInvites.length, 'sent invites');
+        // Find invite by ID or toGuid - try by ID first (most reliable)
+        let inviteIndex = -1;
+        if (invite.id) {
+          inviteIndex = sentInvites.findIndex(inv => inv.id === invite.id);
+          console.log('[Telecom] 🔍 Searching invite by ID:', invite.id, 'found:', inviteIndex !== -1);
+        }
+        
+        // If not found by ID, try by toGuid and status
+        if (inviteIndex === -1) {
+          inviteIndex = sentInvites.findIndex(inv => inv.toGuid === contactGuid && (inv.status === 'pending' || !inv.status));
+          console.log('[Telecom] 🔍 Searching invite by toGuid:', contactGuid, 'found:', inviteIndex !== -1);
+        }
+        
+        if (inviteIndex !== -1) {
+          const foundInvite = sentInvites[inviteIndex];
           
-          // Try to find by invite ID first (most reliable)
-          let inviteIndex = -1;
-          if (invite.id) {
-            inviteIndex = sentInvites.findIndex(inv => inv.id === invite.id);
-            console.log('[Telecom]   Searching by invite.id:', invite.id, 'found:', inviteIndex !== -1);
-          }
+          console.log('[Telecom] 📋 Found invite before merge:', {
+            id: foundInvite.id,
+            toGuid: foundInvite.toGuid,
+            status: foundInvite.status,
+            toUsername: foundInvite.toUsername,
+            toDisplayName: foundInvite.toDisplayName,
+            hasWebrtcAnswer: !!foundInvite.webrtcAnswer
+          });
           
-          // If not found by ID, try by toGuid
-          if (inviteIndex === -1) {
-            inviteIndex = sentInvites.findIndex(inv => inv.toGuid === contactGuid && inv.status === 'pending');
-            console.log('[Telecom]   Searching by toGuid:', contactGuid, 'status: pending, found:', inviteIndex !== -1);
-          }
+          console.log('[Telecom] 📋 Invite parameter data:', {
+            id: invite.id,
+            toGuid: invite.toGuid,
+            toUsername: invite.toUsername,
+            toDisplayName: invite.toDisplayName,
+            toFirstName: invite.toFirstName,
+            toLastName: invite.toLastName,
+            toEmail: invite.toEmail,
+            toPublicKey: invite.toPublicKey ? 'present' : 'missing',
+            hasWebrtcAnswer: !!invite.webrtcAnswer
+          });
           
-          if (inviteIndex !== -1) {
-            console.log('[Telecom]   Found invite at index:', inviteIndex, 'current status:', sentInvites[inviteIndex].status);
-            sentInvites[inviteIndex].status = 'accepted';
-            sentInvites[inviteIndex].respondedAt = new Date().toISOString();
-            localStorage.setItem(SENT_INVITES_STORAGE_KEY, JSON.stringify(sentInvites));
-            console.log('[Telecom] ✅ Updated invite status to accepted for contact:', contactGuid, 'invite ID:', sentInvites[inviteIndex].id);
-            
-            // Verify the update was saved
-            const verifyData = localStorage.getItem(SENT_INVITES_STORAGE_KEY);
-            if (verifyData) {
-              const verifyInvites = JSON.parse(verifyData);
-              const verifyInvite = verifyInvites.find(inv => inv.id === sentInvites[inviteIndex].id);
-              if (verifyInvite && verifyInvite.status === 'accepted') {
-                console.log('[Telecom] ✅ Verified: Invite status saved correctly in localStorage');
-              } else {
-                console.error('[Telecom] ❌ ERROR: Invite status NOT saved correctly! Expected: accepted, Got:', verifyInvite?.status);
-              }
+          // Update status to accepted
+          foundInvite.status = 'accepted';
+          foundInvite.respondedAt = new Date().toISOString();
+          
+          // Merge recipient data from passed invite (which contains webrtcAnswer with recipient's data)
+          // IMPORTANT: Check if invite has recipient data, if not, reload from localStorage (it was saved earlier)
+          console.log('[Telecom] 🔍 Checking recipient data sources:', {
+            fromInviteParam: {
+              toUsername: invite.toUsername,
+              toDisplayName: invite.toDisplayName,
+              toFirstName: invite.toFirstName,
+              toLastName: invite.toLastName,
+              toEmail: invite.toEmail,
+              toPublicKey: invite.toPublicKey ? 'present' : 'missing'
+            },
+            fromFoundInvite: {
+              toUsername: foundInvite.toUsername,
+              toDisplayName: foundInvite.toDisplayName,
+              toFirstName: foundInvite.toFirstName,
+              toLastName: foundInvite.toLastName,
+              toEmail: foundInvite.toEmail,
+              toPublicKey: foundInvite.toPublicKey ? 'present' : 'missing'
             }
+          });
+          
+          // Use data from invite parameter if present, otherwise use foundInvite (which may have been updated when answer was saved)
+          const hasDataInInvite = invite.toUsername || invite.toDisplayName || invite.toFirstName || invite.toLastName;
+          
+          if (hasDataInInvite) {
+            // Use data from invite parameter
+            if (invite.toUsername !== undefined) foundInvite.toUsername = invite.toUsername;
+            if (invite.toDisplayName !== undefined) foundInvite.toDisplayName = invite.toDisplayName;
+            if (invite.toFirstName !== undefined) foundInvite.toFirstName = invite.toFirstName;
+            if (invite.toLastName !== undefined) foundInvite.toLastName = invite.toLastName;
+            if (invite.toEmail !== undefined) foundInvite.toEmail = invite.toEmail;
+            if (invite.toPublicKey !== undefined) foundInvite.toPublicKey = invite.toPublicKey;
+            console.log('[Telecom] ✅ Using recipient data from invite parameter');
+          } else {
+            // Data not in invite parameter, check if it was saved in localStorage earlier
+            console.log('[Telecom] ⚠️ No recipient data in invite parameter, checking localStorage...');
+            // foundInvite already has data from localStorage (it was updated when answer was saved)
+            console.log('[Telecom] ✅ Using recipient data from foundInvite (localStorage)');
+          }
+          
+          if (invite.webrtcAnswer) foundInvite.webrtcAnswer = invite.webrtcAnswer;
+          
+          console.log('[Telecom] 📋 Final merged recipient data:', {
+            toUsername: foundInvite.toUsername,
+            toDisplayName: foundInvite.toDisplayName,
+            toFirstName: foundInvite.toFirstName,
+            toLastName: foundInvite.toLastName,
+            toEmail: foundInvite.toEmail ? 'present' : 'missing',
+            toPublicKey: foundInvite.toPublicKey ? 'present (' + (foundInvite.toPublicKey?.length || 0) + ' chars)' : 'missing'
+          });
+          
+          // Save updated invites
+          localStorage.setItem(SENT_INVITES_STORAGE_KEY, JSON.stringify(sentInvites));
+          console.log('[Telecom] ✅ Invite status updated to accepted, ID:', foundInvite.id);
+          
+          // Add contact immediately
+          const contacts = getContacts();
+          const existingContact = contacts.find(c => c.guid === contactGuid);
+          
+          if (!existingContact) {
+            // Use data from foundInvite (which now has merged recipient data)
+            const contactInfo = {
+              guid: contactGuid,
+              username: foundInvite.toUsername || null,
+              displayName: foundInvite.toDisplayName || foundInvite.toUsername || contactGuid.substring(0, 8) + '...',
+              firstName: foundInvite.toFirstName || null,
+              lastName: foundInvite.toLastName || null,
+              email: foundInvite.toEmail || null,
+              publicKey: foundInvite.toPublicKey || null,
+              addedAt: new Date().toISOString()
+            };
             
-            // Refresh contacts dialog if it's open to show updated status
-            const effectiveStorageKey = storageKey || 'webos.telecom.v1';
-            const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
-            telecomWindows.forEach(telecomWin => {
-              const winId = telecomWin.dataset.winId;
-              if (winId) {
-                const windowContent = telecomWin.querySelector('.win-content');
-                if (windowContent) {
-                  const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
-                  if (contactsDialog) {
-                    // Reload config to ensure we have latest data
-                    let effectiveConfig = config;
-                    try {
-                      const configData = localStorage.getItem(effectiveStorageKey);
-                      if (configData) {
-                        effectiveConfig = JSON.parse(configData);
-                        if (config) {
-                          Object.assign(config, effectiveConfig);
-                        } else {
-                          config = effectiveConfig;
-                        }
-                      }
-                    } catch (e) {
-                      console.warn('[Telecom] Error reloading config:', e);
-                    }
-                    if (effectiveConfig) {
-                      console.log('[Telecom] 🔄 Refreshing contacts dialog after invite status update');
-                      refreshContactsDialog(contactsDialog, effectiveConfig, effectiveStorageKey, winId);
-                      console.log('[Telecom] ✅ Contacts dialog refreshed');
-                    } else {
-                      console.warn('[Telecom] ⚠️ Cannot refresh contacts dialog: config not available');
-                      // Try to reload config one more time
-                      try {
-                        const configData = localStorage.getItem(effectiveStorageKey);
-                        if (configData) {
-                          const reloadedConfig = JSON.parse(configData);
-                          refreshContactsDialog(contactsDialog, reloadedConfig, effectiveStorageKey, winId);
-                          console.log('[Telecom] ✅ Contacts dialog refreshed with reloaded config');
-                        }
-                      } catch (e) {
-                        console.error('[Telecom] ❌ Failed to reload config for refresh:', e);
-                      }
-                    }
-                  } else {
-                    console.log('[Telecom] Contacts dialog not open, skipping refresh');
-                  }
-                }
+            console.log('[Telecom] 📋 Creating contact with data from foundInvite:', {
+              guid: contactInfo.guid,
+              username: contactInfo.username,
+              displayName: contactInfo.displayName,
+              firstName: contactInfo.firstName,
+              lastName: contactInfo.lastName,
+              email: contactInfo.email ? 'present' : 'missing',
+              publicKey: contactInfo.publicKey ? 'present (' + (contactInfo.publicKey?.length || 0) + ' chars)' : 'missing',
+              sourceData: {
+                foundInvite_toUsername: foundInvite.toUsername,
+                foundInvite_toDisplayName: foundInvite.toDisplayName,
+                foundInvite_toFirstName: foundInvite.toFirstName,
+                foundInvite_toLastName: foundInvite.toLastName,
+                foundInvite_toEmail: foundInvite.toEmail,
+                foundInvite_toPublicKey: foundInvite.toPublicKey ? 'present' : 'missing'
               }
             });
-          } else {
-            console.warn('[Telecom] ⚠️ No invite found! Searched by:');
-            console.warn('[Telecom]   - invite.id:', invite.id);
-            console.warn('[Telecom]   - toGuid:', contactGuid, 'status: pending');
-            console.warn('[Telecom]   Available invites:', sentInvites.map(inv => ({ id: inv.id, toGuid: inv.toGuid, status: inv.status })));
-          }
-        } else {
-          console.warn('[Telecom] ⚠️ No sent invites storage found for GUID:', effectiveGuid);
-        }
-      } else {
-        console.warn('[Telecom] ⚠️ Could not get effective GUID for updating invite status');
-        console.warn('[Telecom]   config keys:', effectiveConfig ? Object.keys(effectiveConfig) : 'config is null/undefined');
-        console.warn('[Telecom]   effectiveConfig:', effectiveConfig);
-      }
-    } catch (e) {
-      console.error('[Telecom] ❌ Error updating invite status after processing answer:', e);
-      console.error('[Telecom]   Stack:', e.stack);
-    }
-    
-    // Add contact automatically after processing answer
-    try {
-      const contacts = getContacts();
-      const existingContact = contacts.find(c => c.guid === contactGuid);
-      if (!existingContact) {
-        console.log('[Telecom] Auto-adding contact after processing answer:', contactGuid);
-        
-        // Try to get contact info from updated invite in localStorage (which contains webrtcAnswer with recipient's data)
-        let contactInfo = {
-          guid: contactGuid,
-          username: null,
-          displayName: contactGuid.substring(0, 8) + '...',
-          firstName: null,
-          lastName: null,
-          email: null,
-          publicKey: null,
-          addedAt: new Date().toISOString()
-        };
-        
-        // Try to find updated invite in localStorage that contains webrtcAnswer with recipient's data
-        try {
-          if (effectiveGuid) {
-            const SENT_INVITES_STORAGE_KEY = `webos.telecom.sent_invites.guid_from.${effectiveGuid}`;
-            const sentInvitesData = localStorage.getItem(SENT_INVITES_STORAGE_KEY);
-            if (sentInvitesData) {
-              const sentInvites = JSON.parse(sentInvitesData);
-              // Find invite with answer (contains recipient's data)
-              const inviteWithAnswer = sentInvites.find(inv => 
-                (inv.id === invite.id || inv.toGuid === contactGuid) && inv.webrtcAnswer
-              );
-              
-              if (inviteWithAnswer) {
-                // Use data from invite with answer (recipient's data)
-                contactInfo.username = inviteWithAnswer.toUsername || null;
-                contactInfo.displayName = inviteWithAnswer.toDisplayName || inviteWithAnswer.toUsername || contactGuid.substring(0, 8) + '...';
-                contactInfo.firstName = inviteWithAnswer.toFirstName || null;
-                contactInfo.lastName = inviteWithAnswer.toLastName || null;
-                contactInfo.email = inviteWithAnswer.toEmail || null;
-                contactInfo.publicKey = inviteWithAnswer.toPublicKey || null;
-                console.log('[Telecom] ✅ Found contact data in invite with answer:', {
-                  username: contactInfo.username,
-                  displayName: contactInfo.displayName,
-                  firstName: contactInfo.firstName,
-                  lastName: contactInfo.lastName,
-                  email: contactInfo.email ? 'present' : 'missing',
-                  publicKey: contactInfo.publicKey ? 'present' : 'missing'
-                });
-              } else {
-                // Fallback: try to use data from passed invite parameter
-                contactInfo.username = invite.toUsername || null;
-                contactInfo.displayName = invite.toDisplayName || invite.toUsername || contactGuid.substring(0, 8) + '...';
-                contactInfo.firstName = invite.toFirstName || null;
-                contactInfo.lastName = invite.toLastName || null;
-                contactInfo.email = invite.toEmail || null;
-                contactInfo.publicKey = invite.toPublicKey || null;
-                console.log('[Telecom] ⚠️ Using data from invite parameter (may be incomplete):', {
-                  username: contactInfo.username,
-                  displayName: contactInfo.displayName,
-                  firstName: contactInfo.firstName,
-                  lastName: contactInfo.lastName,
-                  email: contactInfo.email ? 'present' : 'missing',
-                  publicKey: contactInfo.publicKey ? 'present' : 'missing'
-                });
-              }
-            }
-          }
-        } catch (e) {
-          console.error('[Telecom] Error getting contact data from invite:', e);
-        }
-        
-        console.log('[Telecom] Final contact info:', {
-          username: contactInfo.username,
-          displayName: contactInfo.displayName,
-          firstName: contactInfo.firstName,
-          lastName: contactInfo.lastName,
-          email: contactInfo.email ? 'present' : 'missing',
-          publicKey: contactInfo.publicKey ? 'present' : 'missing'
-        });
-        
-        contacts.push(contactInfo);
-        saveContacts(contacts);
-        console.log('[Telecom] ✅ Contact auto-added after processing answer:', contactGuid, 'Total contacts:', contacts.length);
-        
-        // Verify contact was saved
-        const savedContacts = getContacts();
-        const savedContact = savedContacts.find(c => c.guid === contactGuid);
-        if (savedContact) {
-          console.log('[Telecom] ✅ Contact verified in storage:', savedContact.guid, 'displayName:', savedContact.displayName, 'publicKey:', savedContact.publicKey ? 'present' : 'missing');
-        } else {
-          console.error('[Telecom] ❌ Contact NOT found in storage after save! Expected GUID:', contactGuid);
-          console.error('[Telecom]   Available contacts:', savedContacts.map(c => ({ guid: c.guid, displayName: c.displayName })));
-        }
-        
-        // Create chat for this contact
-        const chats = getChats();
-        const chatId = `contact-${contactGuid}`;
-        const existingChat = chats.find(c => c.id === chatId);
-        if (!existingChat) {
-          chats.push({
-            id: chatId,
-            name: contactInfo.displayName,
-            type: 'contact',
-            contactGuid: contactGuid,
-            createdAt: new Date().toISOString()
-          });
-          const CHATS_STORAGE_KEY = 'webos.telecom.chats.v1';
-          localStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(chats));
-          console.log('[Telecom] Chat created for auto-added contact:', contactGuid);
-        }
-        
-        // Refresh UI if Telecom window is open
-        const effectiveStorageKey = storageKey || 'webos.telecom.v1';
-        const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
-        telecomWindows.forEach(telecomWin => {
-          const winId = telecomWin.dataset.winId;
-          if (winId) {
-            // Get config if not available
-            let effectiveConfig = config;
-            if (!effectiveConfig) {
-              try {
-                const configData = localStorage.getItem(effectiveStorageKey);
-                if (configData) {
-                  effectiveConfig = JSON.parse(configData);
-                }
-              } catch (e) {
-                console.warn('[Telecom] Error loading config for UI refresh:', e);
-              }
+            
+            contacts.push(contactInfo);
+            saveContacts(contacts);
+            
+            // Verify contact was saved correctly
+            const savedContacts = getContacts();
+            const savedContact = savedContacts.find(c => c.guid === contactGuid);
+            if (savedContact) {
+              console.log('[Telecom] ✅ Contact saved and verified:', {
+                guid: savedContact.guid,
+                username: savedContact.username,
+                displayName: savedContact.displayName,
+                firstName: savedContact.firstName,
+                lastName: savedContact.lastName,
+                email: savedContact.email ? 'present' : 'missing',
+                publicKey: savedContact.publicKey ? 'present' : 'missing'
+              });
+            } else {
+              console.error('[Telecom] ❌ Contact NOT found after save!');
             }
             
-            if (effectiveConfig) {
+            console.log('[Telecom] ✅ Contact added:', contactInfo.displayName, 'username:', contactInfo.username);
+            
+            // Create chat
+            const chats = getChats();
+            const chatId = `contact-${contactGuid}`;
+            if (!chats.find(c => c.id === chatId)) {
+              chats.push({
+                id: chatId,
+                name: contactInfo.displayName,
+                type: 'contact',
+                contactGuid: contactGuid,
+                createdAt: new Date().toISOString()
+              });
+              localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
+            }
+          } else {
+            console.log('[Telecom] Contact already exists:', contactGuid);
+          }
+          
+          // Refresh UI immediately
+          const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+          telecomWindows.forEach(telecomWin => {
+            const winId = telecomWin.dataset.winId;
+            if (winId) {
               renderChatsList(telecomWin, winId, effectiveConfig, effectiveStorageKey);
               
-              // Refresh contacts dialog if it's open
               const windowContent = telecomWin.querySelector('.win-content');
               if (windowContent) {
                 const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
                 if (contactsDialog) {
-                  console.log('[Telecom] 🔄 Refreshing contacts dialog after adding contact');
                   refreshContactsDialog(contactsDialog, effectiveConfig, effectiveStorageKey, winId);
-                  console.log('[Telecom] ✅ Contacts dialog refreshed after contact addition');
-                } else {
-                  console.log('[Telecom] Contacts dialog not open, skipping refresh');
+                  console.log('[Telecom] ✅ Contacts dialog refreshed');
                 }
-              }
-            } else {
-              console.warn('[Telecom] ⚠️ Cannot refresh UI: config not available');
-              // Try to reload config one more time
-              try {
-                const configData = localStorage.getItem(effectiveStorageKey);
-                if (configData) {
-                  const reloadedConfig = JSON.parse(configData);
-                  renderChatsList(telecomWin, winId, reloadedConfig, effectiveStorageKey);
-                  const windowContent = telecomWin.querySelector('.win-content');
-                  if (windowContent) {
-                    const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
-                    if (contactsDialog) {
-                      refreshContactsDialog(contactsDialog, reloadedConfig, effectiveStorageKey, winId);
-                      console.log('[Telecom] ✅ UI refreshed with reloaded config');
-                    }
-                  }
-                }
-              } catch (e) {
-                console.error('[Telecom] ❌ Failed to reload config for UI refresh:', e);
               }
             }
-          }
-        });
+          });
+        } else {
+          console.warn('[Telecom] ⚠️ Invite not found in sent invites');
+        }
       } else {
-        console.log('[Telecom] Contact already exists:', contactGuid);
+        console.warn('[Telecom] ⚠️ No sent invites storage found');
       }
-    } catch (e) {
-      console.error('[Telecom] Error adding contact after processing answer:', e);
+    } else {
+      console.warn('[Telecom] ⚠️ No effective GUID found');
     }
+    // ===== END IMMEDIATE UPDATE =====
     
   } catch (e) {
     console.error('[Telecom] Error processing WebRTC answer:', e);
