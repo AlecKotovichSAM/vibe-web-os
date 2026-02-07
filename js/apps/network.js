@@ -28,6 +28,41 @@ Apps.register({
     const serverStatuses = new Map();
     
     /**
+     * Helper function to normalize server.urls (can be string or array)
+     * Returns the first URL for display/key purposes
+     */
+    function getServerUrlKey(server) {
+      if (!server || !server.urls) return '';
+      if (Array.isArray(server.urls)) {
+        return server.urls[0] || '';
+      }
+      return typeof server.urls === 'string' ? server.urls : '';
+    }
+    
+    /**
+     * Helper function to get server type (STUN or TURN)
+     * Checks first URL if urls is an array
+     */
+    function getServerType(server) {
+      if (!server || !server.urls) return 'STUN';
+      const firstUrl = Array.isArray(server.urls) ? server.urls[0] : server.urls;
+      if (!firstUrl || typeof firstUrl !== 'string') return 'STUN';
+      return (firstUrl.startsWith('turn:') || firstUrl.startsWith('turns:')) ? 'TURN' : 'STUN';
+    }
+    
+    /**
+     * Helper function to format URLs for display
+     * If array, shows all URLs separated by commas
+     */
+    function formatServerUrls(server) {
+      if (!server || !server.urls) return '';
+      if (Array.isArray(server.urls)) {
+        return server.urls.filter(url => typeof url === 'string').join(', ');
+      }
+      return typeof server.urls === 'string' ? server.urls : '';
+    }
+    
+    /**
      * Check if WebRTC is available (not file:// protocol)
      */
     function isWebRTCAvailable() {
@@ -139,7 +174,8 @@ Apps.register({
           }).then(offer => {
             return testPc.setLocalDescription(offer);
           }).catch((error) => {
-            console.error(`[Network] Error checking server ${server.urls}:`, error);
+            const serverUrlDisplay = formatServerUrls(server);
+            console.error(`[Network] Error checking server ${serverUrlDisplay}:`, error);
             clearTimeout(timeout);
             if (testPc) testPc.close();
             resolve(false);
@@ -153,10 +189,12 @@ Apps.register({
           };
           
           testPc.onerror = (error) => {
-            console.error(`[Network] RTCPeerConnection error for ${server.urls}:`, error);
+            const serverUrlDisplay = formatServerUrls(server);
+            console.error(`[Network] RTCPeerConnection error for ${serverUrlDisplay}:`, error);
           };
         } catch (e) {
-          console.error(`[Network] Exception while checking ${server.urls}:`, e);
+          const serverUrlDisplay = formatServerUrls(server);
+          console.error(`[Network] Exception while checking ${serverUrlDisplay}:`, e);
           clearTimeout(timeout);
           resolve(false);
         }
@@ -174,7 +212,7 @@ Apps.register({
         // Mark all as "not checked" instead of unavailable
         const servers = window.Network.getIceServersConfig();
         servers.forEach(server => {
-          serverStatuses.delete(server.urls);
+          serverStatuses.delete(getServerUrlKey(server));
         });
         renderStunServers();
         return;
@@ -183,12 +221,12 @@ Apps.register({
       const servers = window.Network.getIceServersConfig();
       
       for (const server of servers) {
-        const serverUrl = server.urls;
-        serverStatuses.set(serverUrl, 'checking');
+        const serverUrlKey = getServerUrlKey(server);
+        serverStatuses.set(serverUrlKey, 'checking');
         renderStunServers(); // Update UI to show "checking"
         
         const isAvailable = await checkServerAvailability(server);
-        serverStatuses.set(serverUrl, isAvailable ? 'available' : 'unavailable');
+        serverStatuses.set(serverUrlKey, isAvailable ? 'available' : 'unavailable');
         renderStunServers(); // Update UI with result
         
         // Small delay between checks
@@ -205,7 +243,7 @@ Apps.register({
       serversList.innerHTML = '';
       
       if (servers.length === 0) {
-        serversList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--muted);">No STUN servers configured</div>';
+        serversList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--muted);">No ICE servers configured</div>';
         return;
       }
       
@@ -228,8 +266,8 @@ Apps.register({
         const statusDiv = document.createElement('div');
         statusDiv.style.cssText = 'flex-shrink: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;';
         
-        const serverUrl = server.urls;
-        const status = serverStatuses.get(serverUrl);
+        const serverUrlKey = getServerUrlKey(server);
+        const status = serverStatuses.get(serverUrlKey);
         
         // Check if WebRTC is available
         const webrtcAvailable = isWebRTCAvailable();
@@ -255,16 +293,31 @@ Apps.register({
         serverInfo.style.cssText = 'flex: 1; min-width: 0;';
         
         const urlDiv = document.createElement('div');
-        urlDiv.style.cssText = 'font-weight: 500; color: var(--text); margin-bottom: 4px; word-break: break-all;';
-        urlDiv.textContent = server.urls;
+        urlDiv.style.cssText = 'font-weight: 500; color: var(--text); margin-bottom: 4px; word-break: break-all; display: flex; align-items: center; gap: 8px;';
+        
+        // Server type indicator (STUN or TURN)
+        const serverType = getServerType(server);
+        const typeBadge = document.createElement('span');
+        typeBadge.style.cssText = `font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; flex-shrink: 0; background: ${serverType === 'TURN' ? 'rgba(79, 124, 255, 0.2)' : 'rgba(46, 194, 126, 0.2)'}; color: ${serverType === 'TURN' ? 'var(--accent)' : 'var(--ok)'};`;
+        typeBadge.textContent = serverType;
+        
+        const urlText = document.createElement('span');
+        urlText.textContent = formatServerUrls(server);
+        urlText.style.cssText = 'flex: 1; min-width: 0;';
+        
+        urlDiv.appendChild(typeBadge);
+        urlDiv.appendChild(urlText);
         
         const authDiv = document.createElement('div');
         authDiv.style.cssText = 'font-size: 0.85rem; color: var(--muted);';
         const authInfo = [];
         if (server.username || server.credential) {
           authInfo.push(`Username: ${server.username || '(none)'}`);
+          if (server.credential) {
+            authInfo.push(`Password: ${'*'.repeat(Math.min(server.credential.length, 8))}`);
+          }
         } else {
-          authInfo.push('No authentication');
+          authInfo.push('🔓 Anonymous (no authentication)');
         }
         
         // Add priority label
@@ -284,7 +337,7 @@ Apps.register({
         editBtn.textContent = I18n.t('network.edit');
         editBtn.style.cssText = 'flex-shrink: 0; padding: 6px 12px; font-size: 0.85rem;';
         editBtn.addEventListener('click', () => {
-          showEditServerDialog(index, server);
+          showEditServerDialog(originalIndex, server);
         });
         
         const deleteBtn = document.createElement('button');
@@ -292,10 +345,11 @@ Apps.register({
         deleteBtn.textContent = I18n.t('network.delete');
         deleteBtn.style.cssText = 'flex-shrink: 0; padding: 6px 12px; font-size: 0.85rem; background: var(--danger); color: white;';
         deleteBtn.addEventListener('click', () => {
-          if (confirm(`Delete server "${server.urls}"?`)) {
+          const displayUrls = formatServerUrls(server);
+          if (confirm(`Delete server "${displayUrls}"?`)) {
             const servers = window.Network.getIceServersConfig();
             servers.splice(originalIndex, 1);
-            serverStatuses.delete(serverUrl);
+            serverStatuses.delete(serverUrlKey);
             try {
               window.Network.updateIceServers(servers);
               renderStunServers();
@@ -332,21 +386,33 @@ Apps.register({
             <form id="network-server-form">
               <div class="auth-form-group">
                 <label for="server-url">${I18n.t('network.serverUrl')}</label>
-                <input type="text" id="server-url" value="${server?.urls || ''}" placeholder="${I18n.t('network.serverUrlPlaceholder')}" required />
-                <span class="auth-hint">${I18n.t('network.serverUrlHint')}</span>
+                <input type="text" id="server-url" value="${server ? (Array.isArray(server.urls) ? server.urls.join(', ') : server.urls) : ''}" placeholder="${I18n.t('network.serverUrlPlaceholder')}" required />
+                <span class="auth-hint">${I18n.t('network.serverUrlHint')} For multiple URLs (e.g., TURN with multiple ports), separate with commas.</span>
                 <span class="auth-error" id="server-url-error"></span>
               </div>
               
               <div class="auth-form-group">
-                <label for="server-username">${I18n.t('network.username')}</label>
-                <input type="text" id="server-username" value="${server?.username || ''}" placeholder="Optional" />
-                <span class="auth-error" id="server-username-error"></span>
+                <label style="display: flex; align-items: center; gap: 8px;">
+                  <input type="checkbox" id="server-anonymous" ${!server?.username && !server?.credential ? 'checked' : ''} />
+                  <span>Anonymous (no authentication)</span>
+                </label>
+                <span class="auth-hint">Check this for STUN servers or TURN servers that don't require authentication</span>
               </div>
               
-              <div class="auth-form-group">
-                <label for="server-credential">${I18n.t('network.credential')}</label>
-                <input type="password" id="server-credential" value="${server?.credential || ''}" placeholder="Optional" />
-                <span class="auth-error" id="server-credential-error"></span>
+              <div id="server-auth-fields" style="${!server?.username && !server?.credential ? 'display: none;' : ''}">
+                <div class="auth-form-group">
+                  <label for="server-username">Username <span style="color: var(--accent);">*</span></label>
+                  <input type="text" id="server-username" value="${server?.username || ''}" placeholder="Required for TURN servers" />
+                  <span class="auth-hint">TURN servers usually require username/credential. STUN servers typically don't.</span>
+                  <span class="auth-error" id="server-username-error"></span>
+                </div>
+                
+                <div class="auth-form-group">
+                  <label for="server-credential">Password/Credential <span style="color: var(--accent);">*</span></label>
+                  <input type="password" id="server-credential" value="${server?.credential || ''}" placeholder="Required for TURN servers" />
+                  <span class="auth-hint">Password or credential for TURN server authentication</span>
+                  <span class="auth-error" id="server-credential-error"></span>
+                </div>
               </div>
               
               <div class="auth-form-group">
@@ -382,19 +448,68 @@ Apps.register({
         dialog.remove();
       });
       
+      // Anonymous checkbox handler - show/hide auth fields
+      const anonymousCheckbox = dialog.querySelector('#server-anonymous');
+      const authFields = dialog.querySelector('#server-auth-fields');
+      const usernameInput = dialog.querySelector('#server-username');
+      const credentialInput = dialog.querySelector('#server-credential');
+      
+      anonymousCheckbox.addEventListener('change', () => {
+        if (anonymousCheckbox.checked) {
+          authFields.style.display = 'none';
+          usernameInput.value = '';
+          credentialInput.value = '';
+        } else {
+          authFields.style.display = 'block';
+        }
+      });
+      
+      // Auto-detect server type and show/hide auth fields based on URL
+      const urlInput = dialog.querySelector('#server-url');
+      urlInput.addEventListener('input', () => {
+        const urlValue = urlInput.value.trim();
+        const isTurn = urlValue.includes('turn:') || urlValue.includes('turns:');
+        const isStun = urlValue.includes('stun:');
+        
+        // If TURN server, suggest that auth might be needed
+        if (isTurn && !anonymousCheckbox.checked && !usernameInput.value && !credentialInput.value) {
+          // Keep auth fields visible for TURN
+        } else if (isStun && !usernameInput.value && !credentialInput.value) {
+          // STUN servers typically don't need auth - suggest anonymous
+          anonymousCheckbox.checked = true;
+          authFields.style.display = 'none';
+        }
+      });
+      
       // Form submission
       dialog.querySelector('#network-server-form').addEventListener('submit', (e) => {
         e.preventDefault();
         
-        const url = document.getElementById('server-url').value.trim();
-        const username = document.getElementById('server-username').value.trim() || undefined;
-        const credential = document.getElementById('server-credential').value.trim() || undefined;
+        const urlInput = document.getElementById('server-url').value.trim();
+        const isAnonymous = document.getElementById('server-anonymous').checked;
+        const username = isAnonymous ? undefined : (document.getElementById('server-username').value.trim() || undefined);
+        const credential = isAnonymous ? undefined : (document.getElementById('server-credential').value.trim() || undefined);
         const priority = document.getElementById('server-priority').value || 'normal';
         
-        // Validate URL format
-        if (!url.match(/^(stun|turn):\/\/[^\s]+:\d+$/)) {
-          document.getElementById('server-url-error').textContent = I18n.t('network.invalidFormat');
-          return;
+        // Validate TURN servers - they usually need authentication
+        const urlStrings = urlInput.split(',').map(u => u.trim()).filter(u => u.length > 0);
+        const isTurnServer = urlStrings.some(url => url.includes('turn:') || url.includes('turns:'));
+        if (isTurnServer && isAnonymous) {
+          // Warn but don't block - some TURN servers might work without auth
+          if (!confirm('TURN servers usually require username/password. Continue without authentication?')) {
+            return;
+          }
+        }
+        
+        // Validate each URL format (supports STUN and TURN, with optional transport parameter)
+        // Examples: stun:stun.l.google.com:19302, turn:server.com:3478, turn:server.com:443?transport=tcp, turns:server.com:443
+        // Note: TURN/STUN URLs use single colon (turn:host:port), not double slash (turn://host:port)
+        const urlPattern = /^(stun|turn|turns):[^\s]+:\d+(\?[^\s]*)?$/;
+        for (const urlStr of urlStrings) {
+          if (!urlStr.match(urlPattern)) {
+            document.getElementById('server-url-error').textContent = I18n.t('network.invalidFormat') + ` Invalid URL: "${urlStr}". Format: stun:host:port, turn:host:port?transport=tcp, or turns:host:port`;
+            return;
+          }
         }
         
         // Clear errors
@@ -403,9 +518,13 @@ Apps.register({
         
         try {
           const servers = window.Network.getIceServersConfig();
-          const newServer = { urls: url, priority: priority };
+          // If multiple URLs, store as array; if single URL, store as string (for compatibility)
+          const urls = urlStrings.length > 1 ? urlStrings : urlStrings[0];
+          console.log('[Network] Saving server - urlStrings:', urlStrings, 'urls type:', Array.isArray(urls) ? 'array' : typeof urls, 'urls value:', urls);
+          const newServer = { urls: urls, priority: priority };
           if (username) newServer.username = username;
           if (credential) newServer.credential = credential;
+          console.log('[Network] New server object to save:', JSON.stringify(newServer, null, 2));
           
           if (isEdit) {
             servers[index] = newServer;
@@ -414,13 +533,19 @@ Apps.register({
           }
           
           window.Network.updateIceServers(servers);
-          serverStatuses.delete(server?.urls); // Clear old status if editing
-          serverStatuses.delete(url); // Clear status for new URL
+          // Clear old status if editing
+          if (server) {
+            const oldUrlKey = getServerUrlKey(server);
+            serverStatuses.delete(oldUrlKey);
+          }
+          // Clear status for new URL
+          const newUrlKey = getServerUrlKey(newServer);
+          serverStatuses.delete(newUrlKey);
           dialog.remove();
           renderStunServers();
           // Check availability of new/updated server
           checkServerAvailability(newServer).then(isAvailable => {
-            serverStatuses.set(url, isAvailable ? 'available' : 'unavailable');
+            serverStatuses.set(newUrlKey, isAvailable ? 'available' : 'unavailable');
             renderStunServers();
           });
           showMessage(I18n.t('network.saved'), 'success');
@@ -501,8 +626,31 @@ Apps.register({
       <div style="padding: 20px;">
         <div id="network-message" style="display: none; padding: 12px; margin-bottom: 16px; background: var(--panel); border-radius: 6px; border: 1px solid var(--panel-2);"></div>
         
-        <h3>${I18n.t('network.stunServers')}</h3>
-        <p style="color: var(--muted); font-size: 0.9rem; margin-bottom: 16px;">${I18n.t('network.stunServersDescription')}</p>
+        <h3>ICE Servers (STUN/TURN)</h3>
+        <p style="color: var(--muted); font-size: 0.9rem; margin-bottom: 16px;">
+          Configure STUN and TURN servers for WebRTC connections.
+          <br><br>
+          <strong>STUN servers</strong> help discover your public IP address for peer-to-peer connections.
+          <br>
+          <strong>TURN servers</strong> relay traffic when direct peer-to-peer connection is not possible (behind NAT/firewall).
+          <br><br>
+          <div style="padding: 12px; margin: 12px 0; background: rgba(79, 124, 255, 0.1); border-left: 4px solid var(--accent); border-radius: 6px;">
+            <strong style="color: var(--accent);">⚠️ Important:</strong>
+            <br>
+            <small style="color: var(--text);">
+              TURN servers are <strong>required</strong> for connections behind NAT/firewall. 
+              Free TURN servers are unreliable and not included by default.
+              <br><br>
+              <strong>To enable WebRTC connections:</strong>
+              <br>1. Configure your own TURN server (recommended for production)
+              <br>2. Or use a paid TURN service (e.g., Twilio, Metered.ca paid tier)
+              <br>3. Add TURN server URL with username/credential below
+              <br><br>
+              <strong>Format:</strong> <code>turn:your-server.com:3478</code> or <code>turn:your-server.com:443?transport=tcp</code>
+            </small>
+          </div>
+          <small>💡 Tip: TURN servers require username/credential. Use "Check Servers" button to verify availability.</small>
+        </p>
         <div id="webrtc-warning" style="display: none; padding: 12px; margin-bottom: 16px; background: rgba(255, 107, 107, 0.1); border: 1px solid var(--danger); border-radius: 6px; color: var(--danger); font-size: 0.9rem;"></div>
         
         <div id="stun-servers-list"></div>
@@ -511,45 +659,6 @@ Apps.register({
           <button id="add-server-btn" class="auth-button-primary">${I18n.t('network.addServer')}</button>
           <button id="check-servers-btn" class="auth-button-secondary">${I18n.t('network.checkServers')}</button>
           <button id="reset-servers-btn" class="auth-button-secondary">${I18n.t('network.reset')}</button>
-        </div>
-        
-        <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--panel-2);" />
-        
-        <h3>${I18n.t('network.signalingServer')}</h3>
-        <p style="color: var(--muted); font-size: 0.9rem; margin-bottom: 8px;">${I18n.t('network.signalingServerDescription')}</p>
-        <div style="padding: 12px; margin-bottom: 16px; background: rgba(79, 124, 255, 0.1); border: 1px solid var(--accent); border-radius: 6px; font-size: 0.85rem; color: var(--text);">
-          <strong>ℹ️ ${I18n.t('network.signalingNote')}</strong><br>
-          ${I18n.t('network.signalingNoteText')}
-        </div>
-        
-        <div id="signaling-config" style="padding: 16px; background: var(--panel); border: 1px solid var(--panel-2); border-radius: 6px; margin-bottom: 16px;">
-          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-            <input type="radio" id="signaling-none" name="signaling-type" value="none" />
-            <label for="signaling-none" style="cursor: pointer; flex: 1;">${I18n.t('network.signalingNone')}</label>
-          </div>
-          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-            <input type="radio" id="signaling-public" name="signaling-type" value="public" />
-            <label for="signaling-public" style="cursor: pointer; flex: 1;">${I18n.t('network.signalingPublic')}</label>
-          </div>
-          <div id="signaling-public-url-group" style="display: none; margin-left: 28px; margin-bottom: 12px;">
-            <input type="text" id="signaling-public-url" placeholder="${I18n.t('network.signalingUrlPlaceholder')}" 
-                   style="width: 100%; padding: 8px; background: var(--bg); border: 1px solid var(--panel-2); border-radius: 4px; color: var(--text);" />
-            <span style="font-size: 0.85rem; color: var(--muted); display: block; margin-top: 4px;">${I18n.t('network.signalingUrlHint')}</span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <input type="radio" id="signaling-custom" name="signaling-type" value="custom" />
-            <label for="signaling-custom" style="cursor: pointer; flex: 1;">${I18n.t('network.signalingCustom')}</label>
-          </div>
-          <div id="signaling-custom-url-group" style="display: none; margin-left: 28px;">
-            <input type="text" id="signaling-custom-url" placeholder="${I18n.t('network.signalingUrlPlaceholder')}" 
-                   style="width: 100%; padding: 8px; background: var(--bg); border: 1px solid var(--panel-2); border-radius: 4px; color: var(--text);" />
-            <span style="font-size: 0.85rem; color: var(--muted); display: block; margin-top: 4px;">${I18n.t('network.signalingUrlHint')}</span>
-          </div>
-        </div>
-        
-        <div style="display: flex; gap: 8px; margin-bottom: 24px;">
-          <button id="save-signaling-btn" class="auth-button-primary">${I18n.t('network.save')}</button>
-          <div id="signaling-status" style="flex: 1; padding: 8px; background: var(--panel); border-radius: 4px; font-size: 0.9rem; color: var(--muted);"></div>
         </div>
         
         <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--panel-2);" />
@@ -582,116 +691,11 @@ Apps.register({
     // Initial render
     renderStunServers();
     renderConnections();
-    renderSignalingConfig();
     
     // Auto-check servers on load (only if WebRTC is available)
     if (webrtcAvailable) {
       checkAllServers();
     }
-    
-    // Render signaling configuration
-    function renderSignalingConfig() {
-      const currentUrl = window.Network.getSignalingServerUrl();
-      const publicUrl = window.Network.getPublicSignalingUrl();
-      
-      // Set radio button state
-      if (!currentUrl || currentUrl === null) {
-        win.querySelector('#signaling-none').checked = true;
-        win.querySelector('#signaling-public-url-group').style.display = 'none';
-        win.querySelector('#signaling-custom-url-group').style.display = 'none';
-      } else if (currentUrl === 'public') {
-        win.querySelector('#signaling-public').checked = true;
-        win.querySelector('#signaling-public-url-group').style.display = 'block';
-        win.querySelector('#signaling-custom-url-group').style.display = 'none';
-        if (publicUrl) {
-          win.querySelector('#signaling-public-url').value = publicUrl;
-        }
-      } else {
-        win.querySelector('#signaling-custom').checked = true;
-        win.querySelector('#signaling-public-url-group').style.display = 'none';
-        win.querySelector('#signaling-custom-url-group').style.display = 'block';
-        win.querySelector('#signaling-custom-url').value = currentUrl;
-      }
-      
-      // Update status
-      updateSignalingStatus();
-    }
-    
-    // Update signaling status display
-    function updateSignalingStatus() {
-      const statusDiv = win.querySelector('#signaling-status');
-      if (!statusDiv) return;
-      
-      const currentUrl = window.Network.getSignalingServerUrl();
-      if (!currentUrl || currentUrl === null) {
-        statusDiv.textContent = I18n.t('network.signalingStatusNone');
-        statusDiv.style.color = 'var(--muted)';
-      } else if (currentUrl === 'public') {
-        const publicUrl = window.Network.getPublicSignalingUrl();
-        if (publicUrl) {
-          statusDiv.textContent = `${I18n.t('network.signalingStatusPublic')}: ${publicUrl}`;
-          statusDiv.style.color = 'var(--ok)';
-        } else {
-          statusDiv.textContent = I18n.t('network.signalingStatusPublicNoUrl');
-          statusDiv.style.color = 'var(--danger)';
-        }
-      } else {
-        statusDiv.textContent = `${I18n.t('network.signalingStatusCustom')}: ${currentUrl}`;
-        statusDiv.style.color = 'var(--ok)';
-      }
-    }
-    
-    // Radio button handlers
-    win.querySelector('#signaling-none').addEventListener('change', () => {
-      win.querySelector('#signaling-public-url-group').style.display = 'none';
-      win.querySelector('#signaling-custom-url-group').style.display = 'none';
-      updateSignalingStatus();
-    });
-    
-    win.querySelector('#signaling-public').addEventListener('change', () => {
-      win.querySelector('#signaling-public-url-group').style.display = 'block';
-      win.querySelector('#signaling-custom-url-group').style.display = 'none';
-      updateSignalingStatus();
-    });
-    
-    win.querySelector('#signaling-custom').addEventListener('change', () => {
-      win.querySelector('#signaling-public-url-group').style.display = 'none';
-      win.querySelector('#signaling-custom-url-group').style.display = 'block';
-      updateSignalingStatus();
-    });
-    
-    // Save signaling configuration
-    win.querySelector('#save-signaling-btn').addEventListener('click', () => {
-      try {
-        const selectedType = win.querySelector('input[name="signaling-type"]:checked').value;
-        
-        if (selectedType === 'none') {
-          window.Network.setSignalingServerUrl(null);
-          showMessage(I18n.t('network.signalingSaved'), 'success');
-        } else if (selectedType === 'public') {
-          const publicUrl = win.querySelector('#signaling-public-url').value.trim();
-          if (!publicUrl) {
-            showMessage(I18n.t('network.signalingUrlRequired'), 'error');
-            return;
-          }
-          window.Network.setSignalingServerUrl('public');
-          window.Network.setPublicSignalingUrl(publicUrl);
-          showMessage(I18n.t('network.signalingSaved'), 'success');
-        } else if (selectedType === 'custom') {
-          const customUrl = win.querySelector('#signaling-custom-url').value.trim();
-          if (!customUrl) {
-            showMessage(I18n.t('network.signalingUrlRequired'), 'error');
-            return;
-          }
-          window.Network.setSignalingServerUrl(customUrl);
-          showMessage(I18n.t('network.signalingSaved'), 'success');
-        }
-        
-        renderSignalingConfig();
-      } catch (e) {
-        showMessage(e.message || I18n.t('network.error'), 'error');
-      }
-    });
     
     // Add server button
     win.querySelector('#add-server-btn').addEventListener('click', () => {
@@ -718,11 +722,15 @@ Apps.register({
     win.querySelector('#reset-servers-btn').addEventListener('click', () => {
       if (confirm(I18n.t('network.resetConfirm'))) {
         try {
+          // Reset to default ICE servers (STUN + TURN)
           window.Network.updateIceServers([
+            // STUN servers (high priority)
             { urls: 'stun:stun.l.google.com:19302', priority: 'high' },
             { urls: 'stun:stun1.l.google.com:19302', priority: 'high' },
-            { urls: 'stun:stun2.l.google.com:19302', priority: 'high' },
-            { urls: 'stun:freestun.net:3478', priority: 'low' }
+            // TURN servers (normal priority)
+            { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject', priority: 'normal' },
+            { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject', priority: 'normal' },
+            { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject', priority: 'normal' }
           ]);
           serverStatuses.clear(); // Clear status cache
           renderStunServers();

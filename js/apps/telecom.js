@@ -990,6 +990,7 @@ function selectChat(win, winId, chat, config, storageKey) {
       item.style.background = 'transparent';
     }
   });
+  
 }
 
 /**
@@ -1522,9 +1523,9 @@ function closeAllTelecomDialogs(winId) {
   const windowContent = windowElement.querySelector('.win-content');
   if (!windowContent) return;
   
-  // Remove all Telecom dialogs and backdrops
-  const dialogs = windowContent.querySelectorAll('.telecom-profile-dialog, .telecom-settings-dialog, .telecom-new-group-dialog, .telecom-new-channel-dialog, .telecom-contacts-dialog, .telecom-invite-received-dialog');
-  const backdrops = windowContent.querySelectorAll('.telecom-profile-backdrop, .telecom-settings-backdrop, .telecom-new-group-backdrop, .telecom-new-channel-backdrop, .telecom-contacts-backdrop, .telecom-invite-received-backdrop');
+  // Remove all Telecom dialogs and backdrops (including answer dialog)
+  const dialogs = windowContent.querySelectorAll('.telecom-profile-dialog, .telecom-settings-dialog, .telecom-new-group-dialog, .telecom-new-channel-dialog, .telecom-contacts-dialog, .telecom-invite-received-dialog, .telecom-share-answer-dialog');
+  const backdrops = windowContent.querySelectorAll('.telecom-profile-backdrop, .telecom-settings-backdrop, .telecom-new-group-backdrop, .telecom-new-channel-backdrop, .telecom-contacts-backdrop, .telecom-invite-received-backdrop, .telecom-share-answer-backdrop');
   
   dialogs.forEach(dialog => dialog.remove());
   backdrops.forEach(backdrop => backdrop.remove());
@@ -4174,6 +4175,358 @@ function showInvitePreviewDialog(winId, invite, config, storageKey, onAccept, on
 }
 
 /**
+ * Show dialog to share WebRTC answer back to sender
+ * Recipient generates answer and needs to share it with sender via QR/JSON
+ */
+function showShareAnswerDialog(winId, inviteWithAnswer, config, storageKey) {
+  console.log('[Telecom] showShareAnswerDialog called with winId:', winId);
+  
+  // Find the actual window element - try multiple methods
+  let windowElement = null;
+  let actualWinId = winId;
+  
+  // Method 1: Try WindowManager.findWindow with provided winId
+  if (winId) {
+    windowElement = WindowManager.findWindow(winId);
+    if (windowElement) {
+      console.log('[Telecom] Found window via WindowManager.findWindow with winId:', winId);
+    }
+  }
+  
+  // Method 2: If not found, try to find any Telecom window directly (singleton app)
+  if (!windowElement) {
+    const allWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+    console.log('[Telecom] Searching for Telecom windows, found:', allWindows.length);
+    if (allWindows.length > 0) {
+      // Use the first Telecom window found
+      windowElement = allWindows[0];
+      actualWinId = windowElement.dataset.winId || windowElement.id || windowElement.getAttribute('id') || winId;
+      console.log('[Telecom] Found Telecom window via querySelector:', actualWinId, 'element:', windowElement);
+    }
+  }
+  
+  // Method 3: If still not found, try WindowManager.findWindow with found ID
+  if (!windowElement && actualWinId && actualWinId !== winId) {
+    windowElement = WindowManager.findWindow(actualWinId);
+    if (windowElement) {
+      console.log('[Telecom] Found window via WindowManager with actualWinId:', actualWinId);
+    }
+  }
+  
+  // Method 4: Try to find by any window with telecom class or attribute
+  if (!windowElement) {
+    const directWindows = document.querySelectorAll('.window.telecom, .window[data-app-id="telecom"], [data-app-id="telecom"]');
+    console.log('[Telecom] Direct search found windows:', directWindows.length);
+    if (directWindows.length > 0) {
+      windowElement = directWindows[0];
+      actualWinId = windowElement.dataset?.winId || windowElement.id || windowElement.getAttribute('id') || 'unknown';
+      console.log('[Telecom] Found window via direct query:', actualWinId);
+    }
+  }
+  
+  if (!windowElement) {
+    console.warn('[Telecom] Window not found immediately. Tried winId:', winId, 'actualWinId:', actualWinId);
+    console.warn('[Telecom] Available Telecom windows:', document.querySelectorAll('.window[data-app-id="telecom"]').length);
+    console.warn('[Telecom] All windows in DOM:', document.querySelectorAll('.window').length);
+    
+    // Window might not be ready yet - retry after a delay
+    console.warn('[Telecom] No Telecom windows found in DOM, retrying in 1000ms...');
+    setTimeout(() => {
+      const retryWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+      console.log('[Telecom] Retry: found windows:', retryWindows.length);
+      if (retryWindows.length > 0) {
+        const retryWinId = retryWindows[0].dataset.winId || retryWindows[0].id || retryWindows[0].getAttribute('id');
+        console.log('[Telecom] Found window on retry:', retryWinId);
+        showShareAnswerDialog(retryWinId, inviteWithAnswer, config, storageKey);
+      } else {
+        console.error('[Telecom] Still no Telecom windows found after retry');
+        // Last resort: show alert with data
+        alert('WebRTC Answer generated! Please copy this data:\n\n' + JSON.stringify(inviteWithAnswer, null, 2).substring(0, 500) + '...');
+      }
+    }, 1000);
+    return; // Exit early, will retry
+  }
+  
+  // Update winId for later use
+  winId = actualWinId;
+  console.log('[Telecom] Using window with ID:', winId);
+
+  // Find the window content area
+  const windowContent = windowElement.querySelector('.win-content');
+  if (!windowContent) {
+    console.error('[Telecom] Window content not found in windowElement:', windowElement);
+    console.error('[Telecom] Window element classes:', windowElement.className);
+    console.error('[Telecom] Window element children:', windowElement.children.length);
+    // Try to find content in a different way
+    const altContent = windowElement.querySelector('.win-content, [class*="content"], [class*="win"]');
+    if (altContent) {
+      console.log('[Telecom] Found alternative content area, but returning for safety');
+    }
+    return;
+  }
+  
+  console.log('[Telecom] Found window content, proceeding to create answer dialog');
+
+  // Close other dialogs (but keep contacts dialog open - answer should show above it)
+  // Use the found windowElement directly
+  if (windowElement) {
+    const windowContentForClose = windowElement.querySelector('.win-content');
+    if (windowContentForClose) {
+      // Close other dialogs except contacts and answer dialogs
+      const otherDialogs = windowContentForClose.querySelectorAll('.telecom-profile-dialog, .telecom-settings-dialog, .telecom-new-group-dialog, .telecom-new-channel-dialog, .telecom-invite-received-dialog');
+      const otherBackdrops = windowContentForClose.querySelectorAll('.telecom-profile-backdrop, .telecom-settings-backdrop, .telecom-new-group-backdrop, .telecom-new-channel-backdrop, .telecom-invite-received-backdrop');
+      otherDialogs.forEach(dialog => dialog.remove());
+      otherBackdrops.forEach(backdrop => backdrop.remove());
+    }
+  }
+
+  // Close existing answer dialogs if any (to avoid duplicates)
+  // Check both windowContent and document.body
+  const existingDialog = windowContent.querySelector('.telecom-share-answer-dialog') || document.body.querySelector('.telecom-share-answer-dialog');
+  const existingBackdrop = windowContent.querySelector('.telecom-share-answer-backdrop') || document.body.querySelector('.telecom-share-answer-backdrop');
+  if (existingDialog) existingDialog.remove();
+  if (existingBackdrop) existingBackdrop.remove();
+
+  // Create backdrop - use fixed positioning to ensure it's above everything
+  const backdrop = document.createElement('div');
+  backdrop.className = 'telecom-share-answer-backdrop';
+  backdrop.style.cssText = `
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 10000;
+    animation: fadeIn 0.2s ease;
+  `;
+
+  // Create dialog - use fixed positioning to ensure it's above everything
+  const dialog = document.createElement('div');
+  dialog.className = 'telecom-share-answer-dialog';
+  dialog.style.cssText = `
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 650px;
+    max-width: 90%;
+    max-height: 90vh;
+    background: var(--panel);
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    z-index: 10001;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: fadeIn 0.2s ease;
+  `;
+
+  // Dialog header
+  const header = document.createElement('div');
+  header.style.cssText = `
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--panel-2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  `;
+  header.innerHTML = `
+    <div style="display:flex; align-items:center; gap:12px;">
+      <div style="width:40px; height:40px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0;">
+        🔗
+      </div>
+      <div>
+        <h3 style="margin:0; font-size:18px; font-weight:500;">WebRTC Answer Ready</h3>
+        <div style="font-size:12px; color:var(--muted); margin-top:2px;">Share this to complete connection</div>
+      </div>
+    </div>
+    <button class="telecom-share-answer-close" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text); padding:4px 8px; border-radius:4px; transition:background 0.2s;" onmouseover="this.style.background='var(--panel-2)'" onmouseout="this.style.background='none'">✕</button>
+  `;
+
+  // Dialog content
+  const content = document.createElement('div');
+  content.style.cssText = `
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+  `;
+
+  // Prepare invite JSON with answer (exclude avatar for QR code size)
+  const inviteForQR = {
+    id: inviteWithAnswer.id,
+    fromGuid: inviteWithAnswer.fromGuid,
+    toGuid: inviteWithAnswer.toGuid,
+    timestamp: inviteWithAnswer.timestamp,
+    status: inviteWithAnswer.status,
+    webrtcOffer: inviteWithAnswer.webrtcOffer,
+    webrtcAnswer: inviteWithAnswer.webrtcAnswer
+    // Exclude avatar and other large fields for QR code
+  };
+  const inviteJsonCompact = JSON.stringify(inviteForQR);
+  
+  content.innerHTML = `
+    <!-- Info Box -->
+    <div style="margin-bottom:24px; padding:16px; background:linear-gradient(135deg, var(--panel-2) 0%, var(--panel) 100%); border-left:4px solid var(--accent); border-radius:6px;">
+      <div style="display:flex; align-items:start; gap:12px;">
+        <div style="font-size:24px; flex-shrink:0; margin-top:-2px;">💡</div>
+        <div style="flex:1;">
+          <div style="font-size:14px; font-weight:500; color:var(--text); margin-bottom:8px;">
+            What is a WebRTC Answer?
+          </div>
+          <div style="font-size:13px; color:var(--muted); line-height:1.6; margin-bottom:12px;">
+            When someone sends you an invite, they create a WebRTC "offer" to establish a peer-to-peer connection. 
+            You've now generated an "answer" that confirms your connection details. This answer needs to be sent back 
+            to the sender so they can complete the connection setup.
+          </div>
+          <div style="font-size:13px; color:var(--muted); line-height:1.6; margin-bottom:8px;">
+            <strong style="color:var(--text);">What to do:</strong>
+          </div>
+          <ol style="margin:0; padding-left:20px; font-size:13px; color:var(--muted); line-height:1.8;">
+            <li>Copy the JSON data below or scan the QR code</li>
+            <li>Send it to the person who invited you (via any messaging app)</li>
+            <li>They'll paste it into their "Accept Invite" dialog</li>
+            <li>The connection will be established automatically</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+    
+    <!-- JSON Section -->
+    <div style="margin-bottom:24px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+        <label style="display:block; font-size:13px; font-weight:500; color:var(--text);">
+          📄 Answer Data (JSON)
+        </label>
+        <button id="telecom-share-answer-copy" 
+          style="padding:6px 14px; background:var(--accent); color:white; border:none; border-radius:6px; cursor:pointer; font-size:12px; font-weight:500; transition:opacity 0.2s; display:flex; align-items:center; gap:6px;"
+          onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+          <span>📋</span> Copy JSON
+        </button>
+      </div>
+      <textarea id="telecom-share-answer-json" 
+        readonly
+        style="width:100%; min-height:120px; max-height:200px; padding:12px; background:var(--panel-2); border:1px solid var(--panel-2); border-radius:6px; color:var(--text); font-size:11px; font-family:'Courier New', monospace; outline:none; box-sizing:border-box; resize:vertical; line-height:1.4;"
+      ></textarea>
+      <div style="margin-top:6px; font-size:11px; color:var(--muted); display:flex; align-items:center; gap:4px;">
+        <span>📊</span> <span>${inviteJsonCompact.length} characters</span>
+      </div>
+    </div>
+
+    <!-- QR Code Section -->
+    <div style="margin-bottom:24px;">
+      <label style="display:block; font-size:13px; font-weight:500; margin-bottom:8px; color:var(--text);">
+        📱 QR Code
+      </label>
+      <div style="padding:20px; background:white; border-radius:8px; display:inline-block; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <div id="telecom-share-answer-qr" style="text-align:center;">
+          <div style="color:var(--muted); font-size:12px; padding:40px 20px;">Generating QR code...</div>
+        </div>
+      </div>
+      <div style="margin-top:8px; font-size:11px; color:var(--muted);">
+        The sender can scan this QR code with their camera or QR scanner app
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div style="display:flex; gap:12px; justify-content:flex-end; padding-top:16px; border-top:1px solid var(--panel-2);">
+      <button id="telecom-share-answer-close-btn" 
+        style="padding:10px 20px; background:var(--panel-2); color:var(--text); border:none; border-radius:6px; cursor:pointer; font-size:14px; font-weight:500; transition:background 0.2s;"
+        onmouseover="this.style.background='var(--panel)'" onmouseout="this.style.background='var(--panel-2)'">
+        Close
+      </button>
+    </div>
+  `;
+
+  dialog.appendChild(header);
+  dialog.appendChild(content);
+
+  // Add to document body instead of window content to ensure it's above everything
+  console.log('[Telecom] Adding answer dialog to document body');
+  document.body.appendChild(backdrop);
+  document.body.appendChild(dialog);
+  console.log('[Telecom] Answer dialog added to DOM. Backdrop:', backdrop, 'Dialog:', dialog);
+  console.log('[Telecom] Dialog computed style z-index:', window.getComputedStyle(dialog).zIndex);
+  console.log('[Telecom] Backdrop computed style z-index:', window.getComputedStyle(backdrop).zIndex);
+  
+  console.log('[Telecom] Answer dialog should now be visible');
+
+  // Set JSON textarea value
+  const jsonTextarea = dialog.querySelector('#telecom-share-answer-json');
+  if (jsonTextarea) {
+    jsonTextarea.value = inviteJsonCompact;
+  }
+
+  // Generate QR code
+  const qrContainer = dialog.querySelector('#telecom-share-answer-qr');
+  if (qrContainer && typeof qrcode !== 'undefined') {
+    try {
+      // Convert JSON string to UTF-8 bytes for QR code
+      const utf8Bytes = new TextEncoder().encode(inviteJsonCompact);
+      // Convert bytes to string for qrcode-generator (Byte mode)
+      let byteString = '';
+      const chunkSize = 8192;
+      for (let i = 0; i < utf8Bytes.length; i += chunkSize) {
+        const chunk = utf8Bytes.slice(i, i + chunkSize);
+        byteString += String.fromCharCode.apply(null, chunk);
+      }
+      
+      const qr = qrcode(0, 'L');
+      qr.addData(byteString, 'Byte');
+      qr.make();
+      
+      const qrSvg = qr.createSvgTag({ cellSize: 4, margin: 2 });
+      qrContainer.innerHTML = qrSvg;
+    } catch (e) {
+      console.error('[Telecom] Error generating QR code for answer:', e);
+      qrContainer.innerHTML = `<div style="color:var(--danger); font-size:12px;">Error generating QR code: ${e.message}</div>`;
+    }
+  }
+
+  // Copy JSON button
+  const copyBtn = dialog.querySelector('#telecom-share-answer-copy');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(inviteJsonCompact);
+        const originalHTML = copyBtn.innerHTML;
+        copyBtn.innerHTML = '<span>✓</span> Copied!';
+        copyBtn.style.background = 'var(--ok)';
+        setTimeout(() => {
+          copyBtn.innerHTML = originalHTML;
+          copyBtn.style.background = 'var(--accent)';
+        }, 2000);
+      } catch (e) {
+        console.error('[Telecom] Error copying answer JSON:', e);
+        // Fallback: select text in textarea
+        const textarea = dialog.querySelector('#telecom-share-answer-json');
+        if (textarea) {
+          textarea.select();
+          textarea.setSelectionRange(0, inviteJsonCompact.length);
+          copyBtn.innerHTML = '<span>⚠️</span> Select & Copy manually';
+          setTimeout(() => {
+            copyBtn.innerHTML = '<span>📋</span> Copy JSON';
+          }, 3000);
+        }
+      }
+    });
+  }
+
+  // Close handlers
+  const closeBtn = dialog.querySelector('.telecom-share-answer-close');
+  const closeBtn2 = dialog.querySelector('#telecom-share-answer-close-btn');
+  const closeDialog = () => {
+    backdrop.remove();
+    dialog.remove();
+  };
+  
+  if (closeBtn) closeBtn.addEventListener('click', closeDialog);
+  if (closeBtn2) closeBtn2.addEventListener('click', closeDialog);
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) {
+      closeDialog();
+    }
+  });
+}
+
+/**
  * Show Accept Invite dialog - allows user to paste invite data or upload QR code image
  */
 function showAcceptInviteDialog(win, winId, config, storageKey) {
@@ -4345,23 +4698,49 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
         return; // Invalid data, don't show preview
       }
 
-      // Check if invite is for current user
-      // Invite must be for the currently active GUID (effectiveGuid)
-      // If user has application GUID active, invite must be for application GUID
-      // If user has system GUID active, invite must be for system GUID
+      // Check if invite is for current user or from current user
       const effectiveGuid = getEffectiveGuid(config);
       if (!effectiveGuid) {
         alert('GUID not available. Please check your settings.');
         return;
       }
       
-      if (invite.toGuid !== effectiveGuid) {
-        const systemAccount = window.Auth ? window.Auth.getAccount() : null;
-        const systemGuid = systemAccount ? systemAccount.guid : null;
-        const applicationGuid = config.applicationGuid || null;
-        const allUserGuids = [effectiveGuid, systemGuid, applicationGuid].filter(Boolean).filter((g, i, arr) => arr.indexOf(g) === i); // Remove duplicates
-        
-        alert(`This invite is not for your current active GUID.\n\nYour active GUID: ${effectiveGuid}\nInvite is for GUID: ${invite.toGuid}\n\nAll your GUIDs: ${allUserGuids.join(', ')}\n\nNote: If you have application GUID active, invites must be created for application GUID, not system GUID.`);
+      const systemAccount = window.Auth ? window.Auth.getAccount() : null;
+      const systemGuid = systemAccount ? systemAccount.guid : null;
+      const applicationGuid = config.applicationGuid || null;
+      
+      // Check if this is a sent invite (fromGuid matches user's GUID) with answer
+      const isSentInvite = invite.fromGuid === effectiveGuid || invite.fromGuid === systemGuid || invite.fromGuid === applicationGuid;
+      
+      // Check if this is a received invite (toGuid matches user's active GUID)
+      const isReceivedInvite = invite.toGuid === effectiveGuid;
+      
+      // If this is a sent invite with WebRTC answer, process the answer
+      if (isSentInvite && invite.webrtcAnswer) {
+        console.log('[Telecom] Received invite with WebRTC answer, processing...');
+        processWebRTCAnswer(invite, config).then(() => {
+          alert('WebRTC answer processed successfully. Connection should be established.');
+          // Clear textarea
+          jsonTextarea.value = '';
+          fileNameDiv.textContent = '';
+          closeDialog();
+        }).catch(e => {
+          console.error('[Telecom] Error processing WebRTC answer:', e);
+          alert('Error processing WebRTC answer: ' + e.message);
+        });
+        return;
+      }
+      
+      // If this is a received invite, validate it's for current active GUID
+      if (isReceivedInvite) {
+        // Valid received invite, continue to preview
+      } else if (!isSentInvite && !isReceivedInvite) {
+        const allUserGuids = [effectiveGuid, systemGuid, applicationGuid].filter(Boolean).filter((g, i, arr) => arr.indexOf(g) === i);
+        alert(`This invite does not belong to you.\n\nYour active GUID: ${effectiveGuid}\nInvite fromGuid: ${invite.fromGuid}\nInvite toGuid: ${invite.toGuid}\n\nAll your GUIDs: ${allUserGuids.join(', ')}`);
+        return;
+      } else {
+        // Sent invite without answer - nothing to do
+        alert('This is your sent invite. Wait for the recipient to accept and share the answer.');
         return;
       }
 
@@ -4406,7 +4785,7 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
 
           // Process invite acceptance (this will update status to 'accepted' and add contact)
           try {
-            await handleInviteResponse(invite, 'accepted', config, storageKey);
+            await handleInviteResponse(invite, 'accepted', config, storageKey, winId);
             alert(I18n.t('telecom.contactsInviteAccepted'));
             
             // Refresh contacts dialog if it's open
@@ -4433,8 +4812,34 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
         }
       );
     } catch (e) {
-      // Invalid JSON, don't show preview
-      console.log('[Telecom] Invalid JSON in textarea:', e);
+      // Invalid JSON, show error to user
+      console.error('[Telecom] Invalid JSON in textarea:', e);
+      
+      // Show error message in UI if textarea exists
+      if (jsonTextarea && jsonTextarea.parentElement) {
+        // Try to find or create error message element
+        let errorDiv = jsonTextarea.parentElement.querySelector('.telecom-json-error');
+        if (!errorDiv) {
+          errorDiv = document.createElement('div');
+          errorDiv.className = 'telecom-json-error';
+          errorDiv.style.cssText = 'color: var(--danger); font-size: 12px; margin-top: 8px; padding: 8px; background: rgba(255, 107, 107, 0.1); border-radius: 4px;';
+          jsonTextarea.parentElement.appendChild(errorDiv);
+        }
+        
+        // Show helpful error message
+        if (e instanceof SyntaxError) {
+          errorDiv.textContent = 'Invalid JSON format. Please check that you copied the complete invite data.';
+        } else {
+          errorDiv.textContent = 'Error parsing invite data: ' + (e.message || 'Unknown error');
+        }
+        
+        // Clear error after 5 seconds
+        setTimeout(() => {
+          if (errorDiv && errorDiv.parentElement) {
+            errorDiv.remove();
+          }
+        }, 5000);
+      }
     }
   };
 
@@ -4647,6 +5052,12 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
   // Handle textarea input changes (debounced) to show preview for pasted JSON
   let textareaTimeout = null;
   jsonTextarea.addEventListener('input', () => {
+    // Clear error message when user starts typing
+    const errorDiv = jsonTextarea.parentElement?.querySelector('.telecom-json-error');
+    if (errorDiv) {
+      errorDiv.remove();
+    }
+    
     // Clear previous timeout
     if (textareaTimeout) {
       clearTimeout(textareaTimeout);
@@ -5144,7 +5555,361 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
   
   console.log('[Telecom] sendContactInvite - Final avatar value:', avatar ? (avatar.substring(0, 50) + '...') : 'null');
   
-  // WebRTC offer creation removed - using localStorage-based messaging instead
+  // Generate WebRTC offer and ICE candidates
+  let webrtcOffer = null;
+  
+  // Check if WebRTC is available
+  if (typeof RTCPeerConnection !== 'undefined') {
+    try {
+      console.log('[Telecom] Creating WebRTC offer for invite to:', targetGuid);
+      
+      // Create RTCPeerConnection with ICE servers from Network module configuration
+      const iceServers = window.Network ? window.Network.getIceServersConfig() : [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ];
+      
+      // Log full ICE server configuration for debugging
+      console.log('[Telecom] Full ICE server configuration:', JSON.stringify(iceServers, null, 2));
+      console.log('[Telecom] Using ICE servers from Network config:', iceServers.length, 'servers');
+      
+      // Clean ICE servers - remove non-standard fields that might interfere with RTCPeerConnection
+      // If server.urls is an array, expand it into separate server objects (one per URL)
+      // This ensures maximum compatibility with RTCPeerConnection
+      const cleanIceServers = [];
+      iceServers.forEach((server, idx) => {
+        const urlsArray = Array.isArray(server.urls) ? server.urls : [server.urls];
+        const urlsType = Array.isArray(server.urls) ? 'array' : typeof server.urls;
+        const urlsCount = urlsArray.length;
+        
+        console.log(`[Telecom] Server ${idx + 1}: urls type=${urlsType}, count=${urlsCount}, hasUsername=${!!server.username}, hasCredential=${!!server.credential}`);
+        if (Array.isArray(server.urls)) {
+          console.log(`[Telecom] Server ${idx + 1} URLs array:`, server.urls);
+        }
+        
+        // Create one server object per URL (RTCPeerConnection prefers this format)
+        urlsArray.forEach((url, urlIdx) => {
+          const clean = {
+            urls: url // Single URL string per server object
+          };
+          if (server.username) clean.username = server.username;
+          if (server.credential) clean.credential = server.credential;
+          
+          console.log(`[Telecom]   Expanded server ${idx + 1}.${urlIdx + 1}: url="${url}", hasAuth=${!!clean.username}`);
+          cleanIceServers.push(clean);
+        });
+      });
+      
+      console.log('[Telecom] Cleaned ICE servers for RTCPeerConnection:', JSON.stringify(cleanIceServers, null, 2));
+      
+      const pc = new RTCPeerConnection({
+        iceServers: cleanIceServers,
+        iceCandidatePoolSize: 10
+        // Note: For debugging, you can add: iceTransportPolicy: "relay" to force TURN only
+      });
+      
+      // === DETAILED ICE LOGGING FOR DIAGNOSTICS ===
+      const localCandidates = [];
+      const candidateTypes = { host: 0, srflx: 0, relay: 0, other: 0 };
+      
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          const candidateStr = event.candidate.candidate;
+          localCandidates.push(candidateStr);
+          
+          // Extract candidate type
+          const typeMatch = candidateStr.match(/ typ (\w+)/);
+          const type = typeMatch ? typeMatch[1] : 'unknown';
+          candidateTypes[type] = (candidateTypes[type] || 0) + 1;
+          
+          console.log(`[ICE] Local candidate (${type}):`, candidateStr);
+          console.log(`[ICE] Candidate details:`, {
+            type: type,
+            protocol: event.candidate.protocol,
+            address: event.candidate.address,
+            port: event.candidate.port,
+            sdpMid: event.candidate.sdpMid,
+            sdpMLineIndex: event.candidate.sdpMLineIndex
+          });
+        } else {
+          console.log('[ICE] Local candidate gathering complete');
+          console.log('[ICE] Total candidates collected:', localCandidates.length);
+          console.log('[ICE] Candidate types summary:', candidateTypes);
+          console.log('[ICE] All local candidates:', localCandidates);
+          
+          // Check if we have relay candidates
+          if (candidateTypes.relay === 0) {
+            console.warn('[ICE] ⚠️ NO RELAY CANDIDATES COLLECTED!');
+            console.warn('[ICE] This means TURN servers are not working or credentials are wrong.');
+          } else {
+            console.log(`[ICE] ✅ Collected ${candidateTypes.relay} relay candidate(s) from TURN server(s)`);
+          }
+        }
+      };
+      
+      pc.onicecandidateerror = (event) => {
+        console.error('[ICE] ❌ TURN server error:', {
+          url: event.url,
+          hostCandidate: event.hostCandidate,
+          errorText: event.errorText,
+          errorCode: event.errorCode
+        });
+        
+        // Identify which TURN server failed
+        if (event.url) {
+          if (event.url.includes('expressturn.com')) {
+            console.error('[ICE] ⚠️ ExpressTURN server error - this server may be rate-limited or unavailable');
+          } else if (event.url.includes('openrelay.metered.ca')) {
+            console.error('[ICE] ⚠️ Metered.ca OpenRelay server error - check if port is blocked or server is down');
+          } else {
+            console.error('[ICE] ⚠️ Unknown TURN server error');
+          }
+        }
+      };
+      
+      pc.onicegatheringstatechange = () => {
+        console.log('[ICE] Gathering state changed:', pc.iceGatheringState);
+      };
+      
+      pc.oniceconnectionstatechange = () => {
+        console.log('[ICE] Connection state changed:', pc.iceConnectionState);
+        if (pc.iceConnectionState === 'failed') {
+          console.error('[ICE] ❌ ICE connection FAILED');
+          console.error('[ICE] Local candidates were:', localCandidates);
+          console.error('[ICE] Candidate types:', candidateTypes);
+          console.error('[ICE] Current ICE connection state:', pc.iceConnectionState);
+          console.error('[ICE] Current connection state:', pc.connectionState);
+          console.error('[ICE] Signaling state:', pc.signalingState);
+          console.error('[ICE] ICE gathering state:', pc.iceGatheringState);
+          
+          // Log selected candidate pair if available
+          if (pc.getStats) {
+            pc.getStats().then(stats => {
+              const candidates = new Map();
+              const candidatePairs = [];
+              
+              // First, collect all candidates
+              stats.forEach(report => {
+                if (report.type === 'local-candidate' || report.type === 'remote-candidate') {
+                  candidates.set(report.id, {
+                    id: report.id,
+                    type: report.type,
+                    candidate: report.candidate,
+                    address: report.address,
+                    port: report.port,
+                    protocol: report.protocol,
+                    candidateType: report.candidateType
+                  });
+                }
+                if (report.type === 'candidate-pair') {
+                  candidatePairs.push(report);
+                }
+              });
+              
+              // Log failed pairs with candidate details
+              let failedRelayPairs = 0;
+              let failedOtherPairs = 0;
+              const relayPairDetails = [];
+              
+              candidatePairs.forEach((pair, idx) => {
+                if (pair.state === 'failed') {
+                  const localCandidate = candidates.get(pair.localCandidateId);
+                  const remoteCandidate = candidates.get(pair.remoteCandidateId);
+                  
+                  const localType = localCandidate?.candidateType || 'unknown';
+                  const remoteType = remoteCandidate?.candidateType || 'unknown';
+                  const isRelayPair = localType === 'relay' || remoteType === 'relay';
+                  
+                  if (isRelayPair) {
+                    failedRelayPairs++;
+                    relayPairDetails.push({
+                      pairIdx: idx + 1,
+                      local: localCandidate ? {
+                        type: localCandidate.candidateType,
+                        address: localCandidate.address,
+                        port: localCandidate.port,
+                        protocol: localCandidate.protocol,
+                        candidate: localCandidate.candidate
+                      } : null,
+                      remote: remoteCandidate ? {
+                        type: remoteCandidate.candidateType,
+                        address: remoteCandidate.address,
+                        port: remoteCandidate.port,
+                        protocol: remoteCandidate.protocol,
+                        candidate: remoteCandidate.candidate
+                      } : null
+                    });
+                  } else {
+                    failedOtherPairs++;
+                  }
+                  
+                  // Log each failed pair with expanded details
+                  console.error(`[ICE] Failed pair #${idx + 1} (${isRelayPair ? 'RELAY' : 'other'}):`);
+                  if (localCandidate) {
+                    console.error(`  Local: ${localCandidate.candidateType} ${localCandidate.protocol} ${localCandidate.address}:${localCandidate.port}`);
+                    console.error(`    Full: ${localCandidate.candidate}`);
+                  } else {
+                    console.error(`  Local: ID ${pair.localCandidateId} (not found)`);
+                  }
+                  if (remoteCandidate) {
+                    console.error(`  Remote: ${remoteCandidate.candidateType} ${remoteCandidate.protocol} ${remoteCandidate.address}:${remoteCandidate.port}`);
+                    console.error(`    Full: ${remoteCandidate.candidate}`);
+                  } else {
+                    console.error(`  Remote: ID ${pair.remoteCandidateId} (not found)`);
+                  }
+                  console.error(`  State: ${pair.state}, Nominated: ${pair.nominated}, Priority: ${pair.priority}`);
+                } else if (pair.state === 'succeeded' || pair.state === 'in-progress') {
+                  const localCandidate = candidates.get(pair.localCandidateId);
+                  const remoteCandidate = candidates.get(pair.remoteCandidateId);
+                  console.log('[ICE] Candidate pair state:', pair.state, {
+                    local: localCandidate?.candidateType,
+                    remote: remoteCandidate?.candidateType
+                  });
+                }
+              });
+              
+              if (failedRelayPairs > 0) {
+                console.error(`[ICE] ⚠️ ${failedRelayPairs} relay candidate pair(s) failed!`);
+                console.error('[ICE] Relay pair summary:');
+                relayPairDetails.forEach((detail, idx) => {
+                  console.error(`  Pair ${detail.pairIdx}:`);
+                  if (detail.local) {
+                    console.error(`    Local relay: ${detail.local.address}:${detail.local.port} (${detail.local.protocol})`);
+                  }
+                  if (detail.remote) {
+                    console.error(`    Remote relay: ${detail.remote.address}:${detail.remote.port} (${detail.remote.protocol})`);
+                  }
+                });
+                console.error('[ICE] This suggests TURN server cannot relay traffic between these ports.');
+                console.error('[ICE] Possible causes: TURN server rate-limited, overloaded, or network issue.');
+                console.error('[ICE] 💡 Try: 1) Use a different TURN server, 2) Check if UDP is blocked, 3) Try TCP/TLS transports');
+              }
+            }).catch(e => console.warn('[ICE] Error getting stats:', e));
+          }
+        } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+          console.log('[ICE] ✅ ICE connection established successfully');
+          console.log('[ICE] Selected candidate pair:', pc.iceConnectionState);
+        } else if (pc.iceConnectionState === 'checking') {
+          console.log('[ICE] 🔄 ICE checking candidate pairs...');
+        }
+      };
+      
+      pc.onconnectionstatechange = () => {
+        console.log('[PC] Connection state changed:', pc.connectionState);
+      };
+      // === END DETAILED ICE LOGGING ===
+      
+      // Create DataChannel for messaging
+      const dataChannel = pc.createDataChannel('messages', {
+        ordered: true // Ensure messages arrive in order
+      });
+      
+      // Store peer connection and data channel for later use
+      if (!window._telecomPeerConnections) {
+        window._telecomPeerConnections = new Map();
+      }
+      if (!window._telecomDataChannels) {
+        window._telecomDataChannels = new Map();
+      }
+      window._telecomPeerConnections.set(targetGuid, pc);
+      window._telecomDataChannels.set(targetGuid, dataChannel);
+      
+        // Collect ICE candidates (this handler is for collecting candidates to send in invite)
+        // Note: Detailed ICE logging is already set up above, this is just for collecting
+        const iceCandidates = [];
+        const iceCandidatePromise = new Promise((resolve) => {
+          let candidateTimeout;
+          let candidateCount = 0;
+          
+          // Track candidate types for diagnostics
+          const candidateTypes = { host: 0, srflx: 0, relay: 0, other: 0 };
+          
+          const getCandidateType = (candidateStr) => {
+            const typeMatch = candidateStr.match(/ typ (\w+)/);
+            return typeMatch ? typeMatch[1] : 'other';
+          };
+          
+          // Override the onicecandidate to also collect candidates for invite
+          const originalOnIceCandidate = pc.onicecandidate;
+          pc.onicecandidate = (event) => {
+            // Call original handler (detailed logging)
+            if (originalOnIceCandidate) originalOnIceCandidate(event);
+            
+            if (event.candidate) {
+              const candidateStr = event.candidate.candidate;
+              const type = getCandidateType(candidateStr);
+              candidateTypes[type] = (candidateTypes[type] || 0) + 1;
+              
+              iceCandidates.push({
+                candidate: event.candidate.candidate,
+                sdpMLineIndex: event.candidate.sdpMLineIndex,
+                sdpMid: event.candidate.sdpMid
+              });
+              candidateCount++;
+              console.log(`[Telecom] Collected ICE candidate ${candidateCount} (${type}) for invite to:`, targetGuid);
+          } else {
+            // null candidate means gathering is complete
+            console.log('[Telecom] ICE candidate gathering complete, total candidates:', iceCandidates.length);
+            console.log('[Telecom] ICE candidate types:', candidateTypes);
+            if (candidateTypes.relay === 0) {
+              console.warn('[Telecom] ⚠️ No TURN (relay) candidates collected.');
+              console.warn('[Telecom] ⚠️ Connection will likely FAIL if both peers are behind NAT/firewall.');
+              console.warn('[Telecom] 💡 Solution: Configure a TURN server in Network app (Settings > Network).');
+              console.warn('[Telecom] 💡 Free TURN servers are unreliable - use your own TURN server for production.');
+            }
+            if (candidateTypes.srflx === 0 && candidateTypes.relay === 0) {
+              console.warn('[Telecom] ⚠️ No STUN (srflx) or TURN (relay) candidates. Only host candidates available.');
+              console.warn('[Telecom] ⚠️ This usually means STUN/TURN servers are not configured or not working.');
+            }
+            clearTimeout(candidateTimeout);
+            resolve();
+          }
+        };
+        
+        // Timeout after 15 seconds to allow TURN servers to respond (they can be slow)
+        candidateTimeout = setTimeout(() => {
+          console.log('[Telecom] ICE candidate gathering timeout after 15s, collected:', iceCandidates.length, 'candidates');
+          if (iceCandidates.length === 0) {
+            console.warn('[Telecom] ⚠️ No ICE candidates collected. Check STUN/TURN server configuration.');
+          }
+          resolve();
+        }, 15000);
+      });
+      
+      // Create offer
+      const offer = await pc.createOffer({
+        offerToReceiveAudio: false,
+        offerToReceiveVideo: false
+      });
+      
+      // Set local description
+      await pc.setLocalDescription(offer);
+      console.log('[Telecom] Created WebRTC offer, waiting for ICE candidates...');
+      
+      // Wait for ICE candidates (with timeout)
+      await iceCandidatePromise;
+      
+      // Build WebRTC offer object
+      webrtcOffer = {
+        sdp: offer.sdp,
+        type: offer.type,
+        iceCandidates: iceCandidates
+      };
+      
+      console.log('[Telecom] WebRTC offer created successfully:', {
+        sdpLength: offer.sdp.length,
+        candidatesCount: iceCandidates.length,
+        totalSize: JSON.stringify(webrtcOffer).length
+      });
+      
+    } catch (e) {
+      console.error('[Telecom] Error creating WebRTC offer:', e);
+      // Continue without WebRTC if it fails
+      webrtcOffer = null;
+    }
+  } else {
+    console.warn('[Telecom] RTCPeerConnection not available, skipping WebRTC offer creation');
+  }
   
   // Get public key from account
   const publicKey = senderAccount.publicKey || null;
@@ -5163,8 +5928,8 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
     fromPublicKey: publicKey, // Public key from account (RSA 2048, base64, ~294 chars)
     toGuid: targetGuid,
     timestamp: new Date().toISOString(),
-    status: 'pending' // pending, accepted, declined
-    // webrtcOffer removed - using localStorage-based messaging instead
+    status: 'pending', // pending, accepted, declined
+    webrtcOffer: webrtcOffer // WebRTC offer with SDP and ICE candidates
   };
   
   console.log('[Telecom] Created invite object with avatar:', invite.fromAvatar ? (invite.fromAvatar.substring(0, 50) + '...') : 'null');
@@ -5450,7 +6215,7 @@ function showInviteReceivedDialog(winId, invite, config, storageKey) {
   if (acceptBtn) {
     acceptBtn.addEventListener('click', async () => {
       try {
-        await handleInviteResponse(invite, 'accepted', config, storageKey);
+        await handleInviteResponse(invite, 'accepted', config, storageKey, winId);
         backdrop.remove();
         dialog.remove();
         alert(I18n.t('telecom.contactsInviteAccepted'));
@@ -5473,7 +6238,7 @@ function showInviteReceivedDialog(winId, invite, config, storageKey) {
   const declineBtn = dialog.querySelector('#telecom-invite-decline');
   declineBtn.addEventListener('click', async () => {
     try {
-      await handleInviteResponse(invite, 'declined', config, storageKey);
+      await handleInviteResponse(invite, 'declined', config, storageKey, winId);
       backdrop.remove();
       dialog.remove();
     } catch (e) {
@@ -5504,7 +6269,7 @@ function showInviteReceivedDialog(winId, invite, config, storageKey) {
 /**
  * Handle invite response (accept or decline)
  */
-async function handleInviteResponse(invite, response, config, storageKey) {
+async function handleInviteResponse(invite, response, config, storageKey, winId = null) {
   // Get effective GUID for current user
   const effectiveGuid = getEffectiveGuid(config);
   if (!effectiveGuid) {
@@ -5578,8 +6343,531 @@ async function handleInviteResponse(invite, response, config, storageKey) {
       console.log('[Telecom] Contact already exists for invite.fromGuid:', invite.fromGuid);
     }
 
-    // WebRTC answer is already created and stored in sender's signaling storage by processWebRTCOffer
-    // The signaling polling will handle processing it
+    // Generate WebRTC answer if offer is present
+    if (invite.webrtcOffer && typeof RTCPeerConnection !== 'undefined') {
+      try {
+        console.log('[Telecom] Generating WebRTC answer for invite:', invite.id);
+        
+        // Create RTCPeerConnection with ICE servers from Network module configuration
+        const iceServers = window.Network ? window.Network.getIceServersConfig() : [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ];
+        
+        // Log full ICE server configuration for debugging
+        console.log('[Telecom] Full ICE server configuration for answer:', JSON.stringify(iceServers, null, 2));
+        console.log('[Telecom] Using ICE servers from Network config for answer:', iceServers.length, 'servers');
+        
+        // Clean ICE servers - remove non-standard fields that might interfere with RTCPeerConnection
+        // If server.urls is an array, expand it into separate server objects (one per URL)
+        // This ensures maximum compatibility with RTCPeerConnection
+        const cleanIceServers = [];
+        iceServers.forEach((server, idx) => {
+          const urlsArray = Array.isArray(server.urls) ? server.urls : [server.urls];
+          const urlsType = Array.isArray(server.urls) ? 'array' : typeof server.urls;
+          const urlsCount = urlsArray.length;
+          
+          console.log(`[Telecom] Server ${idx + 1} (answer): urls type=${urlsType}, count=${urlsCount}, hasUsername=${!!server.username}, hasCredential=${!!server.credential}`);
+          if (Array.isArray(server.urls)) {
+            console.log(`[Telecom] Server ${idx + 1} (answer) URLs array:`, server.urls);
+          }
+          
+          // Create one server object per URL (RTCPeerConnection prefers this format)
+          urlsArray.forEach((url, urlIdx) => {
+            const clean = {
+              urls: url // Single URL string per server object
+            };
+            if (server.username) clean.username = server.username;
+            if (server.credential) clean.credential = server.credential;
+            
+            console.log(`[Telecom]   Expanded server ${idx + 1}.${urlIdx + 1} (answer): url="${url}", hasAuth=${!!clean.username}`);
+            cleanIceServers.push(clean);
+          });
+        });
+        
+        console.log('[Telecom] Cleaned ICE servers for RTCPeerConnection (answer):', JSON.stringify(cleanIceServers, null, 2));
+        
+        const pc = new RTCPeerConnection({
+          iceServers: cleanIceServers,
+          iceCandidatePoolSize: 10
+          // Note: For debugging, you can add: iceTransportPolicy: "relay" to force TURN only
+        });
+        
+        // === DETAILED ICE LOGGING FOR DIAGNOSTICS (RECIPIENT SIDE) ===
+        const localCandidatesRecipient = [];
+        const candidateTypesRecipient = { host: 0, srflx: 0, relay: 0, other: 0 };
+        const remoteCandidatesRecipient = [];
+        
+        // Store original handlers to call them after logging
+        let originalIceCandidateHandler = null;
+        let originalIceConnectionStateHandler = null;
+        let originalConnectionStateHandler = null;
+        
+        // Store reference to detailed logging handler - will be called from iceCandidatePromise handler
+        // Note: The actual handler is set in iceCandidatePromise below to avoid conflicts
+        
+        // Track which TURN servers we're using
+        const turnServersUsed = new Set();
+        const turnServersFailed = new Set();
+        
+        pc.onicecandidateerror = (event) => {
+          console.error('[ICE-RECIPIENT] ❌ TURN server error:', {
+            url: event.url,
+            hostCandidate: event.hostCandidate,
+            errorText: event.errorText,
+            errorCode: event.errorCode
+          });
+          
+          // Track failed servers
+          if (event.url) {
+            turnServersFailed.add(event.url);
+            
+            if (event.url.includes('expressturn.com')) {
+              console.error('[ICE-RECIPIENT] ⚠️ ExpressTURN server error - this server may be rate-limited or unavailable');
+            } else if (event.url.includes('openrelay.metered.ca')) {
+              console.error('[ICE-RECIPIENT] ⚠️ Metered.ca OpenRelay server error - check if port is blocked or server is down');
+              console.error('[ICE-RECIPIENT] 💡 Metered.ca may require different URL format or may be temporarily unavailable');
+            } else {
+              console.error('[ICE-RECIPIENT] ⚠️ Unknown TURN server error');
+            }
+          }
+        };
+        
+        pc.onicegatheringstatechange = () => {
+          console.log('[ICE-RECIPIENT] Gathering state changed:', pc.iceGatheringState);
+        };
+        
+        // Enhanced ICE connection state logging (will be enhanced below)
+        originalIceConnectionStateHandler = () => {
+          console.log('[ICE-RECIPIENT] Connection state changed:', pc.iceConnectionState);
+          if (pc.iceConnectionState === 'failed') {
+            console.error('[ICE-RECIPIENT] ❌ ICE connection FAILED');
+            console.error('[ICE-RECIPIENT] Local candidates were:', localCandidatesRecipient);
+            console.error('[ICE-RECIPIENT] Remote candidates received:', remoteCandidatesRecipient);
+            console.error('[ICE-RECIPIENT] Candidate types:', candidateTypesRecipient);
+          } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+            console.log('[ICE-RECIPIENT] ✅ ICE connection established successfully');
+          }
+        };
+        
+        // Enhanced connection state logging (will be enhanced below)
+        originalConnectionStateHandler = () => {
+          console.log('[PC-RECIPIENT] Connection state changed:', pc.connectionState);
+        };
+        // === END DETAILED ICE LOGGING (RECIPIENT) ===
+        
+        // Create DataChannel for messaging (same name as sender)
+        const dataChannel = pc.createDataChannel('messages', {
+          ordered: true
+        });
+        
+        // Store peer connection and data channel for later use
+        if (!window._telecomPeerConnections) {
+          window._telecomPeerConnections = new Map();
+        }
+        if (!window._telecomDataChannels) {
+          window._telecomDataChannels = new Map();
+        }
+        window._telecomPeerConnections.set(invite.fromGuid, pc);
+        window._telecomDataChannels.set(invite.fromGuid, dataChannel);
+        
+        // Set remote description (offer from sender)
+        await pc.setRemoteDescription(new RTCSessionDescription({
+          type: invite.webrtcOffer.type,
+          sdp: invite.webrtcOffer.sdp
+        }));
+        console.log('[Telecom] Set remote description (offer)');
+        
+        // Set up connection state handlers for recipient side
+        pc.onconnectionstatechange = () => {
+          console.log('[Telecom] Connection state changed:', pc.connectionState, 'for contact (recipient):', invite.fromGuid);
+          if (pc.connectionState === 'connected') {
+            console.log('[Telecom] ✅ WebRTC connection established with contact (recipient):', invite.fromGuid);
+          } else if (pc.connectionState === 'failed') {
+            console.error('[Telecom] ❌ WebRTC connection failed with contact (recipient):', invite.fromGuid);
+            console.error('[Telecom] This is usually due to NAT/firewall restrictions.');
+            console.error('[Telecom] 💡 If you see "No TURN (relay) candidates" above, you need to configure a TURN server.');
+            console.error('[Telecom] 💡 Go to Network app (Settings > Network) and add a working TURN server.');
+          } else if (pc.connectionState === 'disconnected') {
+            console.warn('[Telecom] ⚠️ WebRTC connection disconnected with contact (recipient):', invite.fromGuid);
+          } else if (pc.connectionState === 'connecting') {
+            console.log('[Telecom] 🔄 WebRTC connection establishing with contact (recipient):', invite.fromGuid);
+          }
+        };
+        
+        // Set up ICE connection state handler for detailed diagnostics (recipient side)
+        // Combine with existing detailed logging handler
+        const existingRecipientIceHandler = originalIceConnectionStateHandler;
+        pc.oniceconnectionstatechange = () => {
+          // Call detailed logging handler first
+          if (existingRecipientIceHandler) existingRecipientIceHandler();
+          
+          console.log('[Telecom] ICE connection state:', pc.iceConnectionState, 'for contact (recipient):', invite.fromGuid);
+          if (pc.iceConnectionState === 'failed') {
+            console.error('[Telecom] ❌ ICE connection failed (recipient). Possible causes:');
+            console.error('[Telecom] 1. NAT/firewall blocking peer-to-peer connection');
+            console.error('[Telecom] 2. TURN servers unavailable or rate-limited (free TURN servers may be unreliable)');
+            console.error('[Telecom] 3. Network connectivity issues');
+            console.error('[Telecom]');
+            console.error('[Telecom] 💡 Solutions:');
+            console.error('[Telecom] - Configure your own TURN server in Network app (recommended for production)');
+            console.error('[Telecom] - Check TURN server availability in Network app using "Check Servers" button');
+            console.error('[Telecom] - Ensure both peers are on networks that allow WebRTC traffic');
+            
+            // Log current ICE servers for debugging
+            const iceServers = window.Network ? window.Network.getIceServersConfig() : [];
+            console.error('[Telecom] Current ICE servers:', iceServers.length, 'configured');
+            iceServers.forEach((server, idx) => {
+              const firstUrl = Array.isArray(server.urls) ? server.urls[0] : server.urls;
+              const type = (typeof firstUrl === 'string' && (firstUrl.startsWith('turn:') || firstUrl.startsWith('turns:'))) ? 'TURN' : 'STUN';
+              const urlsDisplay = Array.isArray(server.urls) ? server.urls.join(', ') : server.urls;
+              console.error(`[Telecom]   ${idx + 1}. ${type}: ${urlsDisplay}`);
+            });
+            
+            // Log selected candidate pair if available
+            if (pc.getStats) {
+              pc.getStats().then(stats => {
+                const candidates = new Map();
+                const candidatePairs = [];
+                
+                // First, collect all candidates
+                stats.forEach(report => {
+                  if (report.type === 'local-candidate' || report.type === 'remote-candidate') {
+                    candidates.set(report.id, {
+                      id: report.id,
+                      type: report.type,
+                      candidate: report.candidate,
+                      address: report.address,
+                      port: report.port,
+                      protocol: report.protocol,
+                      candidateType: report.candidateType
+                    });
+                  }
+                  if (report.type === 'candidate-pair') {
+                    candidatePairs.push(report);
+                  }
+                });
+                
+                // Log failed pairs with candidate details
+                let failedRelayPairs = 0;
+                let failedOtherPairs = 0;
+                const relayPairDetails = [];
+                
+                candidatePairs.forEach((pair, idx) => {
+                  if (pair.state === 'failed') {
+                    const localCandidate = candidates.get(pair.localCandidateId);
+                    const remoteCandidate = candidates.get(pair.remoteCandidateId);
+                    
+                    const localType = localCandidate?.candidateType || 'unknown';
+                    const remoteType = remoteCandidate?.candidateType || 'unknown';
+                    const isRelayPair = localType === 'relay' || remoteType === 'relay';
+                    
+                    if (isRelayPair) {
+                      failedRelayPairs++;
+                      relayPairDetails.push({
+                        pairIdx: idx + 1,
+                        local: localCandidate ? {
+                          type: localCandidate.candidateType,
+                          address: localCandidate.address,
+                          port: localCandidate.port,
+                          protocol: localCandidate.protocol,
+                          candidate: localCandidate.candidate
+                        } : null,
+                        remote: remoteCandidate ? {
+                          type: remoteCandidate.candidateType,
+                          address: remoteCandidate.address,
+                          port: remoteCandidate.port,
+                          protocol: remoteCandidate.protocol,
+                          candidate: remoteCandidate.candidate
+                        } : null
+                      });
+                    } else {
+                      failedOtherPairs++;
+                    }
+                    
+                    // Log each failed pair with expanded details
+                    console.error(`[ICE-RECIPIENT] Failed pair #${idx + 1} (${isRelayPair ? 'RELAY' : 'other'}):`);
+                    if (localCandidate) {
+                      console.error(`  Local: ${localCandidate.candidateType} ${localCandidate.protocol} ${localCandidate.address}:${localCandidate.port}`);
+                      console.error(`    Full: ${localCandidate.candidate}`);
+                    } else {
+                      console.error(`  Local: ID ${pair.localCandidateId} (not found)`);
+                    }
+                    if (remoteCandidate) {
+                      console.error(`  Remote: ${remoteCandidate.candidateType} ${remoteCandidate.protocol} ${remoteCandidate.address}:${remoteCandidate.port}`);
+                      console.error(`    Full: ${remoteCandidate.candidate}`);
+                    } else {
+                      console.error(`  Remote: ID ${pair.remoteCandidateId} (not found)`);
+                    }
+                    console.error(`  State: ${pair.state}, Nominated: ${pair.nominated}, Priority: ${pair.priority}`);
+                  } else if (pair.state === 'succeeded' || pair.state === 'in-progress') {
+                    const localCandidate = candidates.get(pair.localCandidateId);
+                    const remoteCandidate = candidates.get(pair.remoteCandidateId);
+                    console.log('[ICE-RECIPIENT] Candidate pair state:', pair.state, {
+                      local: localCandidate?.candidateType,
+                      remote: remoteCandidate?.candidateType
+                    });
+                  }
+                });
+                
+                if (failedRelayPairs > 0) {
+                  console.error(`[ICE-RECIPIENT] ⚠️ ${failedRelayPairs} relay candidate pair(s) failed!`);
+                  console.error('[ICE-RECIPIENT] Relay pair summary:');
+                  relayPairDetails.forEach((detail, idx) => {
+                    console.error(`  Pair ${detail.pairIdx}:`);
+                    if (detail.local) {
+                      console.error(`    Local relay: ${detail.local.address}:${detail.local.port} (${detail.local.protocol})`);
+                    }
+                    if (detail.remote) {
+                      console.error(`    Remote relay: ${detail.remote.address}:${detail.remote.port} (${detail.remote.protocol})`);
+                    }
+                  });
+                  console.error('[ICE-RECIPIENT] This suggests TURN server cannot relay traffic between these ports.');
+                  console.error('[ICE-RECIPIENT] Possible causes: TURN server rate-limited, overloaded, or network issue.');
+                  console.error('[ICE-RECIPIENT] 💡 Try: 1) Use a different TURN server, 2) Check if UDP is blocked, 3) Try TCP/TLS transports');
+                }
+              }).catch(e => console.warn('[ICE-RECIPIENT] Error getting stats:', e));
+            }
+          } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+            console.log('[Telecom] ✅ ICE connection established (recipient)');
+          } else if (pc.iceConnectionState === 'checking') {
+            console.log('[Telecom] 🔄 ICE connection checking... (recipient)');
+          }
+        };
+        
+        // Add remote ICE candidates with detailed logging
+        if (invite.webrtcOffer.iceCandidates && invite.webrtcOffer.iceCandidates.length > 0) {
+          console.log('[ICE-RECIPIENT] Adding', invite.webrtcOffer.iceCandidates.length, 'remote ICE candidates from offer');
+          for (const candidateData of invite.webrtcOffer.iceCandidates) {
+            try {
+              const candidateStr = candidateData.candidate;
+              remoteCandidatesRecipient.push(candidateStr);
+              
+              // Extract candidate type
+              const typeMatch = candidateStr.match(/ typ (\w+)/);
+              const type = typeMatch ? typeMatch[1] : 'unknown';
+              
+              console.log(`[ICE-RECIPIENT] Adding remote candidate (${type}):`, candidateStr);
+              
+              await pc.addIceCandidate(new RTCIceCandidate({
+                candidate: candidateData.candidate,
+                sdpMLineIndex: candidateData.sdpMLineIndex,
+                sdpMid: candidateData.sdpMid
+              }));
+            } catch (e) {
+              console.error('[ICE-RECIPIENT] Error adding remote ICE candidate:', e, candidateData);
+            }
+          }
+          console.log('[ICE-RECIPIENT] Successfully added', invite.webrtcOffer.iceCandidates.length, 'remote ICE candidates');
+          console.log('[ICE-RECIPIENT] All remote candidates:', remoteCandidatesRecipient);
+        }
+        
+        // Collect local ICE candidates
+        const iceCandidates = [];
+        const iceCandidatePromise = new Promise((resolve) => {
+          let candidateTimeout;
+          let candidateCount = 0;
+          
+          // Track candidate types and protocols for diagnostics
+          const candidateTypes = { host: 0, srflx: 0, relay: 0, other: 0 };
+          const candidateProtocols = { udp: 0, tcp: 0, tls: 0, unknown: 0 };
+          
+          const getCandidateType = (candidateStr) => {
+            if (candidateStr.includes('typ host')) return 'host';
+            if (candidateStr.includes('typ srflx')) return 'srflx';
+            if (candidateStr.includes('typ relay')) return 'relay';
+            return 'other';
+          };
+          
+          const getCandidateProtocol = (candidateStr, protocol) => {
+            if (candidateStr.includes('turns:') || candidateStr.includes('typ relay') && protocol === 'tcp') return 'tls';
+            if (candidateStr.includes('TCP') || protocol === 'tcp') return 'tcp';
+            if (protocol === 'udp') return 'udp';
+            return 'unknown';
+          };
+          
+          // Combined handler: detailed logging + candidate collection
+          pc.onicecandidate = (event) => {
+            if (event.candidate) {
+              const candidateStr = event.candidate.candidate;
+              
+              // Detailed logging
+              localCandidatesRecipient.push(candidateStr);
+              const typeMatch = candidateStr.match(/ typ (\w+)/);
+              const type = typeMatch ? typeMatch[1] : 'unknown';
+              candidateTypesRecipient[type] = (candidateTypesRecipient[type] || 0) + 1;
+              
+              // Track protocol
+              const protocol = getCandidateProtocol(candidateStr, event.candidate.protocol);
+              candidateProtocols[protocol] = (candidateProtocols[protocol] || 0) + 1;
+              
+              console.log(`[ICE-RECIPIENT] Local candidate (${type}):`, candidateStr);
+              console.log(`[ICE-RECIPIENT] Candidate details:`, {
+                type: type,
+                protocol: event.candidate.protocol,
+                protocolCategory: protocol,
+                address: event.candidate.address,
+                port: event.candidate.port,
+                sdpMid: event.candidate.sdpMid,
+                sdpMLineIndex: event.candidate.sdpMLineIndex
+              });
+              
+              // Collect for invite
+              const collectType = getCandidateType(candidateStr);
+              candidateTypes[collectType] = (candidateTypes[collectType] || 0) + 1;
+              
+              iceCandidates.push({
+                candidate: event.candidate.candidate,
+                sdpMLineIndex: event.candidate.sdpMLineIndex,
+                sdpMid: event.candidate.sdpMid
+              });
+              candidateCount++;
+              console.log(`[Telecom] Collected local ICE candidate ${candidateCount} (${collectType}) for answer`);
+            } else {
+              // null candidate means gathering is complete
+              console.log('[ICE-RECIPIENT] Local candidate gathering complete');
+              console.log('[ICE-RECIPIENT] Total candidates collected:', localCandidatesRecipient.length);
+              console.log('[ICE-RECIPIENT] Candidate types summary:', candidateTypesRecipient);
+              console.log('[ICE-RECIPIENT] All local candidates:', localCandidatesRecipient);
+              
+              // Check if we have relay candidates
+              if (candidateTypesRecipient.relay === 0) {
+                console.warn('[ICE-RECIPIENT] ⚠️ NO RELAY CANDIDATES COLLECTED!');
+                console.warn('[ICE-RECIPIENT] This means TURN servers are not working or credentials are wrong.');
+                
+                // Check which servers failed
+                if (turnServersFailed.size > 0) {
+                  console.warn('[ICE-RECIPIENT] Failed TURN servers:', Array.from(turnServersFailed));
+                } else {
+                  console.warn('[ICE-RECIPIENT] ⚠️ No TURN server errors reported, but no relay candidates collected.');
+                  console.warn('[ICE-RECIPIENT] This may mean: 1) Servers are silently failing, 2) Network blocks TURN traffic, 3) Credentials are wrong');
+                }
+              } else {
+                console.log(`[ICE-RECIPIENT] ✅ Collected ${candidateTypesRecipient.relay} relay candidate(s) from TURN server(s)`);
+                
+                // Check protocol distribution for relay candidates
+                const relayProtocols = { udp: 0, tcp: 0, tls: 0 };
+                const relayServers = new Set();
+                localCandidatesRecipient.forEach(c => {
+                  if (c.includes('typ relay')) {
+                    // Extract server IP/domain from relay candidate
+                    const ipMatch = c.match(/raddr ([^\s]+)/);
+                    if (ipMatch) {
+                      const ip = ipMatch[1];
+                      // Try to identify server by IP (ExpressTURN: 51.158.146.149)
+                      if (ip === '51.158.146.149') {
+                        relayServers.add('ExpressTURN');
+                      } else {
+                        relayServers.add(ip);
+                      }
+                    }
+                    
+                    if (c.includes('turns:') || c.includes('TCP')) relayProtocols.tls++;
+                    else if (c.includes('TCP')) relayProtocols.tcp++;
+                    else relayProtocols.udp++;
+                  }
+                });
+                
+                console.log('[ICE-RECIPIENT] Relay candidate protocols:', relayProtocols);
+                console.log('[ICE-RECIPIENT] Relay candidates from servers:', Array.from(relayServers));
+                
+                // Check if Metered.ca gave any candidates
+                if (!relayServers.has('ExpressTURN') || relayServers.size === 1) {
+                  console.warn('[ICE-RECIPIENT] ⚠️ Only ExpressTURN relay candidates found. Metered.ca OpenRelay did not provide relay candidates.');
+                  console.warn('[ICE-RECIPIENT] 💡 Metered.ca may be: 1) Temporarily unavailable, 2) Port 80 blocked, 3) TCP/TLS not working');
+                }
+                
+                if (relayProtocols.udp > 0 && relayProtocols.tcp === 0 && relayProtocols.tls === 0) {
+                  console.warn('[ICE-RECIPIENT] ⚠️ Only UDP relay candidates collected. If UDP is blocked, connection will fail.');
+                  console.warn('[ICE-RECIPIENT] 💡 Try adding TCP/TLS transports for TURN servers (e.g., turn:server:443?transport=tcp, turns:server:443)');
+                  console.warn('[ICE-RECIPIENT] 💡 Note: TCP/TLS transports are configured but not producing candidates - check server availability');
+                }
+              }
+              
+              console.log('[ICE-RECIPIENT] Candidate protocols summary:', candidateProtocols);
+              
+              console.log('[Telecom] Local ICE candidate gathering complete, total candidates:', iceCandidates.length);
+              console.log('[Telecom] Local ICE candidate types:', candidateTypes);
+              if (candidateTypes.relay === 0) {
+                console.warn('[Telecom] ⚠️ No TURN (relay) candidates collected.');
+                console.warn('[Telecom] ⚠️ Connection will likely FAIL if both peers are behind NAT/firewall.');
+                console.warn('[Telecom] 💡 Solution: Configure a TURN server in Network app (Settings > Network).');
+                console.warn('[Telecom] 💡 Free TURN servers are unreliable - use your own TURN server for production.');
+              }
+              if (candidateTypes.srflx === 0 && candidateTypes.relay === 0) {
+                console.warn('[Telecom] ⚠️ No STUN (srflx) or TURN (relay) candidates. Only host candidates available.');
+                console.warn('[Telecom] ⚠️ This usually means STUN/TURN servers are not configured or not working.');
+              }
+              clearTimeout(candidateTimeout);
+              resolve();
+            }
+          };
+          
+          // Timeout after 15 seconds to allow TURN servers to respond (they can be slow)
+          candidateTimeout = setTimeout(() => {
+            console.log('[Telecom] Local ICE candidate gathering timeout after 15s, collected:', iceCandidates.length, 'candidates');
+            if (iceCandidates.length === 0) {
+              console.warn('[Telecom] ⚠️ No ICE candidates collected. Check STUN/TURN server configuration.');
+            }
+            resolve();
+          }, 15000);
+        });
+        
+        // Create answer
+        const answer = await pc.createAnswer({
+          offerToReceiveAudio: false,
+          offerToReceiveVideo: false
+        });
+        
+        // Set local description (answer)
+        await pc.setLocalDescription(answer);
+        console.log('[Telecom] Created WebRTC answer, waiting for ICE candidates...');
+        
+        // Wait for ICE candidates (with timeout)
+        await iceCandidatePromise;
+        
+        // Build WebRTC answer object
+        const webrtcAnswer = {
+          sdp: answer.sdp,
+          type: answer.type,
+          iceCandidates: iceCandidates
+        };
+        
+        console.log('[Telecom] WebRTC answer created successfully:', {
+          sdpLength: answer.sdp.length,
+          candidatesCount: iceCandidates.length,
+          totalSize: JSON.stringify(webrtcAnswer).length
+        });
+        
+        // Add answer to invite in recipient storage
+        recipientInvites[recipientInviteIndex].webrtcAnswer = webrtcAnswer;
+        
+        // Create updated invite with answer for sharing back to sender
+        const inviteWithAnswer = {
+          ...invite,
+          webrtcAnswer: webrtcAnswer,
+          status: 'accepted'
+        };
+        
+        // Show dialog to share answer back to sender
+        console.log('[Telecom] Calling showShareAnswerDialog with winId:', winId);
+        // Use winId if available, otherwise showShareAnswerDialog will find window itself
+        try {
+          showShareAnswerDialog(winId || null, inviteWithAnswer, config, storageKey);
+        } catch (e) {
+          console.error('[Telecom] Error calling showShareAnswerDialog:', e);
+          // Fallback: try again after delay
+          setTimeout(() => {
+            console.log('[Telecom] Retrying showShareAnswerDialog after delay');
+            showShareAnswerDialog(winId || null, inviteWithAnswer, config, storageKey);
+          }, 1000);
+        }
+        
+      } catch (e) {
+        console.error('[Telecom] Error creating WebRTC answer:', e);
+        // Continue without WebRTC answer if it fails
+      }
+    }
   }
 
   // Save updated invites in both storages
@@ -5596,6 +6884,396 @@ async function handleInviteResponse(invite, response, config, storageKey) {
     throw e;
   }
 }
+
+/**
+ * Process WebRTC answer from recipient (called by sender when answer is received)
+ */
+async function processWebRTCAnswer(invite, config) {
+  // Check if answer exists and WebRTC is available
+  if (!invite.webrtcAnswer || typeof RTCPeerConnection === 'undefined') {
+    return;
+  }
+
+  // For sender processing answer: contactGuid is the recipient's GUID (toGuid)
+  // The sender wants to connect to the recipient
+  const contactGuid = invite.toGuid;
+  const existingPC = window._telecomPeerConnections?.get(contactGuid);
+  
+  if (existingPC) {
+    // Check if answer already processed
+    if (existingPC.remoteDescription && existingPC.remoteDescription.type === 'answer') {
+      console.log('[Telecom] WebRTC answer already processed for contact:', contactGuid);
+      return;
+    }
+  }
+
+  try {
+    console.log('[INIT] 📥 Processing WebRTC answer for invite:', invite.id, 'to contact:', contactGuid);
+    
+    // Track timing for diagnostics
+    const answerReceivedTime = Date.now();
+    let answerAppliedTime = null;
+    
+    // Track candidate addition
+    let candidatesAddedSuccessfully = 0;
+    let candidatesFailed = 0;
+    const remoteCandidatesSender = [];
+    const failedCandidates = [];
+    
+    // Get existing peer connection
+    let pc = existingPC;
+    if (!pc) {
+      console.warn('[Telecom] No existing peer connection found for contact:', contactGuid);
+      console.warn('[Telecom] Peer connection was lost (likely due to page reload).');
+      console.warn('[Telecom] WebRTC connections cannot be restored after page reload.');
+      console.warn('[Telecom] The answer was processed, but connection cannot be established.');
+      
+      // Show user-friendly message
+      alert('WebRTC connection cannot be established because the original connection was lost (page may have been reloaded).\n\n' +
+            'To establish a connection:\n' +
+            '1. Create a new invite\n' +
+            '2. Have the recipient accept it\n' +
+            '3. Process the answer while the page is still loaded');
+      
+      return; // Exit early - cannot process answer without original peer connection
+    }
+    
+    // Check peer connection state
+    console.log('[Telecom] Peer connection state:', pc.signalingState, 'localDescription:', pc.localDescription?.type, 'remoteDescription:', pc.remoteDescription?.type);
+    
+    // Verify that local description (offer) is set
+    if (!pc.localDescription || pc.localDescription.type !== 'offer') {
+      console.error('[Telecom] Local description (offer) not set. Current state:', pc.signalingState);
+      throw new Error('Local description (offer) must be set before processing answer');
+    }
+    
+    // Check if answer already processed
+    if (pc.remoteDescription && pc.remoteDescription.type === 'answer') {
+      console.log('[Telecom] Answer already processed for this peer connection');
+      return;
+    }
+    
+    // Verify signaling state is correct (should be 'have-local-offer')
+    if (pc.signalingState !== 'have-local-offer') {
+      console.warn('[Telecom] Unexpected signaling state:', pc.signalingState, 'expected: have-local-offer');
+      // Try to continue anyway, but log warning
+    }
+    
+    // Extract and log ICE ufrag/pwd from offer and answer for diagnostics
+    const offerUfrag = pc.localDescription?.sdp?.match(/a=ice-ufrag:(\S+)/)?.[1];
+    const offerPwd = pc.localDescription?.sdp?.match(/a=ice-pwd:(\S+)/)?.[1];
+    const answerUfrag = invite.webrtcAnswer.sdp?.match(/a=ice-ufrag:(\S+)/)?.[1];
+    const answerPwd = invite.webrtcAnswer.sdp?.match(/a=ice-pwd:(\S+)/)?.[1];
+    
+    console.log('[INIT] 📋 ICE parameters check:');
+    console.log('[INIT]   Offer ufrag:', offerUfrag, 'pwd:', offerPwd?.substring(0, 8) + '...');
+    console.log('[INIT]   Answer ufrag:', answerUfrag, 'pwd:', answerPwd?.substring(0, 8) + '...');
+    
+    if (offerUfrag && answerUfrag && offerUfrag === answerUfrag) {
+      console.warn('[INIT] ⚠️ WARNING: Offer and Answer have SAME ufrag! This suggests ICE restart or mismatched SDP.');
+      console.warn('[INIT] ⚠️ This will cause all candidate pairs to fail.');
+    } else if (offerUfrag && answerUfrag) {
+      console.log('[INIT] ✅ Offer and Answer have different ufrag (correct for ICE negotiation)');
+    }
+    
+    // Set remote description (answer from recipient)
+    const answerStartTime = Date.now();
+    try {
+      await pc.setRemoteDescription(new RTCSessionDescription({
+        type: invite.webrtcAnswer.type,
+        sdp: invite.webrtcAnswer.sdp
+      }));
+      const answerSetTime = Date.now() - answerStartTime;
+      answerAppliedTime = Date.now();
+      console.log('[INIT] ✅ setRemoteDescription(answer): OK (took', answerSetTime, 'ms)');
+      console.log('[INIT]   New signaling state:', pc.signalingState);
+      
+      // Check if answer was set too late (more than 5 seconds after offer)
+      if (answerSetTime > 5000) {
+        console.warn('[INIT] ⚠️ Answer was set', answerSetTime, 'ms after receiving - this may cause ICE timing issues');
+        console.warn('[INIT] 💡 For best results, apply answer within 1-2 seconds of receiving it');
+      } else {
+        console.log('[INIT] ✅ Answer applied promptly (within', answerSetTime, 'ms)');
+      }
+    } catch (e) {
+      console.error('[INIT] ❌ setRemoteDescription(answer) FAILED:', e);
+      console.error('[INIT]   Error details:', {
+        name: e.name,
+        message: e.message,
+        signalingState: pc.signalingState,
+        hasLocalDescription: !!pc.localDescription,
+        hasRemoteDescription: !!pc.remoteDescription
+      });
+      throw e;
+    }
+    
+    // Track ICE candidates added from answer
+    let remoteCandidatesAdded = 0;
+    let remoteCandidatesFailed = 0;
+    const remoteCandidateDetails = [];
+    
+    // Set up handler for new local ICE candidates (after remote description is set)
+    // These will be added automatically by the browser, but we log them for debugging
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        const typeMatch = event.candidate.candidate.match(/ typ (\w+)/);
+        const type = typeMatch ? typeMatch[1] : 'unknown';
+        console.log(`[INIT] Local ICE candidate (${type}) after answer:`, event.candidate.candidate);
+        // Note: These candidates are automatically added to the connection
+        // If needed, they could be sent to recipient via additional signaling mechanism
+      } else {
+        console.log('[INIT] Local ICE candidate gathering complete (sender side)');
+      }
+    };
+    
+    // Add remote ICE candidates from answer with detailed logging
+    if (invite.webrtcAnswer.iceCandidates && invite.webrtcAnswer.iceCandidates.length > 0) {
+      console.log('[INIT] 📥 Adding', invite.webrtcAnswer.iceCandidates.length, 'remote ICE candidates from answer');
+      
+      for (let i = 0; i < invite.webrtcAnswer.iceCandidates.length; i++) {
+        const candidateData = invite.webrtcAnswer.iceCandidates[i];
+        try {
+          const candidateStr = candidateData.candidate;
+          if (!candidateStr || !candidateStr.trim()) {
+            console.log(`[INIT] Skipping empty candidate ${i + 1}`);
+            continue;
+          }
+          
+          remoteCandidatesSender.push(candidateStr);
+          
+          // Extract candidate type and details
+          const typeMatch = candidateStr.match(/ typ (\w+)/);
+          const type = typeMatch ? typeMatch[1] : 'unknown';
+          const protocolMatch = candidateStr.match(/(UDP|TCP)/);
+          const protocol = protocolMatch ? protocolMatch[1] : 'unknown';
+          const addressMatch = candidateStr.match(/raddr ([^\s]+)/);
+          const address = addressMatch ? addressMatch[1] : 'unknown';
+          
+          const addStartTime = Date.now();
+          await pc.addIceCandidate(new RTCIceCandidate({
+            candidate: candidateData.candidate,
+            sdpMLineIndex: candidateData.sdpMLineIndex,
+            sdpMid: candidateData.sdpMid
+          }));
+          const addTime = Date.now() - addStartTime;
+          
+          candidatesAddedSuccessfully++;
+          console.log(`[INIT] ✅ addIceCandidate #${i + 1} (${type} ${protocol}): OK (${addTime}ms)`, address);
+        } catch (e) {
+          candidatesFailed++;
+          failedCandidates.push({ candidate: candidateData, error: e });
+          console.error(`[INIT] ❌ addIceCandidate #${i + 1} FAILED:`, {
+            error: e.message,
+            candidate: candidateData.candidate,
+            sdpMLineIndex: candidateData.sdpMLineIndex,
+            sdpMid: candidateData.sdpMid
+          });
+          
+          // Check for common errors
+          if (e.message.includes('InvalidStateError')) {
+            console.error('[INIT] ⚠️ InvalidStateError: Remote description may not be set yet or signaling state is wrong');
+            console.error('[INIT]   Current signaling state:', pc.signalingState);
+            console.error('[INIT]   Has remote description:', !!pc.remoteDescription);
+          } else if (e.message.includes('OperationError')) {
+            console.error('[INIT] ⚠️ OperationError: Candidate may be invalid or duplicate');
+          }
+        }
+      }
+      
+      console.log('[INIT] 📊 Candidate addition summary:');
+      console.log('[INIT]   Successfully added:', candidatesAddedSuccessfully, '/', invite.webrtcAnswer.iceCandidates.length);
+      console.log('[INIT]   Failed:', candidatesFailed);
+      
+      if (candidatesFailed > 0) {
+        console.error('[INIT] ⚠️ Some candidates failed to add - this may cause connection issues');
+        console.error('[INIT] Failed candidates:', failedCandidates);
+      }
+      
+      if (candidatesAddedSuccessfully === 0) {
+        console.error('[INIT] ❌ CRITICAL: No candidates were added successfully!');
+        console.error('[INIT] This will definitely cause connection failure.');
+      }
+      
+      console.log('[INIT] All remote candidates received:', remoteCandidatesSender);
+    } else {
+      console.warn('[INIT] ⚠️ No ICE candidates in answer - connection may fail');
+    }
+    
+    // Set up connection state handlers
+    pc.onconnectionstatechange = () => {
+      console.log('[Telecom] Connection state changed:', pc.connectionState, 'for contact:', contactGuid);
+      if (pc.connectionState === 'connected') {
+        console.log('[Telecom] ✅ WebRTC connection established with contact:', contactGuid);
+      } else if (pc.connectionState === 'failed') {
+        console.error('[Telecom] ❌ WebRTC connection failed with contact:', contactGuid);
+        console.error('[Telecom] This is usually due to NAT/firewall restrictions.');
+        console.error('[Telecom] 💡 If you see "No TURN (relay) candidates" above, you need to configure a TURN server.');
+        console.error('[Telecom] 💡 Go to Network app (Settings > Network) and add a working TURN server.');
+        // Check ICE connection state for more details
+        pc.oniceconnectionstatechange = () => {
+          console.log('[Telecom] ICE connection state:', pc.iceConnectionState);
+          if (pc.iceConnectionState === 'failed') {
+            console.error('[Telecom] ICE connection failed. Consider using a dedicated TURN server for production.');
+          }
+        };
+      } else if (pc.connectionState === 'disconnected') {
+        console.warn('[Telecom] ⚠️ WebRTC connection disconnected with contact:', contactGuid);
+      } else if (pc.connectionState === 'connecting') {
+        console.log('[Telecom] 🔄 WebRTC connection establishing with contact:', contactGuid);
+      }
+    };
+    
+    // Set up ICE connection state handler for detailed diagnostics
+    pc.oniceconnectionstatechange = () => {
+      console.log('[INIT] 🔗 ICE connection state:', pc.iceConnectionState, 'for contact:', contactGuid);
+      
+      if (pc.iceConnectionState === 'failed') {
+        console.error('[INIT] ❌ ICE connection FAILED (initiator side)');
+        console.error('[INIT] Remote candidates received:', remoteCandidatesSender.length, 'from answer');
+        console.error('[INIT] Candidates added successfully:', candidatesAddedSuccessfully, 'failed:', candidatesFailed);
+        
+        // Check timing
+        if (answerAppliedTime) {
+          const timeToApply = answerAppliedTime - answerReceivedTime;
+          console.error('[INIT] Answer was applied', timeToApply, 'ms after receiving');
+          if (timeToApply > 5000) {
+            console.error('[INIT] ⚠️ Answer was applied too late - this may have caused ICE timing issues');
+          }
+        }
+        
+        // Get detailed stats about failed candidate pairs
+        pc.getStats().then(stats => {
+          const candidatePairs = [];
+          const candidates = new Map();
+          
+          stats.forEach(report => {
+            if (report.type === 'local-candidate' || report.type === 'remote-candidate') {
+              candidates.set(report.id, {
+                type: report.type,
+                candidateType: report.candidateType,
+                address: report.address,
+                port: report.port,
+                protocol: report.protocol,
+                candidate: report.candidate
+              });
+            }
+            if (report.type === 'candidate-pair') {
+              candidatePairs.push(report);
+            }
+          });
+          
+          let failedRelayPairs = 0;
+          const relayPairDetails = [];
+          
+          candidatePairs.forEach((pair, idx) => {
+            if (pair.state === 'failed') {
+              const localCandidate = candidates.get(pair.localCandidateId);
+              const remoteCandidate = candidates.get(pair.remoteCandidateId);
+              
+              const localType = localCandidate?.candidateType || 'unknown';
+              const remoteType = remoteCandidate?.candidateType || 'unknown';
+              const isRelayPair = localType === 'relay' || remoteType === 'relay';
+              
+              if (isRelayPair) {
+                failedRelayPairs++;
+                relayPairDetails.push({
+                  pairIdx: idx + 1,
+                  local: localCandidate ? {
+                    type: localCandidate.candidateType,
+                    address: localCandidate.address,
+                    port: localCandidate.port,
+                    protocol: localCandidate.protocol
+                  } : null,
+                  remote: remoteCandidate ? {
+                    type: remoteCandidate.candidateType,
+                    address: remoteCandidate.address,
+                    port: remoteCandidate.port,
+                    protocol: remoteCandidate.protocol
+                  } : null
+                });
+              }
+              
+              // Log each failed pair
+              console.error(`[INIT] Failed pair #${idx + 1} (${isRelayPair ? 'RELAY' : 'other'}):`);
+              if (localCandidate) {
+                console.error(`  Local: ${localCandidate.candidateType} ${localCandidate.protocol} ${localCandidate.address}:${localCandidate.port}`);
+              }
+              if (remoteCandidate) {
+                console.error(`  Remote: ${remoteCandidate.candidateType} ${remoteCandidate.protocol} ${remoteCandidate.address}:${remoteCandidate.port}`);
+              }
+              console.error(`  State: ${pair.state}, Nominated: ${pair.nominated}, Priority: ${pair.priority}`);
+            }
+          });
+          
+          if (failedRelayPairs > 0) {
+            console.error(`[INIT] ⚠️ ${failedRelayPairs} relay candidate pair(s) failed!`);
+            console.error('[INIT] Relay pair summary:');
+            relayPairDetails.forEach((detail) => {
+              console.error(`  Pair ${detail.pairIdx}:`);
+              if (detail.local) {
+                console.error(`    Local relay: ${detail.local.address}:${detail.local.port} (${detail.local.protocol})`);
+              }
+              if (detail.remote) {
+                console.error(`    Remote relay: ${detail.remote.address}:${detail.remote.port} (${detail.remote.protocol})`);
+              }
+            });
+            console.error('[INIT] This suggests TURN server cannot relay traffic between these ports.');
+            console.error('[INIT] Possible causes: TURN server rate-limited, overloaded, or network issue.');
+          }
+        }).catch(e => console.warn('[INIT] Error getting stats:', e));
+        
+        console.error('[INIT] ❌ ICE connection failed. Possible causes:');
+        console.error('[INIT] 1. NAT/firewall blocking peer-to-peer connection');
+        console.error('[INIT] 2. TURN servers unavailable or rate-limited (free TURN servers may be unreliable)');
+        console.error('[INIT] 3. Network connectivity issues');
+        console.error('[INIT] 4. Answer was applied too late or candidates were not added correctly');
+        console.error('[INIT]');
+        console.error('[INIT] 💡 Solutions:');
+        console.error('[INIT] - Configure your own TURN server in Network app (recommended for production)');
+        console.error('[INIT] - Check TURN server availability in Network app using "Check Servers" button');
+        console.error('[INIT] - Ensure both peers are on networks that allow WebRTC traffic');
+        console.error('[INIT] - Check browser console for ICE candidate types (host/srflx/relay)');
+        
+        // Log current ICE servers for debugging
+        const iceServers = window.Network ? window.Network.getIceServersConfig() : [];
+        console.error('[INIT] Current ICE servers:', iceServers.length, 'configured');
+        iceServers.forEach((server, idx) => {
+          const firstUrl = Array.isArray(server.urls) ? server.urls[0] : server.urls;
+          const type = (typeof firstUrl === 'string' && (firstUrl.startsWith('turn:') || firstUrl.startsWith('turns:'))) ? 'TURN' : 'STUN';
+          const urlsDisplay = Array.isArray(server.urls) ? server.urls.join(', ') : server.urls;
+          console.error(`[INIT]   ${idx + 1}. ${type}: ${urlsDisplay}`);
+        });
+      } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        console.log('[INIT] ✅ ICE connection established successfully');
+      } else if (pc.iceConnectionState === 'checking') {
+        console.log('[INIT] 🔄 ICE connection checking...');
+      }
+    };
+    
+    // Set up data channel handlers
+    const dataChannel = window._telecomDataChannels?.get(contactGuid);
+    if (dataChannel) {
+      dataChannel.onopen = () => {
+        console.log('[Telecom] Data channel opened with contact:', contactGuid);
+      };
+      
+      dataChannel.onmessage = (event) => {
+        console.log('[Telecom] Received message via WebRTC from contact:', contactGuid, 'data:', event.data);
+        // TODO: Handle incoming WebRTC messages
+      };
+      
+      dataChannel.onerror = (error) => {
+        console.error('[Telecom] Data channel error with contact:', contactGuid, error);
+      };
+    }
+    
+    console.log('[Telecom] WebRTC answer processed successfully for contact:', contactGuid);
+    
+  } catch (e) {
+    console.error('[Telecom] Error processing WebRTC answer:', e);
+  }
+}
+
 
 /**
  * Get pending invites sent by a user GUID (outgoing invites)
@@ -5974,7 +7652,7 @@ function renderReceivedPendingInvitesInContactsDialog(dialog, invites, config, s
     declineBtn.textContent = I18n.t('telecom.contactsInviteDecline');
     declineBtn.addEventListener('click', async () => {
       try {
-        await handleInviteResponse(invite, 'declined', config, storageKey);
+        await handleInviteResponse(invite, 'declined', config, storageKey, winId);
         refreshContactsDialog(dialog, config, storageKey, winId);
       } catch (e) {
         console.error('[Telecom] Error declining invite:', e);

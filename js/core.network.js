@@ -5,15 +5,30 @@ window.Network = (() => {
   const STORAGE_KEY = 'webos.network.v1';
   
   // Default ICE servers (STUN + TURN)
-  // Note: Google doesn't provide public TURN servers without credentials
-  // Using Metered.ca free TURN server for NAT traversal
-  // Limited to 4 servers to avoid WebRTC performance warnings
+  // STUN servers help discover public IP address for peer-to-peer connections
+  // TURN servers relay traffic when direct peer-to-peer connection is not possible (behind NAT/firewall)
+  // NOTE: Free TURN servers may be rate-limited or unreliable. For production, use your own TURN server.
   const DEFAULT_ICE_SERVERS = [
+    // STUN servers (high priority - try first)
     { urls: 'stun:stun.l.google.com:19302', priority: 'high' },
     { urls: 'stun:stun1.l.google.com:19302', priority: 'high' },
-    // TURN server for NAT traversal (free tier from Metered.ca)
-    { urls: 'turn:a.relay.metered.ca:80', username: 'free', credential: 'free', priority: 'high' },
-    { urls: 'turn:a.relay.metered.ca:443?transport=tcp', username: 'free', credential: 'free', priority: 'high' }
+    // TURN servers for NAT traversal (free tier - may have rate limits or be unreliable)
+    // Metered.ca Open Relay Project (free, no account needed)
+    // Using multiple URLs for better compatibility: port 80 (works through strict firewalls),
+    // port 443 TCP (your current config), and TURNS/SSL (recommended for DPI/SSL inspection)
+    {
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443?transport=tcp',
+        'turns:openrelay.metered.ca:443'
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+      priority: 'normal'
+    },
+    // ExpressTURN (free tier - requires account at expressturn.com, edit username/credential in UI)
+    // Users need to sign up at expressturn.com and add their credentials via Network app UI
+    { urls: 'turn:webrtc.express-turn.com:3478', username: '', credential: '', priority: 'normal' }
   ];
   
   // Active connections: Map<peerId, RTCPeerConnection>
@@ -46,16 +61,25 @@ window.Network = (() => {
       if (saved) {
         const config = JSON.parse(saved);
         if (config.iceServers && Array.isArray(config.iceServers) && config.iceServers.length > 0) {
+          console.log('[Network] Loading ICE servers from localStorage:', config.iceServers.length, 'servers');
+          console.log('[Network] Raw ICE servers from storage:', JSON.stringify(config.iceServers, null, 2));
           // Ensure all servers have priority field (backward compatibility)
-          return config.iceServers.map(server => ({
+          const servers = config.iceServers.map(server => ({
             ...server,
             priority: server.priority || 'normal'
           }));
+          console.log('[Network] Processed ICE servers (with priority):', JSON.stringify(servers, null, 2));
+          return servers;
+        } else {
+          console.log('[Network] No ICE servers in localStorage, using defaults');
         }
+      } else {
+        console.log('[Network] No saved config in localStorage, using defaults');
       }
     } catch (e) {
       console.warn('[Network] Error loading saved ICE servers:', e);
     }
+    console.log('[Network] Returning default ICE servers:', JSON.stringify(DEFAULT_ICE_SERVERS, null, 2));
     return DEFAULT_ICE_SERVERS;
   }
   
