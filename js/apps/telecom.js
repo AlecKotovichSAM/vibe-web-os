@@ -1152,9 +1152,8 @@ function renderMainScreen(winId, config, storageKey, restoreState = null) {
   // Ensure service chat exists
   createServiceChat();
   
-  // Initialize UI handlers and render chats
+  // Initialize UI handlers
   initTelecomUI(win, winId, config, storageKey);
-  renderChatsList(win, winId, config, storageKey);
   
   // Initialize invite polling
   initInvitePolling(winId, config, storageKey);
@@ -1182,12 +1181,37 @@ function renderMainScreen(winId, config, storageKey, restoreState = null) {
   });
   
   // Auto-select first chat (service chat) if available
+  // CRITICAL: Set selectedChatId BEFORE renderChatsList so blink is not restored for selected chat
   const chats = getChats();
   if (chats.length > 0) {
     // Find service chat first, or use first chat
     const serviceChat = chats.find(c => c.id === 'telecom-service') || chats[0];
-    selectChat(win, winId, serviceChat, config, storageKey);
+    
+    // Set selectedChatId BEFORE renderChatsList to prevent blink restoration for selected chat
+    win.dataset.selectedChatId = serviceChat.id;
+    console.log('[Telecom] 🔄 Setting selectedChatId BEFORE renderChatsList:', serviceChat.id);
   }
+  
+  // Now render chats list (selectedChatId is already set, so blink won't be restored for selected chat)
+  renderChatsList(win, winId, config, storageKey);
+  
+  // After rendering, select the chat (this will highlight it and remove blink if it was in Set)
+  if (chats.length > 0) {
+    const serviceChat = chats.find(c => c.id === 'telecom-service') || chats[0];
+    selectChat(win, winId, serviceChat, config, storageKey);
+    
+    // After selectChat, restore blink for any OTHER chats that are still in the Set
+    // (selectChat removes the selected chat from Set, but others should still blink)
+    if (window._telecomBlinkingChats && window._telecomBlinkingChats.size > 0) {
+      console.log('[Telecom] 🔄 Restoring blink after selectChat for chats:', Array.from(window._telecomBlinkingChats));
+      // Re-render chats list to restore blink for non-selected chats
+      renderChatsList(win, winId, config, storageKey);
+    }
+  } else {
+    // No chats - ensure selectedChatId is cleared
+    delete win.dataset.selectedChatId;
+  }
+  
 
   Bus.emit('app:opened', { 
     id: winId, 
@@ -1209,9 +1233,9 @@ function blinkChatItem(chatId) {
     window._telecomBlinkingChats = new Set();
   }
   
-  // Add to global Set first
+  // Add to global Set first - this ensures blink will be restored when window opens
   window._telecomBlinkingChats.add(chatId);
-  console.log('[Telecom] 💫 Requesting blink for chat:', chatId);
+  console.log('[Telecom] 💫 Requesting blink for chat:', chatId, '(Set size:', window._telecomBlinkingChats.size + ')');
   
   // Try immediately first
   const applyBlink = () => {
@@ -1219,7 +1243,8 @@ function blinkChatItem(chatId) {
     console.log('[Telecom] Found', telecomWindows.length, 'Telecom windows for blink');
     
     if (telecomWindows.length === 0) {
-      console.warn('[Telecom] ⚠️ No Telecom windows found for blink');
+      // Window is closed - blink will be restored when window opens via renderChatsList
+      console.log('[Telecom] ℹ️ No Telecom windows open - blink will be restored when window opens');
       return false;
     }
     
@@ -1246,10 +1271,13 @@ function blinkChatItem(chatId) {
         const chatItem = win.querySelector(`.telecom-chat-item[data-chat-id="${chatId}"]`);
         if (chatItem) {
           chatItem.classList.add('telecom-chat-blink');
+          // Force style application to ensure visibility
+          chatItem.style.animation = 'blinkOrange 1s ease-in-out infinite';
+          chatItem.style.borderLeft = '3px solid rgba(255, 165, 0, 0.9)';
           console.log('[Telecom] 💫✅ Added blink effect to chat:', chatId, 'in window:', winId);
           applied = true;
         } else {
-          console.warn('[Telecom] ⚠️ Chat item not found for blink:', chatId, 'in window:', winId);
+          console.warn('[Telecom] ⚠️ Chat item not found for blink:', chatId, 'in window:', winId, '- will be restored by renderChatsList');
         }
       } else {
         // Chat is selected - remove from blinking Set
@@ -1263,10 +1291,10 @@ function blinkChatItem(chatId) {
   
   // Try immediately
   if (!applyBlink()) {
-    // If not found, retry after delay
+    // If not found, retry after delay (in case window is opening)
     setTimeout(() => {
       if (!applyBlink()) {
-        // Final retry
+        // Final retry (window might still be opening)
         setTimeout(() => {
           applyBlink();
         }, 300);
@@ -1296,6 +1324,8 @@ function renderChatsList(win, winId, config, storageKey) {
       blinkingChats.add(chatId);
     }
   });
+  
+  console.log('[Telecom] 🔄 renderChatsList called, blinking chats in Set:', Array.from(blinkingChats));
 
   const chats = getChats();
   
@@ -1315,20 +1345,28 @@ function renderChatsList(win, winId, config, storageKey) {
     return new Date(bTime) - new Date(aTime);
   });
 
+  // Get selected chat ID for visual highlighting
+  const selectedChatId = win.dataset.selectedChatId || null;
+  
   chatsList.innerHTML = chats.map(chat => {
     const lastMessageText = chat.lastMessage?.text || '';
     const lastMessageTime = chat.lastMessage?.timestamp ? formatMessageTime(chat.lastMessage.timestamp) : '';
     const isVerified = chat.id === 'telecom-service' || chat.verified === true;
+    const isSelected = selectedChatId === chat.id;
+    
+    // Visual styling for selected chat (but don't override blink)
+    const backgroundColor = isSelected ? 'var(--panel-2)' : 'transparent';
+    const borderLeft = isSelected ? '3px solid var(--accent)' : 'none';
     
     return `
       <div class="telecom-chat-item" data-chat-id="${chat.id}" 
-        style="padding:10px 12px; display:flex; align-items:center; gap:12px; cursor:pointer; transition:background 0.2s ease; border-bottom:1px solid var(--panel-2);">
+        style="padding:10px 12px; display:flex; align-items:center; gap:12px; cursor:pointer; transition:background 0.2s ease; border-bottom:1px solid var(--panel-2); background:${backgroundColor}; border-left:${borderLeft};">
         <div style="width:48px; height:48px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0;">
           ${chat.icon || '💬'}
         </div>
         <div style="flex:1; min-width:0;">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
-            <div style="font-weight:500; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:flex; align-items:center; gap:4px;">
+            <div style="font-weight:${isSelected ? '600' : '500'}; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:flex; align-items:center; gap:4px; color:${isSelected ? 'var(--text)' : 'var(--text)'};">
               ${chat.name}
               ${isVerified ? `<span style="display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:50%; background:var(--accent); color:white; font-size:10px; font-weight:bold; flex-shrink:0; line-height:1; margin-left:2px;" title="${I18n.t('telecom.verified')}">✓</span>` : ''}
             </div>
@@ -1356,33 +1394,60 @@ function renderChatsList(win, winId, config, storageKey) {
     });
     
     item.addEventListener('mouseenter', () => {
-      if (!item.classList.contains('telecom-chat-blink')) {
+      const chatId = item.dataset.chatId;
+      const isSelected = selectedChatId === chatId;
+      // Don't override blink or selected chat styling on hover
+      if (!item.classList.contains('telecom-chat-blink') && !isSelected) {
         item.style.background = 'var(--panel-2)';
       }
     });
     
     item.addEventListener('mouseleave', () => {
-      if (!item.classList.contains('telecom-chat-blink')) {
+      const chatId = item.dataset.chatId;
+      const isSelected = selectedChatId === chatId;
+      // Don't override blink or selected chat styling on hover leave
+      if (!item.classList.contains('telecom-chat-blink') && !isSelected) {
         item.style.background = 'transparent';
       }
     });
     
     // Restore blink effect if this chat was blinking before re-render
     const chatId = item.dataset.chatId;
+    const currentSelectedChatId = win.dataset.selectedChatId || null;
+    const isCurrentlySelected = currentSelectedChatId === chatId;
+    
     if (chatId && blinkingChats.has(chatId)) {
-      const selectedChatId = win.dataset.selectedChatId;
+      // Read selectedChatId from win.dataset - this is how we know which chat is open
+      console.log('[Telecom] 🔍 Checking blink restore for chat:', chatId, 'selectedChatId:', currentSelectedChatId, 'match:', isCurrentlySelected);
+      
       // Only restore blink if chat is not currently selected
-      if (selectedChatId !== chatId) {
+      if (!isCurrentlySelected) {
         item.classList.add('telecom-chat-blink');
-        // Force style application
+        // Force style application - CSS already has !important, but ensure inline styles are set
+        // Blink uses orange border-left, which will override the blue border-left for selected chat
         item.style.animation = 'blinkOrange 1s ease-in-out infinite';
         item.style.borderLeft = '3px solid rgba(255, 165, 0, 0.9)';
-        console.log('[Telecom] 💫✅ Restored blink effect for chat:', chatId, 'classList:', item.classList.toString());
+        item.style.backgroundColor = 'rgba(255, 165, 0, 0.3)';
+        console.log('[Telecom] 💫✅ Restored blink effect for chat:', chatId, 'Set size:', window._telecomBlinkingChats.size, 'selectedChatId:', currentSelectedChatId);
       } else {
-        // Chat is selected, remove from Set
+        // Chat is selected, remove from Set and ensure it has selected styling (not blink)
         window._telecomBlinkingChats.delete(chatId);
-        console.log('[Telecom] ℹ️ Removed blink from selected chat:', chatId);
+        // Ensure selected styling is applied (blue border-left, darker background)
+        item.style.borderLeft = '3px solid var(--accent)';
+        item.style.background = 'var(--panel-2)';
+        item.classList.remove('telecom-chat-blink'); // Ensure blink class is removed
+        console.log('[Telecom] ℹ️ Removed blink from selected chat:', chatId, '(chat is open, selectedChatId matches)');
       }
+    } else if (isCurrentlySelected) {
+      // Chat is selected but wasn't blinking - ensure selected styling is applied
+      item.style.borderLeft = '3px solid var(--accent)';
+      item.style.background = 'var(--panel-2)';
+      item.classList.remove('telecom-chat-blink'); // Ensure blink class is removed
+      console.log('[Telecom] ✅ Applied selected styling for chat:', chatId);
+    } else if (chatId && selectedChatId === chatId) {
+      // Chat is selected but wasn't blinking - ensure selected styling is applied
+      item.style.borderLeft = '3px solid var(--accent)';
+      item.style.background = 'var(--panel-2)';
     }
   });
 }
@@ -1468,15 +1533,26 @@ function selectChat(win, winId, chat, config, storageKey) {
   // Highlight selected chat in sidebar and remove blink effect
   const chatItems = win.querySelectorAll('.telecom-chat-item');
   chatItems.forEach(item => {
-    if (item.dataset.chatId === chat.id) {
+    const itemChatId = item.dataset.chatId;
+    if (itemChatId === chat.id) {
+      // Apply selected chat styling: darker background and blue border-left
       item.style.background = 'var(--panel-2)';
+      item.style.borderLeft = '3px solid var(--accent)';
+      item.style.animation = 'none'; // Remove any blink animation
+      item.style.backgroundColor = 'var(--panel-2)'; // Override blink background
       item.classList.remove('telecom-chat-blink'); // Remove blink when chat is opened
       // Also remove from global Set
       if (window._telecomBlinkingChats) {
         window._telecomBlinkingChats.delete(chat.id);
       }
+      console.log('[Telecom] ✅ Applied selected styling to chat:', chat.id);
     } else {
-      item.style.background = 'transparent';
+      // Reset other chats to default styling (but preserve blink if active)
+      if (!item.classList.contains('telecom-chat-blink')) {
+        item.style.background = 'transparent';
+        item.style.borderLeft = 'none';
+      }
+      // If chat is blinking, keep its blink styling (orange border-left, etc.)
     }
   });
   
@@ -7808,10 +7884,10 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                       try {
                         decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
                         console.log('[Telecom] ✅ Message decrypted successfully (recipient side):', decryptedText);
-                        // BLINK IMMEDIATELY AFTER SUCCESSFUL DECRYPTION
+                        // Add to blinking Set - blink will be applied when window opens via renderChatsList
                         if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
                         window._telecomBlinkingChats.add(chatId);
-                        blinkChatItem(chatId);
+                        console.log('[Telecom] 💫 Added chat to blinking Set:', chatId);
                       } catch (e) {
                         console.error('[Telecom] ❌ Error decrypting with private key:', e);
                         decryptedText = '[Encrypted message - decryption failed]';
@@ -7827,10 +7903,10 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                 }
               } else {
                 console.log('[Telecom] 📝 Message is not encrypted, using as-is:', decryptedText);
-                // BLINK IMMEDIATELY FOR UNENCRYPTED MESSAGES TOO
+                // Add to blinking Set - blink will be applied when window opens via renderChatsList
                 if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
                 window._telecomBlinkingChats.add(chatId);
-                blinkChatItem(chatId);
+                console.log('[Telecom] 💫 Added chat to blinking Set (unencrypted):', chatId);
               }
               
               const newMessage = {
@@ -8008,10 +8084,10 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                         try {
                           decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
                           console.log('[Telecom] ✅ Message decrypted successfully (recipient side, incoming channel):', decryptedText);
-                          // BLINK IMMEDIATELY AFTER SUCCESSFUL DECRYPTION
+                          // Add to blinking Set - blink will be applied when window opens via renderChatsList
                           if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
                           window._telecomBlinkingChats.add(chatId);
-                          blinkChatItem(chatId);
+                          console.log('[Telecom] 💫 Added chat to blinking Set (incoming channel):', chatId);
                         } catch (e) {
                           console.error('[Telecom] ❌ Error decrypting with private key:', e);
                           decryptedText = '[Encrypted message - decryption failed]';
@@ -9211,10 +9287,10 @@ async function processWebRTCAnswer(invite, config, storageKey) {
                     try {
                       decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
                       console.log('[Telecom] ✅ Message decrypted successfully (sender side):', decryptedText);
-                      // BLINK IMMEDIATELY AFTER SUCCESSFUL DECRYPTION
+                      // Add to blinking Set - blink will be applied when window opens via renderChatsList
                       if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
                       window._telecomBlinkingChats.add(chatId);
-                      blinkChatItem(chatId);
+                      console.log('[Telecom] 💫 Added chat to blinking Set (sender side):', chatId);
                     } catch (e) {
                       console.error('[Telecom] ❌ Error decrypting with private key:', e);
                       decryptedText = '[Encrypted message - decryption failed]';
