@@ -1329,14 +1329,16 @@ function blinkChatItem(chatId) {
         if (chatItem) {
           chatItem.classList.add('telecom-chat-blink');
           // CRITICAL: Remove ALL inline styles that conflict with CSS animation
-          chatItem.style.backgroundColor = '';
-          chatItem.style.background = '';
-          chatItem.style.animation = '';
-          chatItem.style.borderLeft = '';
-          // CRITICAL: Remove transition - it conflicts with animation
-          chatItem.style.transition = 'none';
+          // Use removeProperty to ensure styles are completely removed
+          chatItem.style.removeProperty('background-color');
+          chatItem.style.removeProperty('background');
+          chatItem.style.removeProperty('animation');
+          chatItem.style.removeProperty('border-left');
+          chatItem.style.removeProperty('transition');
           // CSS class will handle animation and border via !important
-          console.log('[Telecom] 💫✅ Added blink effect to chat:', chatId, 'in window:', winId);
+          // Force reflow to ensure animation starts
+          void chatItem.offsetWidth;
+          console.log('[Telecom] 💫✅ Added blink effect to chat:', chatId, 'in window:', winId, 'hasClass:', chatItem.classList.contains('telecom-chat-blink'), 'computedAnimation:', window.getComputedStyle(chatItem).animation);
           applied = true;
         } else {
           // Chat item not found - refresh chats list to restore blink
@@ -1480,9 +1482,9 @@ function renderChatsList(win, winId, config, storageKey) {
       if (!isBlinking && !isSelected) {
         item.style.background = 'var(--panel-2)';
       } else if (isBlinking) {
-        // If blinking, ensure background is cleared so animation works
-        item.style.background = '';
-        item.style.backgroundColor = '';
+        // If blinking, remove inline background styles so CSS animation works
+        item.style.removeProperty('background');
+        item.style.removeProperty('background-color');
       }
     });
     
@@ -1494,9 +1496,9 @@ function renderChatsList(win, winId, config, storageKey) {
       if (!isBlinking && !isSelected) {
         item.style.background = 'transparent';
       } else if (isBlinking) {
-        // If blinking, ensure background is cleared so animation works
-        item.style.background = '';
-        item.style.backgroundColor = '';
+        // If blinking, remove inline background styles so CSS animation works
+        item.style.removeProperty('background');
+        item.style.removeProperty('background-color');
       }
     });
     
@@ -1518,18 +1520,20 @@ function renderChatsList(win, winId, config, storageKey) {
       if (!isCurrentlySelected) {
         item.classList.add('telecom-chat-blink');
         // CRITICAL: Remove ALL inline styles that conflict with CSS animation
-        item.style.backgroundColor = '';
-        item.style.background = '';
-        item.style.animation = '';
-        item.style.borderLeft = '';
-        // CRITICAL: Remove transition - it conflicts with animation
-        item.style.transition = 'none';
+        // Use removeProperty to ensure styles are completely removed
+        item.style.removeProperty('background-color');
+        item.style.removeProperty('background');
+        item.style.removeProperty('animation');
+        item.style.removeProperty('border-left');
+        item.style.removeProperty('transition');
         // CSS class will handle animation and border via !important
+        // Force reflow to ensure animation starts
+        void item.offsetWidth;
         // Ensure it's in global Set
         if (window._telecomBlinkingChats && !window._telecomBlinkingChats.has(chatId)) {
           window._telecomBlinkingChats.add(chatId);
         }
-        console.log('[Telecom] 💫✅ Restored blink effect for chat:', chatId);
+        console.log('[Telecom] 💫✅ Restored blink effect for chat:', chatId, 'hasClass:', item.classList.contains('telecom-chat-blink'), 'computedAnimation:', window.getComputedStyle(item).animation);
       } else {
         // Chat is selected, remove from Set and ensure it has selected styling (not blink)
         if (window._telecomBlinkingChats) {
@@ -1655,20 +1659,22 @@ function selectChat(win, winId, chat, config, storageKey) {
         }
       }
       console.log('[Telecom] ✅ Applied selected styling to chat:', chat.id);
-    } else {
-      // Reset other chats to default styling (but preserve blink if active)
-      if (!item.classList.contains('telecom-chat-blink')) {
-        item.style.background = 'transparent';
-        item.style.borderLeft = 'none';
-        item.style.animation = '';
       } else {
-        // Chat is blinking - ensure animation is active and no inline background interferes
-        item.style.animation = 'blinkOrange 1s ease-in-out infinite';
-        item.style.borderLeft = '3px solid rgba(255, 165, 0, 0.9)';
-        item.style.backgroundColor = ''; // Let animation handle background
-        item.style.background = ''; // Let animation handle background
+        // Reset other chats to default styling (but preserve blink if active)
+        if (!item.classList.contains('telecom-chat-blink')) {
+          item.style.background = 'transparent';
+          item.style.borderLeft = 'none';
+          item.style.animation = '';
+        } else {
+          // Chat is blinking - remove ALL inline styles so CSS class can handle animation
+          item.style.removeProperty('animation');
+          item.style.removeProperty('border-left');
+          item.style.removeProperty('background-color');
+          item.style.removeProperty('background');
+          item.style.removeProperty('transition');
+          // CSS class will handle animation and border via !important
+        }
       }
-    }
   });
   
   // After removing selected chat from Set, restore blink for any OTHER chats that are still in Set
