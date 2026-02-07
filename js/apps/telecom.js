@@ -1201,6 +1201,24 @@ function renderMainScreen(winId, config, storageKey, restoreState = null) {
 }
 
 /**
+ * Add blink effect to chat item when new message is received
+ */
+function blinkChatItem(chatId) {
+  const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+  telecomWindows.forEach(win => {
+    const selectedChatId = win.dataset.selectedChatId;
+    // Only blink if chat is not currently selected
+    if (selectedChatId !== chatId) {
+      const chatItem = win.querySelector(`.telecom-chat-item[data-chat-id="${chatId}"]`);
+      if (chatItem) {
+        chatItem.classList.add('telecom-chat-blink');
+        console.log('[Telecom] 💫 Added blink effect to chat:', chatId);
+      }
+    }
+  });
+}
+
+/**
  * Render chats list in sidebar
  */
 function renderChatsList(win, winId, config, storageKey) {
@@ -1266,11 +1284,15 @@ function renderChatsList(win, winId, config, storageKey) {
     });
     
     item.addEventListener('mouseenter', () => {
-      item.style.background = 'var(--panel-2)';
+      if (!item.classList.contains('telecom-chat-blink')) {
+        item.style.background = 'var(--panel-2)';
+      }
     });
     
     item.addEventListener('mouseleave', () => {
-      item.style.background = 'transparent';
+      if (!item.classList.contains('telecom-chat-blink')) {
+        item.style.background = 'transparent';
+      }
     });
   });
 }
@@ -1353,11 +1375,12 @@ function selectChat(win, winId, chat, config, storageKey) {
   // Store selected chat ID
   win.dataset.selectedChatId = chat.id;
 
-  // Highlight selected chat in sidebar
+  // Highlight selected chat in sidebar and remove blink effect
   const chatItems = win.querySelectorAll('.telecom-chat-item');
   chatItems.forEach(item => {
     if (item.dataset.chatId === chat.id) {
       item.style.background = 'var(--panel-2)';
+      item.classList.remove('telecom-chat-blink'); // Remove blink when chat is opened
     } else {
       item.style.background = 'transparent';
     }
@@ -5244,7 +5267,7 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
       // If this is a sent invite with WebRTC answer, process the answer
       if (isSentInvite && invite.webrtcAnswer) {
         console.log('[Telecom] Received invite with WebRTC answer, processing...');
-        processWebRTCAnswer(invite, config).then(() => {
+        processWebRTCAnswer(invite, config, storageKey).then(() => {
           alert('WebRTC answer processed successfully. Connection should be established.');
           // Clear textarea
           jsonTextarea.value = '';
@@ -7022,18 +7045,35 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
     const existingContact = contacts.find(c => c.guid === invite.fromGuid);
     if (!existingContact) {
       console.log('[Telecom] Adding new contact from invite:', invite.fromGuid, 'displayName:', invite.fromDisplayName);
-      // Add new contact
-      contacts.push({
+      // Add new contact with all available data including public key
+      const newContact = {
         guid: invite.fromGuid,
-        username: invite.fromUsername,
-        displayName: invite.fromDisplayName,
+        username: invite.fromUsername || null,
+        displayName: invite.fromDisplayName || invite.fromUsername || invite.fromGuid.substring(0, 8) + '...',
+        firstName: invite.fromFirstName || null,
+        lastName: invite.fromLastName || null,
+        email: invite.fromEmail || null,
+        publicKey: invite.fromPublicKey || null, // Public key for encryption
         addedAt: new Date().toISOString()
-      });
+      };
       
+      contacts.push(newContact);
       saveContacts(contacts);
-      console.log('[Telecom] Contact added:', invite.fromDisplayName || invite.fromUsername, 'Total contacts now:', contacts.length);
+      console.log('[Telecom] Contact added:', newContact.displayName, 'Total contacts now:', contacts.length);
+      console.log('[Telecom] Contact public key:', newContact.publicKey ? 'present' : 'missing');
     } else {
       console.log('[Telecom] Contact already exists for invite.fromGuid:', invite.fromGuid);
+      // Update existing contact with public key if missing
+      if (!existingContact.publicKey && invite.fromPublicKey) {
+        existingContact.publicKey = invite.fromPublicKey;
+        existingContact.username = existingContact.username || invite.fromUsername;
+        existingContact.displayName = existingContact.displayName || invite.fromDisplayName || invite.fromUsername;
+        existingContact.firstName = existingContact.firstName || invite.fromFirstName;
+        existingContact.lastName = existingContact.lastName || invite.fromLastName;
+        existingContact.email = existingContact.email || invite.fromEmail;
+        saveContacts(contacts);
+        console.log('[Telecom] Updated existing contact with public key:', existingContact.guid);
+      }
     }
 
     // Generate WebRTC answer if offer is present
@@ -7209,7 +7249,11 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         dataChannel.onmessage = async (event) => {
           try {
             const messageData = JSON.parse(event.data);
-            console.log('[Telecom] 📥 Received message via WebRTC (recipient):', inviteForAnswer.fromGuid, 'encrypted:', messageData.encrypted || false);
+            console.log('[Telecom] 📥 Received message via WebRTC (recipient):', {
+              fromGuid: inviteForAnswer.fromGuid,
+              encrypted: messageData.encrypted || false,
+              encryptedText: messageData.text ? (messageData.text.substring(0, 100) + (messageData.text.length > 100 ? '...' : '')) : 'no text'
+            });
             
             // Handle incoming WebRTC message
             if (messageData.type === 'message' && messageData.text) {
@@ -7231,7 +7275,7 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                       console.log('[Telecom] Using cached decrypted private key (recipient side)');
                       try {
                         decryptedText = await decryptMessageForTelecom(messageData.text, cachedPrivateKey);
-                        console.log('[Telecom] ✅ Message decrypted successfully (recipient side)');
+                        console.log('[Telecom] ✅ Message decrypted successfully (recipient side):', decryptedText);
                       } catch (e) {
                         console.error('[Telecom] ❌ Error decrypting with cached key:', e);
                         decryptedText = '[Encrypted message - decryption failed]';
@@ -7247,7 +7291,7 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                   decryptedText = '[Encrypted message - decryption failed]';
                 }
               } else {
-                console.log('[Telecom] 📝 Message is not encrypted, using as-is');
+                console.log('[Telecom] 📝 Message is not encrypted, using as-is:', decryptedText);
               }
               
               const chatId = `contact-${inviteForAnswer.fromGuid}`;
@@ -7284,9 +7328,28 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
               const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
               telecomWindows.forEach(win => {
                 const selectedChatId = win.dataset.selectedChatId;
+                // Get storageKey from context or use default
+                const effectiveStorageKey = storageKey || 'webos.telecom.v1';
+                // Get config from context if not available
+                let effectiveConfig = config;
+                if (!effectiveConfig) {
+                  try {
+                    const configData = localStorage.getItem(effectiveStorageKey);
+                    if (configData) {
+                      effectiveConfig = JSON.parse(configData);
+                    }
+                  } catch (e) {
+                    console.warn('[Telecom] Error loading config for blink:', e);
+                  }
+                }
+                
                 if (selectedChatId === chatId) {
-                  renderMessages(win, messages, config);
-                  renderChatsList(win, win.dataset.winId, config, storageKey);
+                  renderMessages(win, messages, effectiveConfig);
+                  renderChatsList(win, win.dataset.winId, effectiveConfig, effectiveStorageKey);
+                } else {
+                  // Chat is not selected, refresh list and add blink effect
+                  renderChatsList(win, win.dataset.winId, effectiveConfig, effectiveStorageKey);
+                  blinkChatItem(chatId);
                 }
               });
             }
@@ -7321,7 +7384,11 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
           incomingChannel.onmessage = async (event) => {
             try {
               const messageData = JSON.parse(event.data);
-              console.log('[Telecom] 📥 Received message via incoming WebRTC channel (recipient):', inviteForAnswer.fromGuid, 'encrypted:', messageData.encrypted || false);
+              console.log('[Telecom] 📥 Received message via incoming WebRTC channel (recipient):', {
+                fromGuid: inviteForAnswer.fromGuid,
+                encrypted: messageData.encrypted || false,
+                encryptedText: messageData.text ? (messageData.text.substring(0, 100) + (messageData.text.length > 100 ? '...' : '')) : 'no text'
+              });
               
               // Handle incoming WebRTC message (same as above)
               if (messageData.type === 'message' && messageData.text) {
@@ -7343,7 +7410,7 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                         console.log('[Telecom] Using cached decrypted private key (recipient side, incoming channel)');
                         try {
                           decryptedText = await decryptMessageForTelecom(messageData.text, cachedPrivateKey);
-                          console.log('[Telecom] ✅ Message decrypted successfully (recipient side, incoming channel)');
+                          console.log('[Telecom] ✅ Message decrypted successfully (recipient side, incoming channel):', decryptedText);
                         } catch (e) {
                           console.error('[Telecom] ❌ Error decrypting with cached key:', e);
                           decryptedText = '[Encrypted message - decryption failed]';
@@ -7359,7 +7426,7 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                     decryptedText = '[Encrypted message - decryption failed]';
                   }
                 } else {
-                  console.log('[Telecom] 📝 Message is not encrypted, using as-is');
+                  console.log('[Telecom] 📝 Message is not encrypted, using as-is:', decryptedText);
                 }
                 
                 const chatId = `contact-${inviteForAnswer.fromGuid}`;
@@ -7396,9 +7463,28 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                 const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
                 telecomWindows.forEach(win => {
                   const selectedChatId = win.dataset.selectedChatId;
+                  // Get storageKey from context or use default
+                  const effectiveStorageKey = storageKey || 'webos.telecom.v1';
+                  // Get config from context if not available
+                  let effectiveConfig = config;
+                  if (!effectiveConfig) {
+                    try {
+                      const configData = localStorage.getItem(effectiveStorageKey);
+                      if (configData) {
+                        effectiveConfig = JSON.parse(configData);
+                      }
+                    } catch (e) {
+                      console.warn('[Telecom] Error loading config for blink:', e);
+                    }
+                  }
+                  
                   if (selectedChatId === chatId) {
-                    renderMessages(win, messages, config);
-                    renderChatsList(win, win.dataset.winId, config, storageKey);
+                    renderMessages(win, messages, effectiveConfig);
+                    renderChatsList(win, win.dataset.winId, effectiveConfig, effectiveStorageKey);
+                  } else {
+                    // Chat is not selected, refresh list and add blink effect
+                    renderChatsList(win, win.dataset.winId, effectiveConfig, effectiveStorageKey);
+                    blinkChatItem(chatId);
                   }
                 });
               }
@@ -7893,17 +7979,21 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
 /**
  * Process WebRTC answer from recipient (called by sender when answer is received)
  */
-async function processWebRTCAnswer(invite, config) {
+async function processWebRTCAnswer(invite, config, storageKey) {
   // Check if answer exists and WebRTC is available
   if (!invite.webrtcAnswer || typeof RTCPeerConnection === 'undefined') {
     return;
   }
 
+  // Use default storageKey if not provided
+  if (!storageKey) {
+    storageKey = 'webos.telecom.v1';
+  }
+
   // Load config if not provided
   if (!config) {
-    const STORAGE_KEY = 'webos.telecom.v1';
     try {
-      const configData = localStorage.getItem(STORAGE_KEY);
+      const configData = localStorage.getItem(storageKey);
       if (configData) {
         config = JSON.parse(configData);
         console.log('[Telecom] Loaded config from localStorage in processWebRTCAnswer');
@@ -8428,7 +8518,11 @@ async function processWebRTCAnswer(invite, config) {
       dataChannel.onmessage = async (event) => {
         try {
           const messageData = JSON.parse(event.data);
-          console.log('[Telecom] 📥 Received message via WebRTC from contact (sender side):', contactGuid, 'encrypted:', messageData.encrypted || false);
+          console.log('[Telecom] 📥 Received message via WebRTC from contact (sender side):', {
+            contactGuid: contactGuid,
+            encrypted: messageData.encrypted || false,
+            encryptedText: messageData.text ? (messageData.text.substring(0, 100) + (messageData.text.length > 100 ? '...' : '')) : 'no text'
+          });
           
           // Handle incoming WebRTC message
           if (messageData.type === 'message' && messageData.text) {
@@ -8451,7 +8545,7 @@ async function processWebRTCAnswer(invite, config) {
                     console.log('[Telecom] Using cached decrypted private key');
                     try {
                       decryptedText = await decryptMessageForTelecom(messageData.text, cachedPrivateKey);
-                      console.log('[Telecom] ✅ Message decrypted successfully (sender side)');
+                      console.log('[Telecom] ✅ Message decrypted successfully (sender side):', decryptedText);
                     } catch (e) {
                       console.error('[Telecom] ❌ Error decrypting with cached key:', e);
                       decryptedText = '[Encrypted message - decryption failed]';
@@ -8467,7 +8561,7 @@ async function processWebRTCAnswer(invite, config) {
                 decryptedText = '[Encrypted message - decryption failed]';
               }
             } else {
-              console.log('[Telecom] 📝 Message is not encrypted, using as-is');
+              console.log('[Telecom] 📝 Message is not encrypted, using as-is:', decryptedText);
             }
             
             const chatId = `contact-${contactGuid}`;
@@ -8504,9 +8598,28 @@ async function processWebRTCAnswer(invite, config) {
             const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
             telecomWindows.forEach(win => {
               const selectedChatId = win.dataset.selectedChatId;
+              // Get storageKey from context or use default
+              const effectiveStorageKey = storageKey || 'webos.telecom.v1';
+              // Get config from context if not available
+              let effectiveConfig = config;
+              if (!effectiveConfig) {
+                try {
+                  const configData = localStorage.getItem(effectiveStorageKey);
+                  if (configData) {
+                    effectiveConfig = JSON.parse(configData);
+                  }
+                } catch (e) {
+                  console.warn('[Telecom] Error loading config for blink:', e);
+                }
+              }
+              
               if (selectedChatId === chatId) {
-                renderMessages(win, messages, config);
-                renderChatsList(win, win.dataset.winId, config, storageKey);
+                renderMessages(win, messages, effectiveConfig);
+                renderChatsList(win, win.dataset.winId, effectiveConfig, effectiveStorageKey);
+              } else {
+                // Chat is not selected, refresh list and add blink effect
+                renderChatsList(win, win.dataset.winId, effectiveConfig, effectiveStorageKey);
+                blinkChatItem(chatId);
               }
             });
           }
@@ -8567,6 +8680,31 @@ async function processWebRTCAnswer(invite, config) {
             sentInvites[inviteIndex].respondedAt = new Date().toISOString();
             localStorage.setItem(SENT_INVITES_STORAGE_KEY, JSON.stringify(sentInvites));
             console.log('[Telecom] ✅ Updated invite status to accepted for contact:', contactGuid, 'invite ID:', sentInvites[inviteIndex].id);
+            
+            // Refresh contacts dialog if it's open to show updated status
+            const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+            telecomWindows.forEach(telecomWin => {
+              const winId = telecomWin.dataset.winId;
+              if (winId) {
+                const windowContent = telecomWin.querySelector('.win-content');
+                if (windowContent) {
+                  const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
+                  if (contactsDialog) {
+                    // Reload config to ensure we have latest data
+                    try {
+                      const configData = localStorage.getItem(storageKey);
+                      if (configData) {
+                        const latestConfig = JSON.parse(configData);
+                        Object.assign(config, latestConfig);
+                      }
+                    } catch (e) {
+                      console.warn('[Telecom] Error reloading config:', e);
+                    }
+                    refreshContactsDialog(contactsDialog, config, storageKey, winId);
+                  }
+                }
+              }
+            });
           } else {
             console.warn('[Telecom] ⚠️ No invite found! Searched by:');
             console.warn('[Telecom]   - invite.id:', invite.id);
@@ -9141,6 +9279,7 @@ async function sendMessage(win, winId, config, storageKey) {
       
       console.log('[Telecom] 📤 Preparing to send message:', {
         to: peerId,
+        message: message, // Log actual message text
         messageLength: message.length,
         hasRecipientPublicKey: !!recipientPublicKey,
         publicKeyLength: recipientPublicKey ? recipientPublicKey.length : 0
@@ -9174,7 +9313,9 @@ async function sendMessage(win, winId, config, storageKey) {
       
       const payloadJson = JSON.stringify(messagePayload);
       console.log('[Telecom] 📤 Sending message payload:', {
+        message: message, // Log original message text
         encrypted: messagePayload.encrypted,
+        encryptedText: encryptedText.substring(0, 100) + (encryptedText.length > 100 ? '...' : ''), // Log first 100 chars of encrypted text
         payloadLength: payloadJson.length,
         originalMessageLength: message.length
       });

@@ -2015,6 +2015,21 @@ html:not([data-theme]) #datetime-digital-clock {
   }
 }
 
+@keyframes blinkOrange {
+  0%, 100% {
+    background-color: transparent;
+  }
+  50% {
+    background-color: rgba(255, 165, 0, 0.5);
+    box-shadow: 0 0 10px rgba(255, 165, 0, 0.3);
+  }
+}
+
+.telecom-chat-item.telecom-chat-blink {
+  animation: blinkOrange 1s ease-in-out infinite;
+  border-left: 3px solid rgba(255, 165, 0, 0.8);
+}
+
 .telecom-menu-item:hover {
   background: var(--panel-2);
 }
