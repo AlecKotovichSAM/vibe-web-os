@@ -8695,17 +8695,27 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         };
         
         // Also handle incoming data channels (in case sender creates one)
+        // This handler will be updated after webrtcAnswer is created to enable automatic answer sending
         pc.ondatachannel = (event) => {
           const incomingChannel = event.channel;
-          console.log('[Telecom] Incoming data channel (recipient):', incomingChannel.label, 'for contact:', inviteForAnswer.fromGuid);
+          console.log('[Telecom] Incoming data channel (recipient):', incomingChannel.label, 'for contact:', inviteForAnswer.fromGuid, 'readyState:', incomingChannel.readyState);
           
           // Store incoming channel
           window._telecomDataChannels.set(inviteForAnswer.fromGuid, incomingChannel);
           
           incomingChannel.onopen = () => {
-            console.log('[Telecom] Incoming data channel opened (recipient):', inviteForAnswer.fromGuid);
+            console.log('[Telecom] Incoming data channel opened (recipient):', inviteForAnswer.fromGuid, 'connectionState:', pc.connectionState, 'iceConnectionState:', pc.iceConnectionState);
             updateConnectionStatusForChat(inviteForAnswer.fromGuid, 'connected');
+            
+            // Automatically send answer via incoming data channel as soon as it opens
+            // This is the preferred channel as it's created by sender and will definitely reach sender
+            // Channel can open even if connectionState is still 'connecting' (trickle ICE)
+            // Note: answerSent, webrtcAnswer, sendAnswerThroughChannel, and checkInterval will be defined later
+            // This handler will be updated after webrtcAnswer is created
           };
+          
+          // Also try immediately if channel is already open
+          // Note: This will be updated after webrtcAnswer is created
           
           incomingChannel.onmessage = async (event) => {
             try {
@@ -9246,6 +9256,150 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         const recipientEmail = config.email || systemAccount?.email || null;
         const recipientPublicKey = systemAccount?.publicKey || null;
         
+        // Track if answer has been sent automatically via data channel
+        let answerSent = false;
+        
+        // Function to send answer through any available data channel
+        // This is called when data channel opens (even if connection is still establishing via trickle ICE)
+        const sendAnswerThroughChannel = (channel, channelName) => {
+          if (!channel) {
+            return false;
+          }
+          // Check readyState - channel must be open to send
+          if (channel.readyState !== 'open') {
+            console.log(`[Telecom] ⏳ Data channel ${channelName} not ready yet, state: ${channel.readyState}`);
+            return false;
+          }
+          try {
+            console.log(`[Telecom] 🚀 Sending WebRTC answer via ${channelName} (connection state: ${pc.connectionState}, ICE state: ${pc.iceConnectionState})`);
+            const answerPayload = {
+              type: 'webrtc-answer',
+              inviteId: inviteForAnswer.id,
+              webrtcAnswer: webrtcAnswer,
+              recipientData: {
+                username: recipientUsername,
+                displayName: recipientDisplayName,
+                firstName: recipientFirstName,
+                lastName: recipientLastName,
+                email: recipientEmail,
+                publicKey: recipientPublicKey
+              }
+            };
+            channel.send(JSON.stringify(answerPayload));
+            console.log(`[Telecom] ✅ WebRTC answer sent via ${channelName} - sender will process it automatically`);
+            return true;
+          } catch (e) {
+            console.error(`[Telecom] Error sending answer via ${channelName}:`, e);
+            return false;
+          }
+        };
+        
+        // Set up periodic check to send answer via data channel (with timeout)
+        const answerTimeout = 60000; // 60 seconds timeout
+        const answerStartTime = Date.now();
+        let checkInterval = null;
+        
+        // Function to check and send answer via data channel
+        const checkAndSendAnswer = () => {
+          // Check timeout
+          if (Date.now() - answerStartTime > answerTimeout) {
+            console.warn('[Telecom] ⏱️ Answer not sent after 60 seconds, showing manual dialog');
+            clearInterval(checkInterval);
+            checkInterval = null;
+            // Fallback to manual sharing
+            if (!answerSent) {
+              showShareAnswerDialog(winId || null, inviteWithAnswer, config, storageKey);
+            }
+            return;
+          }
+          
+          // Try outgoing data channel (created by recipient)
+          if (dataChannel && dataChannel.readyState === 'open' && !answerSent) {
+            answerSent = sendAnswerThroughChannel(dataChannel, 'outgoing data channel (created by recipient)');
+            if (answerSent) {
+              clearInterval(checkInterval);
+              checkInterval = null;
+              return;
+            }
+          }
+          
+          // Try incoming data channel (created by sender) - check if it exists
+          const incomingChannel = window._telecomDataChannels?.get(inviteForAnswer.fromGuid);
+          if (incomingChannel && incomingChannel.readyState === 'open' && !answerSent) {
+            answerSent = sendAnswerThroughChannel(incomingChannel, 'incoming data channel (created by sender)');
+            if (answerSent) {
+              clearInterval(checkInterval);
+              checkInterval = null;
+              return;
+            }
+          }
+        };
+        
+        // Start periodic check (every 500ms)
+        checkInterval = setInterval(checkAndSendAnswer, 500);
+        
+        // Also update dataChannel.onopen handler to send answer immediately when channel opens
+        const originalOnOpen = dataChannel.onopen;
+        dataChannel.onopen = () => {
+          if (originalOnOpen) originalOnOpen();
+          console.log('[Telecom] Data channel opened (recipient outgoing):', inviteForAnswer.fromGuid, 'connectionState:', pc.connectionState, 'iceConnectionState:', pc.iceConnectionState);
+          updateConnectionStatusForChat(inviteForAnswer.fromGuid, 'connected');
+          
+          // Automatically send answer via outgoing data channel as soon as it opens
+          // Channel can open even if connectionState is still 'connecting' (trickle ICE)
+          if (!answerSent && webrtcAnswer) {
+            answerSent = sendAnswerThroughChannel(dataChannel, 'outgoing data channel (onopen)');
+            if (answerSent) {
+              clearInterval(checkInterval);
+              checkInterval = null;
+            }
+          }
+        };
+        
+        // Also try immediately if channel is already open
+        if (dataChannel.readyState === 'open' && !answerSent && webrtcAnswer) {
+          console.log('[Telecom] Outgoing data channel already open, sending answer immediately');
+          answerSent = sendAnswerThroughChannel(dataChannel, 'outgoing data channel (already open)');
+          if (answerSent) {
+            clearInterval(checkInterval);
+            checkInterval = null;
+          }
+        }
+        
+        // Update connection state handlers to attempt sending answer
+        pc.onconnectionstatechange = () => {
+          if ((pc.connectionState === 'connected' || pc.connectionState === 'connecting') && !answerSent && webrtcAnswer) {
+            // Try sending via outgoing channel
+            if (dataChannel && dataChannel.readyState === 'open') {
+              answerSent = sendAnswerThroughChannel(dataChannel, 'outgoing data channel (connectionState change)');
+              if (answerSent) {
+                clearInterval(checkInterval);
+                checkInterval = null;
+              }
+            }
+          } else if (pc.connectionState === 'failed' && pc.iceConnectionState === 'failed') {
+            console.warn('[Telecom] ⚠️ Connection failed, showing manual dialog');
+            clearInterval(checkInterval);
+            checkInterval = null;
+            if (!answerSent) {
+              showShareAnswerDialog(winId || null, inviteWithAnswer, config, storageKey);
+            }
+          }
+        };
+        
+        pc.oniceconnectionstatechange = () => {
+          if ((pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') && !answerSent && webrtcAnswer) {
+            // Try sending via outgoing channel
+            if (dataChannel && dataChannel.readyState === 'open') {
+              answerSent = sendAnswerThroughChannel(dataChannel, 'outgoing data channel (iceConnectionState change)');
+              if (answerSent) {
+                clearInterval(checkInterval);
+                checkInterval = null;
+              }
+            }
+          }
+        };
+        
         // Create updated invite with answer for sharing back to sender
         // Include recipient's data (toGuid is recipient, so these are "to" fields)
         const inviteWithAnswer = {
@@ -9261,18 +9415,52 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
           toPublicKey: recipientPublicKey
         };
         
-        // Show dialog to share answer back to sender
-        // Use winId if available, otherwise showShareAnswerDialog will find window itself
-        try {
-          showShareAnswerDialog(winId || null, inviteWithAnswer, config, storageKey);
-        } catch (e) {
-          console.error('[Telecom] Error calling showShareAnswerDialog:', e);
-          // Fallback: try again after delay
-          setTimeout(() => {
-            console.log('[Telecom] Retrying showShareAnswerDialog after delay');
-            showShareAnswerDialog(winId || null, inviteWithAnswer, config, storageKey);
-          }, 1000);
-        }
+        // Update incoming data channel handler to send answer automatically
+        // This updates the handler that was set earlier (before webrtcAnswer was created)
+        const originalOndatachannel = pc.ondatachannel;
+        pc.ondatachannel = (event) => {
+          // Call original handler first (to store channel and set up message handlers)
+          if (originalOndatachannel) originalOndatachannel(event);
+          
+          const incomingChannel = event.channel;
+          console.log('[Telecom] Incoming data channel (recipient, updated):', incomingChannel.label, 'for contact:', inviteForAnswer.fromGuid, 'readyState:', incomingChannel.readyState);
+          
+          // Store incoming channel (in case original handler didn't)
+          window._telecomDataChannels.set(inviteForAnswer.fromGuid, incomingChannel);
+          
+          // Set up handler for when channel opens (with access to answerSent, webrtcAnswer, etc.)
+          const originalIncomingOnOpen = incomingChannel.onopen;
+          incomingChannel.onopen = () => {
+            if (originalIncomingOnOpen) originalIncomingOnOpen();
+            console.log('[Telecom] Incoming data channel opened (recipient, updated):', inviteForAnswer.fromGuid, 'connectionState:', pc.connectionState, 'iceConnectionState:', pc.iceConnectionState);
+            updateConnectionStatusForChat(inviteForAnswer.fromGuid, 'connected');
+            
+            // Automatically send answer via incoming data channel as soon as it opens
+            // This is the preferred channel as it's created by sender and will definitely reach sender
+            // Channel can open even if connectionState is still 'connecting' (trickle ICE)
+            if (!answerSent && webrtcAnswer) {
+              answerSent = sendAnswerThroughChannel(incomingChannel, 'incoming data channel (from sender, onopen, updated)');
+              if (answerSent) {
+                clearInterval(checkInterval);
+                checkInterval = null;
+              }
+            }
+          };
+          
+          // Also try immediately if channel is already open
+          if (incomingChannel.readyState === 'open' && !answerSent && webrtcAnswer) {
+            console.log('[Telecom] Incoming data channel already open (updated), sending answer immediately');
+            answerSent = sendAnswerThroughChannel(incomingChannel, 'incoming data channel (already open, updated)');
+            if (answerSent) {
+              clearInterval(checkInterval);
+              checkInterval = null;
+            }
+          }
+        };
+        
+        // Show dialog to share answer back to sender (as fallback if automatic delivery fails)
+        // This will be shown automatically if timeout expires or connection fails
+        // But we don't show it immediately - wait for automatic delivery to succeed or timeout
         
       } catch (e) {
         console.error('[Telecom] ❌ Error creating WebRTC answer:', e);
