@@ -3485,6 +3485,23 @@ function showSettingsDialog(win, winId, config, storageKey) {
     </div>
   `;
 
+  // Network Settings Section
+  content.innerHTML += `
+    <div style="margin-top:30px; padding-top:20px; border-top:1px solid var(--panel-2);">
+      <h4 style="margin:0 0 12px 0; font-size:14px; font-weight:500; color:var(--text);">
+        Network Settings
+      </h4>
+      <p style="margin:0 0 16px 0; font-size:13px; color:var(--muted); line-height:1.5;">
+        Configure STUN and TURN servers for WebRTC connections. These settings are read from Network app storage each time a connection is established.
+      </p>
+      <button id="telecom-settings-open-network" 
+        style="width:100%; padding:12px; background:var(--accent); color:white; border:none; border-radius:6px; cursor:pointer; font-size:14px; font-weight:500; display:flex; align-items:center; justify-content:center; gap:8px; transition:opacity 0.2s;"
+        onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+        <span style="font-size:18px;">🌐</span> Open Network App
+      </button>
+    </div>
+  `;
+
   // Verbose Logging Toggle
   const verboseLogging = config.verboseLogging !== undefined ? config.verboseLogging : false;
   content.innerHTML += `
@@ -3704,6 +3721,25 @@ function showSettingsDialog(win, winId, config, storageKey) {
     backdrop.remove();
     dialog.remove();
   });
+
+  // Handle Network app button
+  const networkBtn = dialog.querySelector('#telecom-settings-open-network');
+  if (networkBtn) {
+    networkBtn.addEventListener('click', () => {
+      // Close settings dialog
+      backdrop.remove();
+      dialog.remove();
+      // Open Network app
+      if (window.Apps && typeof window.Apps.open === 'function') {
+        window.Apps.open('network');
+      } else {
+        console.error('[Telecom] Apps.open not available');
+        if (window.Dialog && window.Dialog.alert) {
+          window.Dialog.alert('Network app is not available');
+        }
+      }
+    });
+  }
 
   // Handle reset button
   const resetBtn = dialog.querySelector('#telecom-settings-reset');
@@ -7472,6 +7508,8 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
       console.log('[Telecom] ✅ RTCPeerConnection is available, creating WebRTC offer for invite to:', targetGuid);
       
       // Create RTCPeerConnection with ICE servers from Network module configuration
+      // NOTE: getIceServersConfig() reads from localStorage each time - no caching
+      // This ensures we always use the latest STUN/TURN server configuration from Network app
       const iceServers = window.Network ? window.Network.getIceServersConfig() : [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' }
@@ -8600,6 +8638,8 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         console.log('[Telecom] ✅ Generating WebRTC answer for invite:', inviteForAnswer.id);
         
         // Create RTCPeerConnection with ICE servers from Network module configuration
+        // NOTE: getIceServersConfig() reads from localStorage each time - no caching
+        // This ensures we always use the latest STUN/TURN server configuration from Network app
         const iceServers = window.Network ? window.Network.getIceServersConfig() : [
           { urls: 'stun:stun.l.google.com:19302' },
           { urls: 'stun:stun1.l.google.com:19302' }

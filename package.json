@@ -1,6 +1,6 @@
 {
   "name": "vibe-web-os",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A browser-based operating system built with pure HTML, CSS, and JavaScript",
   "type": "module",
   "scripts": {
