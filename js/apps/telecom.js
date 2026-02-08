@@ -8026,10 +8026,120 @@ async function processWebRTCOffer(invite, config) {
 }
 
 // WebRTC processing removed - using localStorage-based messaging instead
+// This function now only handles cleanup of orphaned answers
 async function processIncomingSignaling(effectiveGuid, config) {
-  // WebRTC removed - this function does nothing
-  return;
+  // Clean up orphaned answers that don't match any current invites
+  try {
+    const signalingKey = `webos.telecom.webrtc_signaling.${effectiveGuid}.v1`;
+    const signalingData = localStorage.getItem(signalingKey);
+    if (!signalingData) {
+      return; // No signaling data to clean up
+    }
+    
+    const signaling = JSON.parse(signalingData);
+    const sentInvitesKey = `webos.telecom.sent_invites.guid_from.${effectiveGuid}`;
+    const sentInvitesData = localStorage.getItem(sentInvitesKey);
+    
+    if (!sentInvitesData) {
+      // No sent invites, remove all answers
+      localStorage.removeItem(signalingKey);
+      return;
+    }
+    
+    const sentInvites = JSON.parse(sentInvitesData);
+    const validInviteIds = new Set(sentInvites.map(inv => inv.id));
+    
+    // Clean up orphaned answers for each peer
+    let hasChanges = false;
+    for (const peerId in signaling) {
+      if (signaling[peerId] && signaling[peerId].answers) {
+        const originalLength = signaling[peerId].answers.length;
+        signaling[peerId].answers = signaling[peerId].answers.filter(answer => {
+          return validInviteIds.has(answer.inviteId);
+        });
+        
+        if (signaling[peerId].answers.length !== originalLength) {
+          hasChanges = true;
+        }
+        
+        // Remove peer entry if no answers left
+        if (signaling[peerId].answers.length === 0) {
+          delete signaling[peerId];
+        }
+      }
+    }
+    
+    // Save updated signaling data if changes were made
+    if (hasChanges) {
+      const hasAnyData = Object.keys(signaling).length > 0;
+      if (hasAnyData) {
+        localStorage.setItem(signalingKey, JSON.stringify(signaling));
+      } else {
+        localStorage.removeItem(signalingKey);
+      }
+    }
+  } catch (e) {
+    console.error('[Telecom] Error in processIncomingSignaling cleanup:', e);
+  }
 }
+
+// Export processIncomingSignaling for testing - execute immediately after function definition
+// Make it available both as window.Telecom.processIncomingSignaling and as a global function
+// Use immediate execution to ensure export happens right after function definition
+(function() {
+  // Try to export to window if available (browser environment)
+  if (typeof window !== 'undefined') {
+    if (!window.Telecom) {
+      window.Telecom = {};
+    }
+    window.Telecom.processIncomingSignaling = processIncomingSignaling;
+    window.processIncomingSignaling = processIncomingSignaling;
+  }
+  
+  // Also make it available in global scope for Node.js/JSDOM testing
+  if (typeof global !== 'undefined') {
+    if (!global.Telecom) {
+      global.Telecom = {};
+    }
+    global.Telecom.processIncomingSignaling = processIncomingSignaling;
+    global.processIncomingSignaling = processIncomingSignaling;
+  }
+  
+  // Make it available as a global variable (for eval contexts)
+  if (typeof globalThis !== 'undefined') {
+    if (!globalThis.Telecom) {
+      globalThis.Telecom = {};
+    }
+    globalThis.Telecom.processIncomingSignaling = processIncomingSignaling;
+    globalThis.processIncomingSignaling = processIncomingSignaling;
+  }
+  
+  // Also assign to global scope directly (for eval contexts)
+  // This works in non-strict mode eval contexts
+  try {
+    // Use Function constructor to access global scope
+    const setGlobal = new Function('fn', `
+      if (typeof window !== 'undefined') {
+        if (!window.Telecom) window.Telecom = {};
+        window.Telecom.processIncomingSignaling = fn;
+        window.processIncomingSignaling = fn;
+      }
+      if (typeof global !== 'undefined') {
+        if (!global.Telecom) global.Telecom = {};
+        global.Telecom.processIncomingSignaling = fn;
+        global.processIncomingSignaling = fn;
+      }
+      if (typeof globalThis !== 'undefined') {
+        if (!globalThis.Telecom) globalThis.Telecom = {};
+        globalThis.Telecom.processIncomingSignaling = fn;
+        globalThis.processIncomingSignaling = fn;
+      }
+    `);
+    setGlobal(processIncomingSignaling);
+  } catch (e) {
+    // Ignore errors
+  }
+})();
 
 
 /**
@@ -9391,13 +9501,23 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
           trickle: true
         });
         
-        // Build minimal WebRTC answer object (without waiting for all candidates)
-        const minimalAnswer = {
+        // Build WebRTC answer object
+        // For trickle ICE: start with empty candidates, they'll be added incrementally
+        // But include any candidates that were already collected during offer processing
+        const currentCandidates = iceCandidates.length > 0 ? [...iceCandidates] : [];
+        const webrtcAnswer = {
           sdp: answer.sdp,
           type: answer.type,
           trickle: true, // Flag indicating trickle ICE
-          iceCandidates: [] // Will be populated incrementally
+          iceCandidates: currentCandidates // Include any candidates already collected
         };
+        
+        console.log('[TRICKLE-RECIPIENT] 📊 Initial answer created:', {
+          sdpLength: webrtcAnswer.sdp.length,
+          type: webrtcAnswer.type,
+          trickle: webrtcAnswer.trickle,
+          initialCandidatesCount: currentCandidates.length
+        });
         
         // Get recipient's account data for answer (needed for sending)
         const systemAccount = window.Auth ? window.Auth.getAccount() : null;
@@ -9415,10 +9535,10 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         const recipientEmail = config.email || systemAccount?.email || null;
         const recipientPublicKey = systemAccount?.publicKey || null;
         
-        // Create updated invite with minimal answer for sharing back to sender
+        // Create updated invite with answer for sharing back to sender
         const inviteWithAnswer = {
           ...inviteForAnswer,
-          webrtcAnswer: minimalAnswer,
+          webrtcAnswer: webrtcAnswer,
           status: 'accepted',
           // Add recipient's data (since recipient is sending answer back to sender)
           toUsername: recipientUsername,
@@ -9429,14 +9549,15 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
           toPublicKey: recipientPublicKey
         };
         
-        // Save minimal answer to invite in recipient storage immediately
-        recipientInvites[recipientInviteIndex].webrtcAnswer = minimalAnswer;
+        // Save answer to invite in recipient storage immediately
+        recipientInvites[recipientInviteIndex].webrtcAnswer = webrtcAnswer;
         
         // Track if answer has been sent automatically via data channel
         let answerSent = false;
         
         // Function to send answer through any available data channel
-        const sendAnswerThroughChannel = (channel, channelName, answerToSend = minimalAnswer) => {
+        // Always use current webrtcAnswer (which includes all collected candidates so far)
+        const sendAnswerThroughChannel = (channel, channelName, answerToSend = webrtcAnswer) => {
           const sendStartTime = Date.now();
           console.log(`[TRICKLE-RECIPIENT] 🔍 Attempting to send answer via ${channelName}...`);
           
@@ -9554,17 +9675,24 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         
         // Try to send answer IMMEDIATELY via data channel if it's already open
         // This is the key to trickle ICE - don't wait!
+        // Use current webrtcAnswer which includes any candidates already collected
         console.log('[TRICKLE-RECIPIENT] 🔍 Checking data channel availability for immediate answer send...');
         console.log('[TRICKLE-RECIPIENT] 📊 Outgoing data channel state:', {
           exists: !!dataChannel,
           readyState: dataChannel ? dataChannel.readyState : 'N/A',
           label: dataChannel ? dataChannel.label : 'N/A'
         });
+        console.log('[TRICKLE-RECIPIENT] 📊 Answer to send:', {
+          type: webrtcAnswer.type,
+          sdpLength: webrtcAnswer.sdp.length,
+          candidatesCount: webrtcAnswer.iceCandidates.length,
+          trickle: webrtcAnswer.trickle
+        });
         
         if (dataChannel && dataChannel.readyState === 'open') {
           console.log('[TRICKLE-RECIPIENT] ✅ Outgoing data channel already open - sending answer immediately (trickle ICE)');
           const sendStartTime = Date.now();
-          answerSent = sendAnswerThroughChannel(dataChannel, 'outgoing data channel (immediate)');
+          answerSent = sendAnswerThroughChannel(dataChannel, 'outgoing data channel (immediate)', webrtcAnswer);
           const sendTime = Date.now() - sendStartTime;
           console.log(`[TRICKLE-RECIPIENT] ⏱️ Answer send attempt completed in ${sendTime}ms, success: ${answerSent}`);
         } else {
@@ -9582,7 +9710,7 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         if (incomingChannel && incomingChannel.readyState === 'open' && !answerSent) {
           console.log('[TRICKLE-RECIPIENT] ✅ Incoming data channel already open - sending answer immediately (trickle ICE)');
           const sendStartTime = Date.now();
-          answerSent = sendAnswerThroughChannel(incomingChannel, 'incoming data channel (immediate)');
+          answerSent = sendAnswerThroughChannel(incomingChannel, 'incoming data channel (immediate)', webrtcAnswer);
           const sendTime = Date.now() - sendStartTime;
           console.log(`[TRICKLE-RECIPIENT] ⏱️ Answer send attempt completed in ${sendTime}ms, success: ${answerSent}`);
         } else if (!answerSent) {
@@ -9604,8 +9732,8 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                 storageKey: SENT_INVITES_STORAGE_KEY,
                 inviteId: invite.id,
                 fromGuid: invite.fromGuid,
-                answerType: minimalAnswer.type,
-                answerSdpLength: minimalAnswer.sdp.length
+                answerType: webrtcAnswer.type,
+                answerSdpLength: webrtcAnswer.sdp.length
               });
               
               const sentInvitesData = localStorage.getItem(SENT_INVITES_STORAGE_KEY);
@@ -9641,17 +9769,112 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
             });
           }
           
-          // Show manual dialog immediately (don't wait 60 seconds!)
-          // This allows manual copy/paste while data channel is establishing
-          console.log('[TRICKLE-RECIPIENT] 📋 Showing manual share dialog immediately (data channel not ready yet)');
-          const dialogStartTime = Date.now();
-          try {
-            showShareAnswerDialog(winId || null, inviteWithAnswer, config, storageKey);
-            const dialogTime = Date.now() - dialogStartTime;
-            console.log(`[TRICKLE-RECIPIENT] ✅ Manual share dialog shown in ${dialogTime}ms`);
-          } catch (e) {
-            console.error('[TRICKLE-RECIPIENT] ❌ Error showing manual share dialog:', e);
-          }
+          // Wait a few seconds for ICE candidates to be collected before showing dialog
+          // This ensures that manually copied answer includes candidates for connection establishment
+          console.log('[TRICKLE-RECIPIENT] ⏳ Waiting for ICE candidates before showing dialog (for manual copy)...');
+          const candidateWaitStartTime = Date.now();
+          const candidateWaitTimeout = 5000; // Wait up to 5 seconds for candidates
+          const minCandidatesWait = 2000; // Minimum wait of 2 seconds
+          const targetRelayCandidates = 1; // Try to get at least 1 relay candidate
+          
+          // Wait for candidates with timeout
+          const waitForCandidates = new Promise((resolve) => {
+            let checkInterval = null;
+            let timeoutId = null;
+            let minWaitId = null;
+            let resolved = false;
+            
+            const checkCandidates = () => {
+              const currentCandidates = webrtcAnswer.iceCandidates.length;
+              const relayCandidates = webrtcAnswer.iceCandidates.filter(c => 
+                c.candidate && c.candidate.includes('typ relay')
+              ).length;
+              
+              console.log(`[TRICKLE-RECIPIENT] 📊 Candidate check: ${currentCandidates} total, ${relayCandidates} relay, gathering state: ${pc.iceGatheringState}`);
+              
+              // If we have enough candidates (especially relay) and minimum wait passed, resolve
+              if (!resolved && (relayCandidates >= targetRelayCandidates || pc.iceGatheringState === 'complete')) {
+                const waitTime = Date.now() - candidateWaitStartTime;
+                if (waitTime >= minCandidatesWait) {
+                  resolved = true;
+                  if (checkInterval) clearInterval(checkInterval);
+                  if (timeoutId) clearTimeout(timeoutId);
+                  if (minWaitId) clearTimeout(minWaitId);
+                  console.log(`[TRICKLE-RECIPIENT] ✅ Candidate wait complete: ${currentCandidates} candidates (${relayCandidates} relay) after ${waitTime}ms`);
+                  resolve();
+                }
+              }
+            };
+            
+            // Check every 200ms
+            checkInterval = setInterval(checkCandidates, 200);
+            
+            // Maximum timeout
+            timeoutId = setTimeout(() => {
+              if (!resolved) {
+                resolved = true;
+                clearInterval(checkInterval);
+                clearTimeout(minWaitId);
+                const finalCandidates = webrtcAnswer.iceCandidates.length;
+                const finalRelay = webrtcAnswer.iceCandidates.filter(c => 
+                  c.candidate && c.candidate.includes('typ relay')
+                ).length;
+                console.log(`[TRICKLE-RECIPIENT] ⏱️ Candidate wait timeout: ${finalCandidates} candidates (${finalRelay} relay) after ${candidateWaitTimeout}ms`);
+                resolve();
+              }
+            }, candidateWaitTimeout);
+            
+            // Minimum wait
+            minWaitId = setTimeout(() => {
+              checkCandidates(); // Check immediately after minimum wait
+            }, minCandidatesWait);
+          });
+          
+          // Wait for candidates, then show dialog
+          waitForCandidates.then(() => {
+            // Update inviteWithAnswer with latest candidates before showing dialog
+            inviteWithAnswer.webrtcAnswer = webrtcAnswer;
+            
+            // Update localStorage with latest answer (including all collected candidates)
+            try {
+              const effectiveGuid = getEffectiveGuid(config);
+              if (effectiveGuid) {
+                const SENT_INVITES_STORAGE_KEY = `webos.telecom.sent_invites.guid_from.${invite.fromGuid}`;
+                const sentInvitesData = localStorage.getItem(SENT_INVITES_STORAGE_KEY);
+                if (sentInvitesData) {
+                  const sentInvites = JSON.parse(sentInvitesData);
+                  const inviteIndex = sentInvites.findIndex(inv => inv.id === invite.id);
+                  if (inviteIndex !== -1) {
+                    sentInvites[inviteIndex] = inviteWithAnswer;
+                    localStorage.setItem(SENT_INVITES_STORAGE_KEY, JSON.stringify(sentInvites));
+                    console.log(`[TRICKLE-RECIPIENT] ✅ Updated answer in localStorage with ${webrtcAnswer.iceCandidates.length} candidate(s) before showing dialog`);
+                  }
+                }
+              }
+            } catch (e) {
+              console.error('[TRICKLE-RECIPIENT] Error updating answer in localStorage:', e);
+            }
+            
+            // Show dialog with answer that includes collected candidates
+            console.log('[TRICKLE-RECIPIENT] 📋 Showing manual share dialog with', webrtcAnswer.iceCandidates.length, 'candidate(s)');
+            const dialogStartTime = Date.now();
+            try {
+              showShareAnswerDialog(winId || null, inviteWithAnswer, config, storageKey);
+              const dialogTime = Date.now() - dialogStartTime;
+              console.log(`[TRICKLE-RECIPIENT] ✅ Manual share dialog shown in ${dialogTime}ms`);
+            } catch (e) {
+              console.error('[TRICKLE-RECIPIENT] ❌ Error showing manual share dialog:', e);
+            }
+          }).catch((e) => {
+            console.error('[TRICKLE-RECIPIENT] ❌ Error waiting for candidates:', e);
+            // Show dialog anyway (with whatever candidates we have)
+            console.log('[TRICKLE-RECIPIENT] 📋 Showing dialog anyway with', webrtcAnswer.iceCandidates.length, 'candidate(s)');
+            try {
+              showShareAnswerDialog(winId || null, inviteWithAnswer, config, storageKey);
+            } catch (err) {
+              console.error('[TRICKLE-RECIPIENT] ❌ Error showing manual share dialog:', err);
+            }
+          });
         } else {
           console.log('[TRICKLE-RECIPIENT] ✅ Answer already sent via data channel - skipping localStorage save and dialog');
         }
@@ -9674,7 +9897,7 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
           
           // Try outgoing data channel (created by recipient)
           if (dataChannel && dataChannel.readyState === 'open' && !answerSent) {
-            answerSent = sendAnswerThroughChannel(dataChannel, 'outgoing data channel (periodic check)', minimalAnswer);
+            answerSent = sendAnswerThroughChannel(dataChannel, 'outgoing data channel (periodic check)', webrtcAnswer);
             if (answerSent) {
               clearInterval(checkInterval);
               checkInterval = null;
@@ -9685,7 +9908,7 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
           // Try incoming data channel (created by sender) - check if it exists
           const incomingChannelCheck = window._telecomDataChannels?.get(inviteForAnswer.fromGuid);
           if (incomingChannelCheck && incomingChannelCheck.readyState === 'open' && !answerSent) {
-            answerSent = sendAnswerThroughChannel(incomingChannelCheck, 'incoming data channel (periodic check)', minimalAnswer);
+            answerSent = sendAnswerThroughChannel(incomingChannelCheck, 'incoming data channel (periodic check)', webrtcAnswer);
             if (answerSent) {
               clearInterval(checkInterval);
               checkInterval = null;
@@ -9710,8 +9933,17 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
               sdpMid: event.candidate.sdpMid
             };
             
-            // Add to collection (for backward compatibility)
+            // Add to collection
             iceCandidates.push(candidate);
+            
+            // Update webrtcAnswer with new candidate (for manual copying and data channel sending)
+            webrtcAnswer.iceCandidates.push(candidate);
+            
+            // Update inviteWithAnswer with updated answer (for manual dialog)
+            inviteWithAnswer.webrtcAnswer = webrtcAnswer;
+            
+            // Update recipient storage with updated answer
+            recipientInvites[recipientInviteIndex].webrtcAnswer = webrtcAnswer;
             
             // TRICKLE: Send candidate immediately via data channel if open
             console.log(`[TRICKLE-RECIPIENT] 📡 ICE candidate collected (trickle):`, {
@@ -9738,7 +9970,7 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
               console.log(`[TRICKLE-RECIPIENT] ⏳ Incoming channel not ready (state: ${incomingChannelForCandidate ? incomingChannelForCandidate.readyState : 'not found'})`);
             }
             
-            // Update localStorage with new candidate (for sender polling)
+            // Update localStorage with updated answer (including new candidate) for sender polling
             try {
               const effectiveGuid = getEffectiveGuid(config);
               if (effectiveGuid) {
@@ -9747,19 +9979,31 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                 if (sentInvitesData) {
                   const sentInvites = JSON.parse(sentInvitesData);
                   const inviteIndex = sentInvites.findIndex(inv => inv.id === invite.id);
-                  if (inviteIndex !== -1 && sentInvites[inviteIndex].webrtcAnswer) {
-                    // Append candidate to existing answer
-                    if (!sentInvites[inviteIndex].webrtcAnswer.iceCandidates) {
-                      sentInvites[inviteIndex].webrtcAnswer.iceCandidates = [];
-                    }
-                    sentInvites[inviteIndex].webrtcAnswer.iceCandidates.push(candidate);
+                  if (inviteIndex !== -1) {
+                    // Update entire answer with all candidates collected so far
+                    sentInvites[inviteIndex].webrtcAnswer = webrtcAnswer;
                     localStorage.setItem(SENT_INVITES_STORAGE_KEY, JSON.stringify(sentInvites));
-                    console.log('[Telecom] ✅ ICE candidate appended to localStorage (trickle)');
+                    console.log(`[TRICKLE-RECIPIENT] ✅ Answer updated in localStorage with ${webrtcAnswer.iceCandidates.length} candidate(s)`);
                   }
                 }
               }
             } catch (e) {
-              console.error('[Telecom] Error saving candidate to localStorage:', e);
+              console.error('[TRICKLE-RECIPIENT] Error saving candidate to localStorage:', e);
+            }
+            
+            // Update dialog if it's open (refresh answer data)
+            try {
+              const dialog = document.querySelector('.telecom-share-answer-dialog');
+              if (dialog) {
+                const textarea = dialog.querySelector('#telecom-share-answer-json');
+                if (textarea) {
+                  const updatedInviteJson = JSON.stringify(inviteWithAnswer, null, 2);
+                  textarea.value = updatedInviteJson;
+                  console.log('[TRICKLE-RECIPIENT] ✅ Updated answer in dialog with new candidate');
+                }
+              }
+            } catch (e) {
+              // Dialog might not be open yet, ignore
             }
           } else {
             // null candidate means gathering is complete
@@ -9825,9 +10069,10 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
           
           // Automatically send answer via outgoing data channel as soon as it opens (trickle ICE)
           // Channel can open even if connectionState is still 'connecting'
+          // Use current webrtcAnswer which includes all candidates collected so far
           if (!answerSent) {
             console.log('[TRICKLE-RECIPIENT] 🚀 Channel opened - attempting to send answer immediately');
-            answerSent = sendAnswerThroughChannel(dataChannel, 'outgoing data channel (onopen)', minimalAnswer);
+            answerSent = sendAnswerThroughChannel(dataChannel, 'outgoing data channel (onopen)', webrtcAnswer);
             const onOpenTime = Date.now() - onOpenStartTime;
             console.log(`[TRICKLE-RECIPIENT] ⏱️ onopen handler completed in ${onOpenTime}ms, answer sent: ${answerSent}`);
             
@@ -9892,9 +10137,10 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
             // Automatically send answer via incoming data channel as soon as it opens
             // This is the preferred channel as it's created by sender and will definitely reach sender
             // Channel can open even if connectionState is still 'connecting' (trickle ICE)
+            // Use current webrtcAnswer which includes all candidates collected so far
             if (!answerSent) {
               console.log('[TRICKLE-RECIPIENT] 🚀 Incoming channel opened - attempting to send answer immediately');
-              answerSent = sendAnswerThroughChannel(incomingChannel, 'incoming data channel (from sender, onopen, updated)', minimalAnswer);
+              answerSent = sendAnswerThroughChannel(incomingChannel, 'incoming data channel (from sender, onopen, updated)', webrtcAnswer);
               const incomingOnOpenTime = Date.now() - incomingOnOpenStartTime;
               console.log(`[TRICKLE-RECIPIENT] ⏱️ Incoming channel onopen handler completed in ${incomingOnOpenTime}ms, answer sent: ${answerSent}`);
               
@@ -9912,7 +10158,7 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
           if (incomingChannel.readyState === 'open' && !answerSent) {
             console.log('[TRICKLE-RECIPIENT] ✅ Incoming data channel already open - sending answer immediately (trickle ICE)');
             const immediateSendStartTime = Date.now();
-            answerSent = sendAnswerThroughChannel(incomingChannel, 'incoming data channel (already open, updated)', minimalAnswer);
+            answerSent = sendAnswerThroughChannel(incomingChannel, 'incoming data channel (already open, updated)', webrtcAnswer);
             const immediateSendTime = Date.now() - immediateSendStartTime;
             console.log(`[TRICKLE-RECIPIENT] ⏱️ Immediate send attempt completed in ${immediateSendTime}ms, success: ${answerSent}`);
             
@@ -10174,7 +10420,18 @@ async function processWebRTCAnswer(invite, config, storageKey) {
     };
     
     // Add remote ICE candidates from answer with detailed logging
-    if (invite.webrtcAnswer.iceCandidates && invite.webrtcAnswer.iceCandidates.length > 0) {
+    // For trickle ICE: candidates may be empty initially and added later via data channel
+    // For manual answer: candidates should be present in iceCandidates array
+    const isTrickleAnswer = invite.webrtcAnswer.trickle === true;
+    const hasCandidates = invite.webrtcAnswer.iceCandidates && invite.webrtcAnswer.iceCandidates.length > 0;
+    
+    console.log('[INIT] 📊 Answer candidate info:', {
+      isTrickle: isTrickleAnswer,
+      hasCandidates: hasCandidates,
+      candidatesCount: invite.webrtcAnswer.iceCandidates?.length || 0
+    });
+    
+    if (hasCandidates) {
       console.log('[INIT] 📥 Adding', invite.webrtcAnswer.iceCandidates.length, 'remote ICE candidates from answer');
       
       for (let i = 0; i < invite.webrtcAnswer.iceCandidates.length; i++) {
@@ -10236,14 +10493,17 @@ async function processWebRTCAnswer(invite, config, storageKey) {
         console.error('[INIT] Failed candidates:', failedCandidates);
       }
       
-      if (candidatesAddedSuccessfully === 0) {
+      if (candidatesAddedSuccessfully === 0 && invite.webrtcAnswer.iceCandidates.length > 0) {
         console.error('[INIT] ❌ CRITICAL: No candidates were added successfully!');
         console.error('[INIT] This will definitely cause connection failure.');
       }
       
       console.log('[INIT] All remote candidates received:', remoteCandidatesSender);
+    } else if (isTrickleAnswer) {
+      console.log('[INIT] ℹ️ Trickle answer with no initial candidates - candidates will be added via data channel as they arrive');
     } else {
-      console.warn('[INIT] ⚠️ No ICE candidates in answer - connection may fail');
+      console.warn('[INIT] ⚠️ No ICE candidates in answer and not a trickle answer - connection may fail');
+      console.warn('[INIT] 💡 If this is a manual answer, ensure it includes iceCandidates array');
     }
     
     // Set up connection state handlers
