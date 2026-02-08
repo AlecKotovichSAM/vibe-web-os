@@ -2015,20 +2015,57 @@ html:not([data-theme]) #datetime-digital-clock {
   }
 }
 
-@keyframes blinkOrange {
+@keyframes blinkOrangeBg {
   0%, 100% {
-    background-color: rgba(255, 165, 0, 0.25) !important;
+    opacity: 0.2;
   }
   50% {
-    background-color: rgba(255, 165, 0, 0.6) !important;
+    opacity: 0.8;
+  }
+}
+
+@-webkit-keyframes blinkOrangeBg {
+  0%, 100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.8;
   }
 }
 
 .telecom-chat-item.telecom-chat-blink {
+  position: relative !important;
   border-left: 3px solid rgba(255, 165, 0, 0.9) !important;
-  animation: blinkOrange 1s ease-in-out infinite !important;
-  /* Force animation to work */
-  -webkit-animation: blinkOrange 1s ease-in-out infinite !important;
+  /* Don't set background-color here - let ::before handle it */
+}
+
+.telecom-chat-item.telecom-chat-blink::before {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  background-color: rgba(255, 165, 0, 1) !important;
+  opacity: 0.2 !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+  animation: blinkOrangeBg 0.8s ease-in-out infinite !important;
+  -webkit-animation: blinkOrangeBg 0.8s ease-in-out infinite !important;
+}
+
+.telecom-chat-item.telecom-chat-blink > * {
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+/* Respect user's motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .telecom-chat-item.telecom-chat-blink::before {
+    animation: none !important;
+    -webkit-animation: none !important;
+    opacity: 0.3 !important;
+  }
 }
 
 .telecom-menu-item:hover {

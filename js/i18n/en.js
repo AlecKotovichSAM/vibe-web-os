@@ -650,6 +650,8 @@ window.I18n_EN = {
     settingsVerboseLogging: 'Debug Options',
     settingsVerboseLoggingTitle: 'Verbose Logging',
     settingsVerboseLoggingHint: 'Show detailed logs in progress dialogs during invite creation and acceptance',
+    progressVerboseEnabled: 'Verbose',
+    progressVerboseDisableHint: '(disable in Settings)',
     settingsDangerousZone: 'Dangerous Zone',
     settingsDangerousZoneHint: 'Irreversible and destructive actions',
     settingsResetAllData: 'Reset All Data',

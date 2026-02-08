@@ -1197,9 +1197,7 @@ function renderMainScreen(winId, config, storageKey, restoreState = null) {
   });
   
   // Initialize blinking chats Set if needed (never overwrites existing!)
-  console.log('[Telecom] 🔍 On window open - Set in memory BEFORE init:', window._telecomBlinkingChats, 'size:', window._telecomBlinkingChats?.size || 0);
   initBlinkingChatsSet(); // This will preserve existing Set if it has items
-  console.log('[Telecom] 🔍 On window open - Set AFTER init (preserved if existed):', Array.from(window._telecomBlinkingChats || []), 'size:', window._telecomBlinkingChats?.size || 0);
   
   // Auto-select first chat (service chat) if available
   // CRITICAL: Set selectedChatId BEFORE renderChatsList so blink is not restored for selected chat
@@ -1210,21 +1208,16 @@ function renderMainScreen(winId, config, storageKey, restoreState = null) {
     
     // Set selectedChatId BEFORE renderChatsList to prevent blink restoration for selected chat
     win.dataset.selectedChatId = serviceChat.id;
-    console.log('[Telecom] 🔄 Setting selectedChatId BEFORE renderChatsList:', serviceChat.id);
   }
   
-  console.log('[Telecom] 🔍 Before renderChatsList (initial) - Set:', Array.from(window._telecomBlinkingChats || []), 'size:', window._telecomBlinkingChats?.size || 0);
   // Render chats list FIRST to restore blink for chats in Set
   // Then select the first chat (this will highlight it and remove blink if it was in Set)
   renderChatsList(win, winId, config, storageKey);
-  console.log('[Telecom] 🔍 After renderChatsList (initial) - Set:', Array.from(window._telecomBlinkingChats || []), 'size:', window._telecomBlinkingChats?.size || 0);
   
   // Now select the first chat (this will highlight it and remove blink if it was in Set)
   if (chats.length > 0) {
     const serviceChat = chats.find(c => c.id === 'telecom-service') || chats[0];
-    console.log('[Telecom] 🔍 Before selectChat - Set:', Array.from(window._telecomBlinkingChats || []), 'size:', window._telecomBlinkingChats?.size || 0);
     selectChat(win, winId, serviceChat, config, storageKey);
-    console.log('[Telecom] 🔍 After selectChat - Set:', Array.from(window._telecomBlinkingChats || []), 'size:', window._telecomBlinkingChats?.size || 0);
     
     // After selectChat, restore blink for any OTHER chats that are still in the Set
     if (window._telecomBlinkingChats && window._telecomBlinkingChats.size > 0) {
@@ -1254,9 +1247,6 @@ function renderMainScreen(winId, config, storageKey, restoreState = null) {
 function initBlinkingChatsSet() {
   if (!window._telecomBlinkingChats) {
     window._telecomBlinkingChats = new Set();
-    console.log('[Telecom] 🔄 Initialized new blinking chats Set');
-  } else {
-    console.log('[Telecom] 🔄 Set already exists, preserving it:', Array.from(window._telecomBlinkingChats), 'size:', window._telecomBlinkingChats.size);
   }
   return window._telecomBlinkingChats;
 }
@@ -1297,11 +1287,8 @@ function blinkChatItem(chatId) {
       }
     });
     
-    console.log('[Telecom] Found', allTelecomWindows.length, 'Telecom windows for blink');
-    
     if (allTelecomWindows.length === 0) {
       // Window is closed - blink will be restored when window opens via renderChatsList
-      console.log('[Telecom] ℹ️ No Telecom windows open - blink will be restored when window opens');
       return false;
     }
     
@@ -1328,21 +1315,60 @@ function blinkChatItem(chatId) {
         const chatItem = verifiedWin.querySelector(`.telecom-chat-item[data-chat-id="${chatId}"]`);
         if (chatItem) {
           chatItem.classList.add('telecom-chat-blink');
-          // CRITICAL: Remove ALL inline styles that conflict with CSS animation
-          // Use removeProperty to ensure styles are completely removed
+          
+          // Initialize intervals map if needed
+          if (!window._telecomBlinkIntervals) {
+            window._telecomBlinkIntervals = new Map();
+          }
+          
+          // Clear existing interval for this chat if any
+          const existingInterval = window._telecomBlinkIntervals.get(chatId);
+          if (existingInterval) {
+            clearInterval(existingInterval);
+            window._telecomBlinkIntervals.delete(chatId);
+          }
+          
+          // Remove ALL inline styles that could conflict
           chatItem.style.removeProperty('background-color');
           chatItem.style.removeProperty('background');
           chatItem.style.removeProperty('animation');
           chatItem.style.removeProperty('border-left');
           chatItem.style.removeProperty('transition');
-          // CSS class will handle animation and border via !important
-          // Force reflow to ensure animation starts
-          void chatItem.offsetWidth;
-          console.log('[Telecom] 💫✅ Added blink effect to chat:', chatId, 'in window:', winId, 'hasClass:', chatItem.classList.contains('telecom-chat-blink'), 'computedAnimation:', window.getComputedStyle(chatItem).animation);
+          
+          // Apply border
+          chatItem.style.borderLeft = '3px solid rgba(255, 165, 0, 0.9)';
+          
+          // JavaScript animation for guaranteed visibility
+          let opacity = 0.15;
+          let increasing = true;
+          const blinkInterval = setInterval(() => {
+            if (!chatItem.classList.contains('telecom-chat-blink') || !document.contains(chatItem)) {
+              clearInterval(blinkInterval);
+              window._telecomBlinkIntervals.delete(chatId);
+              return;
+            }
+            if (increasing) {
+              opacity += 0.02;
+              if (opacity >= 0.5) {
+                opacity = 0.5;
+                increasing = false;
+              }
+            } else {
+              opacity -= 0.02;
+              if (opacity <= 0.15) {
+                opacity = 0.15;
+                increasing = true;
+              }
+            }
+            chatItem.style.backgroundColor = `rgba(255, 165, 0, ${opacity})`;
+          }, 80);
+          
+          // Store interval ID for cleanup
+          window._telecomBlinkIntervals.set(chatId, blinkInterval);
+          
           applied = true;
         } else {
           // Chat item not found - refresh chats list to restore blink
-          console.log('[Telecom] 🔄 Chat item not found for blink:', chatId, 'in window:', winId, '- refreshing chats list...');
           try {
             const storageKey = 'webos.telecom.v1';
             const configData = localStorage.getItem(storageKey);
@@ -1356,7 +1382,6 @@ function blinkChatItem(chatId) {
       } else {
         // Chat is selected - don't apply blink, but keep it in Set
         // (selectChat will remove it from Set when chat is actually opened)
-        console.log('[Telecom] ℹ️ Skipping blink for selected chat:', chatId, '(chat is open, blink not needed, keeping in Set)');
       }
     });
     
@@ -1398,9 +1423,6 @@ function renderChatsList(win, winId, config, storageKey) {
       blinkingChats.add(chatId);
     }
   });
-  
-  console.log('[Telecom] 🔄 renderChatsList: Set size:', blinkingChats.size, 'contents:', Array.from(blinkingChats));
-  console.log('[Telecom] 🔄 renderChatsList called, blinking chats in Set:', Array.from(blinkingChats), 'Set size:', blinkingChats.size, 'Global Set size:', window._telecomBlinkingChats?.size || 0, 'Global Set contents:', Array.from(window._telecomBlinkingChats || []));
 
   const chats = getChats();
   
@@ -1466,22 +1488,8 @@ function renderChatsList(win, winId, config, storageKey) {
   // Add click handlers for chat items and clean up inline styles for blinking items
   const chatItems = chatsList.querySelectorAll('.telecom-chat-item');
   chatItems.forEach(item => {
-    // CRITICAL: For blinking items, remove ALL conflicting inline styles immediately after render
-    if (item.classList.contains('telecom-chat-blink')) {
-      // Remove ALL inline styles that could conflict with CSS animation
-      item.style.removeProperty('background-color');
-      item.style.removeProperty('background');
-      item.style.removeProperty('animation');
-      item.style.removeProperty('-webkit-animation');
-      item.style.removeProperty('border-left');
-      item.style.removeProperty('transition');
-      // Force reflow and restart animation
-      void item.offsetWidth;
-      // Explicitly restart animation by toggling it
-      item.style.animation = 'none';
-      void item.offsetWidth;
-      item.style.animation = '';
-    }
+    // JavaScript animation is handled in renderChatsList restore logic
+    // No need to clean up here - animation is managed via intervals
     item.addEventListener('click', () => {
       const chatId = item.dataset.chatId;
       const chat = chats.find(c => c.id === chatId);
@@ -1527,35 +1535,67 @@ function renderChatsList(win, winId, config, storageKey) {
     const inLocalSet = chatId && blinkingChats.has(chatId);
     const inGlobalSet = chatId && window._telecomBlinkingChats && window._telecomBlinkingChats.has(chatId);
     
-    console.log('[Telecom] 🔍 Checking blink restore for chat:', chatId, 'inLocalSet:', inLocalSet, 'inGlobalSet:', inGlobalSet, 'selectedChatId:', currentSelectedChatId, 'isSelected:', isCurrentlySelected);
-    
     if (chatId && (inLocalSet || inGlobalSet)) {
       // Read selectedChatId from win.dataset - this is how we know which chat is open
       
       // Only restore blink if chat is not currently selected
       if (!isCurrentlySelected) {
         item.classList.add('telecom-chat-blink');
-        // CRITICAL: Remove ALL inline styles that conflict with CSS animation
-        // Use removeProperty to ensure styles are completely removed
+        
+        // Initialize intervals map if needed
+        if (!window._telecomBlinkIntervals) {
+          window._telecomBlinkIntervals = new Map();
+        }
+        
+        // Clear existing interval for this chat if any
+        const existingInterval = window._telecomBlinkIntervals.get(chatId);
+        if (existingInterval) {
+          clearInterval(existingInterval);
+          window._telecomBlinkIntervals.delete(chatId);
+        }
+        
+        // Remove ALL inline styles that could conflict
         item.style.removeProperty('background-color');
         item.style.removeProperty('background');
         item.style.removeProperty('animation');
         item.style.removeProperty('border-left');
         item.style.removeProperty('transition');
-        // CSS class will handle animation and border via !important
-        // Force reflow to ensure animation starts
-        void item.offsetWidth;
+        
+        // Apply border
+        item.style.borderLeft = '3px solid rgba(255, 165, 0, 0.9)';
+        
+        // JavaScript animation for guaranteed visibility
+        let opacity = 0.15;
+        let increasing = true;
+        const blinkInterval = setInterval(() => {
+          if (!item.classList.contains('telecom-chat-blink') || !document.contains(item)) {
+            clearInterval(blinkInterval);
+            window._telecomBlinkIntervals.delete(chatId);
+            return;
+          }
+          if (increasing) {
+            opacity += 0.02;
+            if (opacity >= 0.5) {
+              opacity = 0.5;
+              increasing = false;
+            }
+          } else {
+            opacity -= 0.02;
+            if (opacity <= 0.15) {
+              opacity = 0.15;
+              increasing = true;
+            }
+          }
+          item.style.backgroundColor = `rgba(255, 165, 0, ${opacity})`;
+        }, 80);
+        
+        // Store interval ID for cleanup
+        window._telecomBlinkIntervals.set(chatId, blinkInterval);
+        
         // Ensure it's in global Set
         if (window._telecomBlinkingChats && !window._telecomBlinkingChats.has(chatId)) {
           window._telecomBlinkingChats.add(chatId);
         }
-        const computed = window.getComputedStyle(item);
-        console.log('[Telecom] 💫✅ Restored blink effect for chat:', chatId, 
-          'hasClass:', item.classList.contains('telecom-chat-blink'), 
-          'computedAnimation:', computed.animation,
-          'computedBackground:', computed.backgroundColor,
-          'computedBorderLeft:', computed.borderLeft,
-          'inlineStyle:', item.getAttribute('style'));
       } else {
         // Chat is selected, remove from Set and ensure it has selected styling (not blink)
         if (window._telecomBlinkingChats) {
@@ -1565,14 +1605,12 @@ function renderChatsList(win, winId, config, storageKey) {
         item.style.borderLeft = '3px solid var(--accent)';
         item.style.background = 'var(--panel-2)';
         item.classList.remove('telecom-chat-blink'); // Ensure blink class is removed
-        console.log('[Telecom] ℹ️ Removed blink from selected chat:', chatId, '(chat is open, selectedChatId matches)');
       }
     } else if (isCurrentlySelected) {
       // Chat is selected but wasn't blinking - ensure selected styling is applied
       item.style.borderLeft = '3px solid var(--accent)';
       item.style.background = 'var(--panel-2)';
       item.classList.remove('telecom-chat-blink'); // Ensure blink class is removed
-      console.log('[Telecom] ✅ Applied selected styling for chat:', chatId);
     } else if (chatId && selectedChatId === chatId) {
       // Chat is selected but wasn't blinking - ensure selected styling is applied
       item.style.borderLeft = '3px solid var(--accent)';
@@ -1664,38 +1702,36 @@ function selectChat(win, winId, chat, config, storageKey) {
   chatItems.forEach(item => {
     const itemChatId = item.dataset.chatId;
     if (itemChatId === chat.id) {
+      // Clear blink animation interval if exists
+      if (window._telecomBlinkIntervals) {
+        const existingInterval = window._telecomBlinkIntervals.get(chat.id);
+        if (existingInterval) {
+          clearInterval(existingInterval);
+          window._telecomBlinkIntervals.delete(chat.id);
+        }
+      }
+      
       // Apply selected chat styling: darker background and blue border-left
       item.style.background = 'var(--panel-2)';
       item.style.borderLeft = '3px solid var(--accent)';
-      item.style.animation = 'none'; // Remove any blink animation
-      item.style.backgroundColor = 'var(--panel-2)'; // Override blink background
+      item.style.backgroundColor = 'var(--panel-2)';
       item.classList.remove('telecom-chat-blink'); // Remove blink when chat is opened
+      
       // Also remove from global Set
       if (window._telecomBlinkingChats) {
         const wasInSet = window._telecomBlinkingChats.has(chat.id);
-        const setBefore = Array.from(window._telecomBlinkingChats);
         if (wasInSet) {
           window._telecomBlinkingChats.delete(chat.id);
-        } else {
-          console.log('[Telecom] ℹ️ Chat was not in blinking Set (selectChat):', chat.id, 'Current Set:', Array.from(window._telecomBlinkingChats));
         }
       }
-      console.log('[Telecom] ✅ Applied selected styling to chat:', chat.id);
       } else {
         // Reset other chats to default styling (but preserve blink if active)
         if (!item.classList.contains('telecom-chat-blink')) {
           item.style.background = 'transparent';
           item.style.borderLeft = 'none';
-          item.style.animation = '';
-        } else {
-          // Chat is blinking - remove ALL inline styles so CSS class can handle animation
-          item.style.removeProperty('animation');
-          item.style.removeProperty('border-left');
-          item.style.removeProperty('background-color');
-          item.style.removeProperty('background');
-          item.style.removeProperty('transition');
-          // CSS class will handle animation and border via !important
+          item.style.backgroundColor = '';
         }
+        // If chat is blinking, JavaScript animation is already running - don't interfere
       }
   });
   
@@ -3172,9 +3208,29 @@ function showProgressDialog(winId, title, verboseLogging = false) {
     align-items: center;
     gap: 12px;
   `;
+  
+  // Add Verbose toggle to header if verbose logging is enabled
+  let verboseToggleHtml = '';
+  if (verboseLogging) {
+    verboseToggleHtml = `
+      <div style="display:flex; align-items:center; gap:8px; margin-left:auto;">
+        <span style="font-size:12px; color:var(--muted);">${I18n.t('telecom.progressVerboseEnabled')}</span>
+        <label style="position:relative; display:inline-block; width:44px; height:24px; opacity:0.6; cursor:not-allowed;">
+          <input type="checkbox" checked disabled
+            style="opacity:0; width:0; height:0;">
+          <span style="position:absolute; top:0; left:0; right:0; bottom:0; background-color:var(--accent); border-radius:24px;">
+            <span style="position:absolute; height:18px; width:18px; left:3px; bottom:3px; background-color:white; border-radius:50%; transform:translateX(20px);"></span>
+          </span>
+        </label>
+        <span style="font-size:11px; color:var(--muted);">${I18n.t('telecom.progressVerboseDisableHint')}</span>
+      </div>
+    `;
+  }
+  
   header.innerHTML = `
     <div style="width:20px; height:20px; border:2px solid var(--accent); border-top-color:transparent; border-radius:50%; animation:spin 1s linear infinite;"></div>
     <h3 style="margin:0; font-size:18px; font-weight:500; flex:1;">${title}</h3>
+    ${verboseToggleHtml}
   `;
 
   // Dialog content
@@ -3246,15 +3302,20 @@ function showProgressDialog(winId, title, verboseLogging = false) {
     document.head.appendChild(style);
   }
 
-  // Function to add log message
+  // Store original console functions to avoid infinite loop
+  const originalConsoleLog = console.log;
+  const originalConsoleWarn = console.warn;
+  const originalConsoleError = console.error;
+  
+  // Function to add log message (uses closure to access verboseLogging and dialog)
   const addLog = (message) => {
-    if (verboseLogging && dialog._logTextarea) {
+    // verboseLogging and dialog._logTextarea are from closure
+    if (verboseLogging && dialog && dialog._logTextarea) {
       const timestamp = new Date().toLocaleTimeString();
       dialog._logTextarea.value += `[${timestamp}] ${message}\n`;
       dialog._logTextarea.scrollTop = dialog._logTextarea.scrollHeight;
     }
-    // Always log to console
-    console.log(message);
+    // Note: Logs are already sent to console by the interceptor before calling addLog
   };
 
   // Function to close dialog
@@ -3263,7 +3324,7 @@ function showProgressDialog(winId, title, verboseLogging = false) {
     dialog.remove();
   };
 
-  return { dialog, backdrop, addLog, close };
+  return { dialog, backdrop, addLog, close, originalConsoleLog, originalConsoleWarn, originalConsoleError };
 }
 
 /**
@@ -4363,8 +4424,6 @@ function showContactsDialog(win, winId, config, storageKey) {
  * Refresh contacts dialog content (update pending invites and contacts list)
  */
 function refreshContactsDialog(dialog, config, storageKey, winId) {
-  console.log('[Telecom] 🔄 refreshContactsDialog called');
-  
   // Get system account
   const systemAccount = window.Auth ? window.Auth.getAccount() : null;
   if (!systemAccount) {
@@ -4391,18 +4450,9 @@ function refreshContactsDialog(dialog, config, storageKey, winId) {
   const allSentInvites = getPendingInvites(effectiveGuid, false); // Get all, not just pending
   const allReceivedInvites = getReceivedPendingInvites(effectiveGuid, false); // Get all, not just pending
   
-  console.log('[Telecom] 📊 Refresh data:', {
-    contactsCount: contacts.length,
-    pendingInvitesCount: pendingInvites.length,
-    receivedPendingInvitesCount: receivedPendingInvites.length,
-    allSentInvitesCount: allSentInvites.length,
-    acceptedSentInvitesCount: allSentInvites.filter(inv => inv.status === 'accepted').length
-  });
-  
   // Refresh Contacts tab
   const contactsList = dialog.querySelector('#telecom-contacts-list');
   if (contactsList) {
-    console.log('[Telecom] ✅ Found contacts list, refreshing with', contacts.length, 'contacts');
     contactsList.innerHTML = '';
     if (contacts.length === 0) {
       contactsList.innerHTML = `
@@ -4423,7 +4473,6 @@ function refreshContactsDialog(dialog, config, storageKey, winId) {
   // Refresh Invites tab - Pending section
   const pendingInvitesContainer = dialog.querySelector('#telecom-contacts-pending-invites');
   if (pendingInvitesContainer) {
-    console.log('[Telecom] ✅ Found pending invites container, refreshing');
     pendingInvitesContainer.innerHTML = '';
     if (pendingInvites.length === 0 && receivedPendingInvites.length === 0) {
       pendingInvitesContainer.innerHTML = `
@@ -4444,14 +4493,9 @@ function refreshContactsDialog(dialog, config, storageKey, winId) {
   // Refresh Invites tab - Accepted section
   const acceptedInvitesContainer = dialog.querySelector('#telecom-contacts-accepted-invites');
   if (acceptedInvitesContainer) {
-    console.log('[Telecom] ✅ Found accepted invites container, refreshing');
     acceptedInvitesContainer.innerHTML = '';
     const acceptedSentInvites = allSentInvites.filter(inv => inv.status === 'accepted');
     const acceptedReceivedInvites = allReceivedInvites.filter(inv => inv.status === 'accepted');
-    console.log('[Telecom] 📊 Accepted invites:', {
-      sent: acceptedSentInvites.length,
-      received: acceptedReceivedInvites.length
-    });
     
     if (acceptedSentInvites.length === 0 && acceptedReceivedInvites.length === 0) {
       acceptedInvitesContainer.innerHTML = `
@@ -4981,6 +5025,17 @@ function showEnterGuidDialog(win, winId, config, storageKey) {
  * @param {Object} existingInvite - Optional: if provided, shows existing invite instead of creating new one
  */
 async function showCreateInviteDialog(win, winId, config, storageKey, existingInvite = null) {
+  // Reload config to get latest data (including verboseLogging setting)
+  try {
+    const configData = localStorage.getItem(storageKey);
+    if (configData) {
+      const latestConfig = JSON.parse(configData);
+      Object.assign(config, latestConfig);
+    }
+  } catch (e) {
+    console.error('[Telecom] Error loading config:', e);
+  }
+
   // Find the actual window element
   const windowElement = WindowManager.findWindow(winId);
   if (!windowElement) {
@@ -5107,29 +5162,32 @@ async function showCreateInviteDialog(win, winId, config, storageKey, existingIn
     }
 
     // Intercept console.log to capture logs if verbose logging is enabled
-    const originalConsoleLog = console.log;
-    const originalConsoleWarn = console.warn;
-    const originalConsoleError = console.error;
+    // Use original console functions from progressDialog to avoid conflicts
+    const originalConsoleLog = progressDialog.originalConsoleLog || console.log;
+    const originalConsoleWarn = progressDialog.originalConsoleWarn || console.warn;
+    const originalConsoleError = progressDialog.originalConsoleError || console.error;
     
     if (verboseLogging) {
       console.log = (...args) => {
+        // First, log to console using original function (always logs to console)
         originalConsoleLog.apply(console, args);
+        // Then, add to modal if message matches filter (duplicates to modal)
         const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
-        if (message.includes('[Telecom]') || message.includes('[ICE]')) {
+        if (message.includes('[Telecom]') || message.includes('[ICE]') || message.includes('[ICE-RECIPIENT]')) {
           progressDialog.addLog(message);
         }
       };
       console.warn = (...args) => {
         originalConsoleWarn.apply(console, args);
         const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
-        if (message.includes('[Telecom]') || message.includes('[ICE]')) {
+        if (message.includes('[Telecom]') || message.includes('[ICE]') || message.includes('[ICE-RECIPIENT]')) {
           progressDialog.addLog('⚠️ ' + message);
         }
       };
       console.error = (...args) => {
         originalConsoleError.apply(console, args);
         const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
-        if (message.includes('[Telecom]') || message.includes('[ICE]')) {
+        if (message.includes('[Telecom]') || message.includes('[ICE]') || message.includes('[ICE-RECIPIENT]')) {
           progressDialog.addLog('❌ ' + message);
         }
       };
@@ -5238,7 +5296,8 @@ async function showCreateInviteDialog(win, winId, config, storageKey, existingIn
   
   // Verify webrtcOffer is included in JSON
   if (invite.webrtcOffer) {
-    console.log('[Telecom] ✅ Full JSON includes WebRTC offer:', {
+    // QR code includes WebRTC offer
+    if (false) console.log('[Telecom] ✅ Full JSON includes WebRTC offer:', {
       hasOffer: !!invite.webrtcOffer,
       sdpLength: invite.webrtcOffer.sdp?.length || 0,
       type: invite.webrtcOffer.type,
@@ -5271,7 +5330,8 @@ async function showCreateInviteDialog(win, winId, config, storageKey, existingIn
   
   // Log if webrtcOffer is included
   if (invite.webrtcOffer) {
-    console.log('[Telecom] QR code includes WebRTC offer:', {
+    // QR code includes WebRTC offer
+    if (false) console.log('[Telecom] QR code includes WebRTC offer:', {
       hasOffer: !!invite.webrtcOffer,
       sdpLength: invite.webrtcOffer.sdp?.length || 0,
       type: invite.webrtcOffer.type,
@@ -5283,7 +5343,6 @@ async function showCreateInviteDialog(win, winId, config, storageKey, existingIn
   const inviteJsonCompact = JSON.stringify(inviteForQR); // Minimal version
   const qrData = inviteJsonCompact; // Use raw JSON directly
   const qrDataSize = qrData.length;
-  console.log('[Telecom] QR code data size (minimal):', qrDataSize, 'chars');
 
   // Build list of shared data fields
   const sharedFields = [];
@@ -5397,7 +5456,6 @@ async function showCreateInviteDialog(win, winId, config, storageKey, existingIn
           result += String.fromCharCode.apply(null, chunk);
         }
         dataToEncode = result;
-        console.log('[Telecom] Converted QR data to UTF-8 byte string, original length:', qrData.length, 'UTF-8 bytes:', utf8Bytes.length);
       }
       
       // Add data as string - library will treat each character as a byte in Byte mode
@@ -5428,7 +5486,6 @@ async function showCreateInviteDialog(win, winId, config, storageKey, existingIn
       
       // Calculate approximate version (version = (moduleCount - 21) / 4 + 1)
       const version = Math.round((moduleCount - 21) / 4 + 1);
-      console.log('[Telecom] QR code generated successfully, version:', version, 'modules:', moduleCount, 'data size:', qrDataSize, 'chars');
     } catch (e) {
       console.error('[Telecom] Error generating QR code:', e);
       const errorMsg = e.message || 'Unknown error';
@@ -5780,8 +5837,6 @@ function showInvitePreviewDialog(winId, invite, config, storageKey, onAccept, on
  * Recipient generates answer and needs to share it with sender via QR/JSON
  */
 function showShareAnswerDialog(winId, inviteWithAnswer, config, storageKey) {
-  console.log('[Telecom] showShareAnswerDialog called with winId:', winId);
-  
   // Find the actual window element - try multiple methods
   let windowElement = null;
   let actualWinId = winId;
@@ -5789,39 +5844,29 @@ function showShareAnswerDialog(winId, inviteWithAnswer, config, storageKey) {
   // Method 1: Try WindowManager.findWindow with provided winId
   if (winId) {
     windowElement = WindowManager.findWindow(winId);
-    if (windowElement) {
-      console.log('[Telecom] Found window via WindowManager.findWindow with winId:', winId);
-    }
   }
   
   // Method 2: If not found, try to find any Telecom window directly (singleton app)
   if (!windowElement) {
     const allWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
-    console.log('[Telecom] Searching for Telecom windows, found:', allWindows.length);
     if (allWindows.length > 0) {
       // Use the first Telecom window found
       windowElement = allWindows[0];
       actualWinId = windowElement.dataset.winId || windowElement.id || windowElement.getAttribute('id') || winId;
-      console.log('[Telecom] Found Telecom window via querySelector:', actualWinId, 'element:', windowElement);
     }
   }
   
   // Method 3: If still not found, try WindowManager.findWindow with found ID
   if (!windowElement && actualWinId && actualWinId !== winId) {
     windowElement = WindowManager.findWindow(actualWinId);
-    if (windowElement) {
-      console.log('[Telecom] Found window via WindowManager with actualWinId:', actualWinId);
-    }
   }
   
   // Method 4: Try to find by any window with telecom class or attribute
   if (!windowElement) {
     const directWindows = document.querySelectorAll('.window.telecom, .window[data-app-id="telecom"], [data-app-id="telecom"]');
-    console.log('[Telecom] Direct search found windows:', directWindows.length);
     if (directWindows.length > 0) {
       windowElement = directWindows[0];
       actualWinId = windowElement.dataset?.winId || windowElement.id || windowElement.getAttribute('id') || 'unknown';
-      console.log('[Telecom] Found window via direct query:', actualWinId);
     }
   }
   
@@ -5854,23 +5899,13 @@ function showShareAnswerDialog(winId, inviteWithAnswer, config, storageKey) {
   
   // Update winId for later use
   winId = actualWinId;
-  console.log('[Telecom] Using window with ID:', winId);
 
   // Find the window content area
   const windowContent = windowElement.querySelector('.win-content');
   if (!windowContent) {
-    console.error('[Telecom] Window content not found in windowElement:', windowElement);
-    console.error('[Telecom] Window element classes:', windowElement.className);
-    console.error('[Telecom] Window element children:', windowElement.children.length);
-    // Try to find content in a different way
-    const altContent = windowElement.querySelector('.win-content, [class*="content"], [class*="win"]');
-    if (altContent) {
-      console.log('[Telecom] Found alternative content area, but returning for safety');
-    }
+    console.error('[Telecom] Window content not found in windowElement');
     return;
   }
-  
-  console.log('[Telecom] Found window content, proceeding to create answer dialog');
 
   // Close other dialogs (but keep contacts dialog open - answer should show above it)
   // Use the found windowElement directly
@@ -5975,7 +6010,8 @@ function showShareAnswerDialog(winId, inviteWithAnswer, config, storageKey) {
   const inviteJsonFull = JSON.stringify(inviteWithAnswer, null, 2);
   
   // Verify recipient data is included
-  console.log('[Telecom] 📋 Full JSON includes recipient data:', {
+  // Full JSON includes recipient data
+  if (false) console.log('[Telecom] 📋 Full JSON includes recipient data:', {
     toUsername: inviteWithAnswer.toUsername,
     toDisplayName: inviteWithAnswer.toDisplayName,
     toFirstName: inviteWithAnswer.toFirstName,
@@ -5985,16 +6021,6 @@ function showShareAnswerDialog(winId, inviteWithAnswer, config, storageKey) {
     jsonLength: inviteJsonFull.length
   });
   
-  // Log data
-  console.log('[Telecom] 📋 inviteWithAnswer data:', {
-    toUsername: inviteWithAnswer.toUsername,
-    toDisplayName: inviteWithAnswer.toDisplayName,
-    toFirstName: inviteWithAnswer.toFirstName,
-    toLastName: inviteWithAnswer.toLastName,
-    toEmail: inviteWithAnswer.toEmail ? 'present' : 'missing',
-    toPublicKey: inviteWithAnswer.toPublicKey ? 'present' : 'missing'
-  });
-  console.log('[Telecom] QR code data size for answer:', inviteJsonCompact.length, 'chars');
   if (inviteJsonCompact.length > 2000) {
     console.warn('[Telecom] ⚠️ QR code data is large (', inviteJsonCompact.length, 'chars). QR code generation may fail.');
     console.warn('[Telecom] 💡 Consider excluding more fields or using manual copy instead of QR code.');
@@ -6077,20 +6103,13 @@ function showShareAnswerDialog(winId, inviteWithAnswer, config, storageKey) {
   dialog.appendChild(content);
 
   // Add to document body instead of window content to ensure it's above everything
-  console.log('[Telecom] Adding answer dialog to document body');
   document.body.appendChild(backdrop);
   document.body.appendChild(dialog);
-  console.log('[Telecom] Answer dialog added to DOM. Backdrop:', backdrop, 'Dialog:', dialog);
-  console.log('[Telecom] Dialog computed style z-index:', window.getComputedStyle(dialog).zIndex);
-  console.log('[Telecom] Backdrop computed style z-index:', window.getComputedStyle(backdrop).zIndex);
-  
-  console.log('[Telecom] Answer dialog should now be visible');
 
   // Set JSON textarea value - use FULL JSON with recipient data
   const jsonTextarea = dialog.querySelector('#telecom-share-answer-json');
   if (jsonTextarea) {
     jsonTextarea.value = inviteJsonFull; // Use full JSON, not compact
-    console.log('[Telecom] ✅ Set JSON textarea with full inviteWithAnswer data');
   }
 
   // Generate QR code
@@ -6171,6 +6190,17 @@ function showShareAnswerDialog(winId, inviteWithAnswer, config, storageKey) {
  * Show Accept Invite dialog - allows user to paste invite data or upload QR code image
  */
 function showAcceptInviteDialog(win, winId, config, storageKey) {
+  // Reload config to get latest data (including verboseLogging setting)
+  try {
+    const configData = localStorage.getItem(storageKey);
+    if (configData) {
+      const latestConfig = JSON.parse(configData);
+      Object.assign(config, latestConfig);
+    }
+  } catch (e) {
+    console.error('[Telecom] Error loading config:', e);
+  }
+
   // Find the actual window element
   const windowElement = WindowManager.findWindow(winId);
   if (!windowElement) {
@@ -6495,10 +6525,11 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
           closeDialog();
         }).catch(async (e) => {
           console.error('[Telecom] Error processing WebRTC answer:', e);
+          // Show error message (already contains user-friendly explanation)
           if (window.Dialog && window.Dialog.alert) {
-            await window.Dialog.alert('Error processing WebRTC answer: ' + e.message);
+            await window.Dialog.alert(e.message || 'Error processing WebRTC answer');
           } else {
-            alert('Error processing WebRTC answer: ' + e.message);
+            alert(e.message || 'Error processing WebRTC answer');
           }
         });
         return;
@@ -6553,17 +6584,6 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
                                 invite.webrtcOffer.sdp &&
                                 invite.webrtcOffer.type;
           
-          console.log('[Telecom] Saving invite to recipient storage:', {
-            id: invite.id,
-            hasWebrtcOffer: !!invite.webrtcOffer,
-            webrtcOfferType: typeof invite.webrtcOffer,
-            webrtcOfferValue: invite.webrtcOffer,
-            hasValidOffer: hasValidOffer,
-            webrtcOfferTypeField: invite.webrtcOffer?.type,
-            webrtcOfferSdpLength: invite.webrtcOffer?.sdp?.length,
-            inviteKeys: Object.keys(invite)
-          });
-          
           if (!hasValidOffer && invite.webrtcOffer !== undefined) {
             console.warn('[Telecom] ⚠️ Invite has webrtcOffer key but value is invalid:', invite.webrtcOffer);
           }
@@ -6574,7 +6594,6 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
               ...recipientInvites[existingIndex],
               ...invite // Overwrite with new data
             };
-            console.log('[Telecom] Merging invite - existing has webrtcOffer:', !!recipientInvites[existingIndex].webrtcOffer, 'new has:', !!invite.webrtcOffer);
             recipientInvites[existingIndex] = mergedInvite;
           } else {
             // Add new invite
@@ -6584,14 +6603,6 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
           // Save to localStorage
           try {
             localStorage.setItem(RECIPIENT_INVITES_STORAGE_KEY, JSON.stringify(recipientInvites));
-            console.log('[Telecom] ✅ Invite saved to recipient storage');
-            
-            // Verify saved data
-            const verify = JSON.parse(localStorage.getItem(RECIPIENT_INVITES_STORAGE_KEY));
-            const savedInvite = verify.find(inv => inv.id === invite.id);
-            if (savedInvite) {
-              console.log('[Telecom] Verification - saved invite has webrtcOffer:', !!savedInvite.webrtcOffer);
-            }
           } catch (e) {
             console.error('[Telecom] Error saving recipient invites:', e);
           }
@@ -6614,9 +6625,10 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
           }
 
           // Intercept console.log to capture logs if verbose logging is enabled
-          const originalConsoleLog = console.log;
-          const originalConsoleWarn = console.warn;
-          const originalConsoleError = console.error;
+          // Use original console functions from progressDialog to avoid conflicts
+          const originalConsoleLog = progressDialog.originalConsoleLog || console.log;
+          const originalConsoleWarn = progressDialog.originalConsoleWarn || console.warn;
+          const originalConsoleError = progressDialog.originalConsoleError || console.error;
           
           if (verboseLogging) {
             console.log = (...args) => {
@@ -6773,7 +6785,6 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
                 // Use TextDecoder to properly decode UTF-8 bytes
                 const decoder = new TextDecoder('utf-8');
                 decodedData = decoder.decode(qrCode.binaryData);
-                console.log('[Telecom] Decoded QR code from binaryData using TextDecoder, length:', decodedData.length);
                 
                 // Verify it's valid JSON
                 JSON.parse(decodedData);
@@ -6812,7 +6823,6 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
                   // Use TextDecoder to properly decode UTF-8 bytes
                   const decoder = new TextDecoder('utf-8');
                   decodedData = decoder.decode(bytes);
-                  console.log('[Telecom] Decoded QR code data from string using TextDecoder');
                   
                   // Verify it's now valid JSON
                   JSON.parse(decodedData);
@@ -7077,41 +7087,48 @@ function renderContactItem(contact, dialog, config, storageKey, winId) {
     chatBtn.style.opacity = '0.8';
     chatBtn.style.transform = 'scale(1)';
   });
-  chatBtn.addEventListener('click', async () => {
-    try {
-      const windowElement = WindowManager.findWindow(winId);
-      if (!windowElement) {
-        console.error('[Telecom] Window not found:', winId);
-        return;
-      }
-      
-      // Create or get chat for this contact
-      const chat = createChatForContact(
-        contact.guid,
-        contact.username || contact.guid,
-        contact.displayName || contact.username || contact.guid
-      );
-      
-      // Refresh chats list to show the new chat
-      renderChatsList(windowElement, winId, config, storageKey);
-      
-      // Select the chat immediately (open chat first)
-      selectChat(windowElement, winId, chat, config, storageKey);
-      
-      // Close contacts dialog immediately
+  chatBtn.addEventListener('click', () => {
+    // Get window element synchronously for closing dialog
+    const windowElement = WindowManager.findWindow(winId);
+    
+    // Close contacts dialog immediately (synchronous UI update)
+    if (windowElement) {
       const backdrop = windowElement.querySelector('.telecom-contacts-backdrop');
       if (backdrop) backdrop.remove();
-      if (dialog) dialog.remove();
-      
-      // WebRTC connection establishment removed - using localStorage-based messaging instead
-    } catch (e) {
-      console.error('[Telecom] Error opening chat for contact:', e);
-      if (window.Dialog && window.Dialog.alert) {
-        await window.Dialog.alert(I18n.t('telecom.contactsOpenChatError') || 'Error opening chat');
-      } else {
-        alert(I18n.t('telecom.contactsOpenChatError') || 'Error opening chat');
-      }
     }
+    if (dialog) dialog.remove();
+    
+    // Defer heavy work to avoid blocking UI
+    setTimeout(async () => {
+      try {
+        if (!windowElement) {
+          console.error('[Telecom] Window not found:', winId);
+          return;
+        }
+        
+        // Create or get chat for this contact
+        const chat = createChatForContact(
+          contact.guid,
+          contact.username || contact.guid,
+          contact.displayName || contact.username || contact.guid
+        );
+        
+        // Refresh chats list to show the new chat
+        renderChatsList(windowElement, winId, config, storageKey);
+        
+        // Select the chat immediately (open chat first)
+        selectChat(windowElement, winId, chat, config, storageKey);
+        
+        // WebRTC connection establishment removed - using localStorage-based messaging instead
+      } catch (e) {
+        console.error('[Telecom] Error opening chat for contact:', e);
+        if (window.Dialog && window.Dialog.alert) {
+          await window.Dialog.alert(I18n.t('telecom.contactsOpenChatError') || 'Error opening chat');
+        } else {
+          alert(I18n.t('telecom.contactsOpenChatError') || 'Error opening chat');
+        }
+      }
+    }, 0);
   });
   contactElement.appendChild(chatBtn);
   
@@ -7130,67 +7147,70 @@ function renderContactItem(contact, dialog, config, storageKey, winId) {
     deleteBtn.style.opacity = '0.7';
     deleteBtn.style.color = 'var(--muted)';
   });
-  deleteBtn.addEventListener('click', async () => {
+  deleteBtn.addEventListener('click', () => {
     const contactName = contact.displayName || contact.username || contact.guid;
     const confirmMessage = I18n.t('telecom.contactsDeleteContactConfirm', { name: contactName }) || `Are you sure you want to delete ${contactName} from your contacts?`;
     if (window.confirm(confirmMessage)) {
-      try {
-        const chatId = `contact-${contact.guid}`;
-        
-        // Check if this chat is currently selected before deletion
-        const windowElement = WindowManager.findWindow(winId);
-        const wasChatSelected = windowElement && windowElement.dataset.selectedChatId === chatId;
-        
-        deleteContact(contact.guid, config);
-        
-        // Refresh contacts dialog
-        refreshContactsDialog(dialog, config, storageKey, winId);
-        
-        // Refresh chats list in main window
-        if (windowElement) {
-          renderChatsList(windowElement, winId, config, storageKey);
+      // Defer heavy work to avoid blocking UI
+      setTimeout(async () => {
+        try {
+          const chatId = `contact-${contact.guid}`;
           
-          // If deleted chat was selected, switch to another chat or show select screen
-          if (wasChatSelected) {
-            const chats = getChats();
-            if (chats.length > 0) {
-              // Find service chat first, or use first chat
-              const serviceChat = chats.find(c => c.id === 'telecom-service') || chats[0];
-              selectChat(windowElement, winId, serviceChat, config, storageKey);
-            } else {
-              // No chats left, show select screen
-              const chatHeader = windowElement.querySelector('.telecom-chat-header');
-              const messagesArea = windowElement.querySelector('#telecom-messages');
-              if (chatHeader) {
-                chatHeader.innerHTML = `
-                  <div style="width:40px; height:40px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:20px;">
-                    👤
-                  </div>
-                  <div style="flex:1;">
-                    <div style="font-weight:500; font-size:15px;">${I18n.t('telecom.selectChat')}</div>
-                    <div style="font-size:12px; color:var(--muted);">${I18n.t('telecom.selectChatHint')}</div>
-                  </div>
-                `;
+          // Check if this chat is currently selected before deletion
+          const windowElement = WindowManager.findWindow(winId);
+          const wasChatSelected = windowElement && windowElement.dataset.selectedChatId === chatId;
+          
+          deleteContact(contact.guid, config);
+          
+          // Refresh contacts dialog
+          refreshContactsDialog(dialog, config, storageKey, winId);
+          
+          // Refresh chats list in main window
+          if (windowElement) {
+            renderChatsList(windowElement, winId, config, storageKey);
+            
+            // If deleted chat was selected, switch to another chat or show select screen
+            if (wasChatSelected) {
+              const chats = getChats();
+              if (chats.length > 0) {
+                // Find service chat first, or use first chat
+                const serviceChat = chats.find(c => c.id === 'telecom-service') || chats[0];
+                selectChat(windowElement, winId, serviceChat, config, storageKey);
+              } else {
+                // No chats left, show select screen
+                const chatHeader = windowElement.querySelector('.telecom-chat-header');
+                const messagesArea = windowElement.querySelector('#telecom-messages');
+                if (chatHeader) {
+                  chatHeader.innerHTML = `
+                    <div style="width:40px; height:40px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:20px;">
+                      👤
+                    </div>
+                    <div style="flex:1;">
+                      <div style="font-weight:500; font-size:15px;">${I18n.t('telecom.selectChat')}</div>
+                      <div style="font-size:12px; color:var(--muted);">${I18n.t('telecom.selectChatHint')}</div>
+                    </div>
+                  `;
+                }
+                if (messagesArea) {
+                  messagesArea.innerHTML = `
+                    <div style="flex:1; display:flex; align-items:center; justify-content:center; color:var(--muted); text-align:center; padding:40px;">
+                      ${I18n.t('telecom.selectChatHint')}
+                    </div>
+                  `;
+                }
+                delete windowElement.dataset.selectedChatId;
               }
-              if (messagesArea) {
-                messagesArea.innerHTML = `
-                  <div style="flex:1; display:flex; align-items:center; justify-content:center; color:var(--muted); text-align:center; padding:40px;">
-                    ${I18n.t('telecom.selectChatHint')}
-                  </div>
-                `;
-              }
-              delete windowElement.dataset.selectedChatId;
             }
           }
+        } catch (e) {
+          console.error('[Telecom] Error deleting contact:', e);
+          if (window.Dialog && window.Dialog.alert) {
+            await window.Dialog.alert(I18n.t('telecom.contactsDeleteContactError') || 'Error deleting contact');
+          } else {
+            alert(I18n.t('telecom.contactsDeleteContactError') || 'Error deleting contact');
+          }
         }
-      } catch (e) {
-        console.error('[Telecom] Error deleting contact:', e);
-        if (window.Dialog && window.Dialog.alert) {
-          await window.Dialog.alert(I18n.t('telecom.contactsDeleteContactError') || 'Error deleting contact');
-        } else {
-          alert(I18n.t('telecom.contactsDeleteContactError') || 'Error deleting contact');
-        }
-      }
+      }, 0);
     }
   });
   contactElement.appendChild(deleteBtn);
@@ -7232,7 +7252,6 @@ function deleteContact(contactGuid, config = null) {
   
   contacts.splice(contactIndex, 1);
   saveContacts(contacts);
-  console.log('[Telecom] Deleted contact:', contactGuid);
   
   // WebRTC disconnection removed - using localStorage-based messaging instead
   
@@ -7246,7 +7265,6 @@ function deleteContact(contactGuid, config = null) {
     // Remove chat from list
     chats.splice(chatIndex, 1);
     localStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(chats));
-    console.log('[Telecom] Deleted chat for contact:', contactGuid);
     
     // Delete all messages for this chat
     const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
@@ -7255,7 +7273,6 @@ function deleteContact(contactGuid, config = null) {
       try {
         const messages = JSON.parse(messagesData);
         localStorage.removeItem(MESSAGES_STORAGE_KEY);
-        console.log('[Telecom] Deleted', messages.length, 'messages for chat:', chatId);
       } catch (e) {
         console.error('[Telecom] Error deleting messages:', e);
       }
@@ -7266,8 +7283,6 @@ function deleteContact(contactGuid, config = null) {
   
   // Delete ALL invites related to this contact from ALL possible storage keys
   // We need to check ALL keys in localStorage, not just current user's keys
-  console.log('[Telecom] 🔍 Searching for all invites related to contact:', contactGuid);
-  
   let totalDeleted = 0;
   
   // Find all localStorage keys that might contain invites
@@ -7276,8 +7291,6 @@ function deleteContact(contactGuid, config = null) {
     key.startsWith('webos.telecom.invites.') || 
     key.startsWith('webos.telecom.sent_invites.')
   );
-  
-  console.log('[Telecom] Found', inviteKeys.length, 'invite storage keys to check');
   
   // Process each invite storage key
   inviteKeys.forEach(storageKey => {
@@ -7302,22 +7315,12 @@ function deleteContact(contactGuid, config = null) {
       if (deletedCount > 0) {
         localStorage.setItem(storageKey, JSON.stringify(filteredInvites));
         totalDeleted += deletedCount;
-        console.log('[Telecom] ✅ Deleted', deletedCount, 'invite(s) from key:', storageKey);
-        console.log('[Telecom]   Removed invites:', invites
-          .filter(inv => inv.fromGuid === contactGuid || inv.toGuid === contactGuid)
-          .map(inv => `ID:${inv.id} (from:${inv.fromGuid?.substring(0,8)}... to:${inv.toGuid?.substring(0,8)}...)`)
-          .join(', '));
       }
     } catch (e) {
       console.error('[Telecom] Error processing invite key', storageKey, ':', e);
     }
   });
   
-  if (totalDeleted > 0) {
-    console.log('[Telecom] ✅ Deleted total of', totalDeleted, 'invite(s) related to contact:', contactGuid);
-  } else {
-    console.log('[Telecom] ℹ️ No invites found related to contact:', contactGuid);
-  }
 }
 
 /**
@@ -7338,21 +7341,13 @@ function saveContacts(contacts) {
  */
 async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid) {
   console.log('[Telecom] ===== sendContactInvite START =====');
-  console.log('[Telecom] Parameters:', {
-    targetGuid,
-    senderAccount: senderAccount ? { guid: senderAccount.guid, username: senderAccount.username } : null,
-    senderEffectiveGuid
-  });
   
   // Check if target is already a contact
   const contacts = getContacts();
   const isAlreadyContact = contacts.some(contact => contact.guid === targetGuid);
   if (isAlreadyContact) {
-    console.log('[Telecom] ⚠️ Target is already a contact, throwing error');
     throw new Error('User is already in contacts');
   }
-  
-  console.log('[Telecom] Target is not a contact, proceeding with invite creation');
   
   // Storage keys:
   // 1. By recipient GUID (for polling and receiving invites)
@@ -7413,27 +7408,21 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
   
   // Convert avatar to data URI if it's a file path
   // In invites, avatar must be sent as data:image/{format};base64,{data} for cross-origin compatibility
-  console.log('[Telecom] sendContactInvite - Initial avatar value:', avatar ? (avatar.substring(0, 50) + '...') : 'null');
-  
   if (avatar) {
     // If already a data URI, use it directly
     if (avatar.startsWith('data:image/')) {
-      console.log('[Telecom] Avatar is already a data URI, using as is');
       // Already in correct format - use as is
     } else if (window.FS) {
       // It's a file path - read and convert to data URI
-      console.log('[Telecom] Avatar is a file path, reading from FS:', avatar);
       try {
         const fileNode = window.FS.find ? window.FS.find(avatar) : null;
         if (fileNode && fileNode.type === 'file') {
           // Read file content (images in FS are stored as data URIs)
           const avatarContent = window.FS.read(avatar, 'file');
-          console.log('[Telecom] Avatar file content type:', avatarContent ? (avatarContent.substring(0, 50) + '...') : 'null');
           
           if (avatarContent && avatarContent.startsWith('data:image/')) {
             // Already a data URI - use it directly
             avatar = avatarContent;
-            console.log('[Telecom] Avatar converted to data URI successfully');
           } else if (avatarContent) {
             // Content exists but not a data URI
             // In FS, images are typically stored as data URIs, so this is unusual
@@ -7451,47 +7440,33 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
             // Assume content is already base64-compatible (or will be handled by browser)
             // Add data URI prefix
             avatar = `data:${mimeType};base64,${avatarContent}`;
-            console.log('[Telecom] Avatar converted to data URI with mime type:', mimeType);
           } else {
             // File exists but content is empty - no avatar
-            console.warn('[Telecom] Avatar file exists but content is empty');
             avatar = null;
           }
         } else {
           // File not found - no avatar (don't send invalid file path in invite)
-          console.warn('[Telecom] Avatar file not found:', avatar);
           avatar = null;
         }
       } catch (e) {
-        console.warn('[Telecom] Error converting avatar to data URI:', e);
         // On error, set avatar to null (no avatar will be sent in invite)
         avatar = null;
       }
     } else {
       // No FS module - can't read file, set to null
-      console.warn('[Telecom] FS module not available, cannot read avatar file');
       avatar = null;
     }
   }
   
   // Ensure avatar is either null or a valid data URI (never a file path)
   if (avatar && !avatar.startsWith('data:image/')) {
-    console.warn('[Telecom] Avatar is not a data URI, removing from invite:', avatar.substring(0, 100));
     avatar = null;
   }
-  
-  console.log('[Telecom] sendContactInvite - Final avatar value:', avatar ? (avatar.substring(0, 50) + '...') : 'null');
   
   // Generate WebRTC offer and ICE candidates
   let webrtcOffer = null;
   
   // Check if WebRTC is available
-  console.log('[Telecom] Checking WebRTC availability:', {
-    RTCPeerConnectionAvailable: typeof RTCPeerConnection !== 'undefined',
-    RTCPeerConnectionType: typeof RTCPeerConnection,
-    windowNetworkAvailable: !!window.Network
-  });
-  
   if (typeof RTCPeerConnection !== 'undefined') {
     try {
       console.log('[Telecom] ✅ RTCPeerConnection is available, creating WebRTC offer for invite to:', targetGuid);
@@ -7502,10 +7477,6 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
         { urls: 'stun:stun1.l.google.com:19302' }
       ];
       
-      // Log full ICE server configuration for debugging
-      console.log('[Telecom] Full ICE server configuration:', JSON.stringify(iceServers, null, 2));
-      console.log('[Telecom] Using ICE servers from Network config:', iceServers.length, 'servers');
-      
       // Clean ICE servers - remove non-standard fields that might interfere with RTCPeerConnection
       // If server.urls is an array, expand it into separate server objects (one per URL)
       // This ensures maximum compatibility with RTCPeerConnection
@@ -7513,13 +7484,6 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
       const cleanIceServers = [];
       iceServers.forEach((server, idx) => {
         const urlsArray = Array.isArray(server.urls) ? server.urls : [server.urls];
-        const urlsType = Array.isArray(server.urls) ? 'array' : typeof server.urls;
-        const urlsCount = urlsArray.length;
-        
-        console.log(`[Telecom] Server ${idx + 1}: urls type=${urlsType}, count=${urlsCount}, hasUsername=${!!server.username}, hasCredential=${!!server.credential}`);
-        if (Array.isArray(server.urls)) {
-          console.log(`[Telecom] Server ${idx + 1} URLs array:`, server.urls);
-        }
         
         // Check if this is a TURN server (requires username/credential)
         const isTurnServer = urlsArray.some(url => 
@@ -7528,7 +7492,6 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
         
         // Skip TURN servers with empty username or credential
         if (isTurnServer && (!server.username || !server.credential || server.username === '' || server.credential === '')) {
-          console.warn(`[Telecom] ⚠️ Skipping TURN server ${idx + 1} (${urlsArray.join(', ')}) - empty username or credential`);
           return; // Skip this server
         }
         
@@ -7537,7 +7500,6 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
           // Double-check: skip individual TURN URLs without credentials
           const isTurnUrl = typeof url === 'string' && (url.includes('turn:') || url.includes('turns:'));
           if (isTurnUrl && (!server.username || !server.credential || server.username === '' || server.credential === '')) {
-            console.warn(`[Telecom] ⚠️ Skipping TURN URL "${url}" - empty username or credential`);
             return; // Skip this URL
           }
           
@@ -7547,12 +7509,9 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
           if (server.username) clean.username = server.username;
           if (server.credential) clean.credential = server.credential;
           
-          console.log(`[Telecom]   Expanded server ${idx + 1}.${urlIdx + 1}: url="${url}", hasAuth=${!!clean.username}`);
           cleanIceServers.push(clean);
         });
       });
-      
-      console.log('[Telecom] Cleaned ICE servers for RTCPeerConnection:', JSON.stringify(cleanIceServers, null, 2));
       
       const pc = new RTCPeerConnection({
         iceServers: cleanIceServers,
@@ -7560,7 +7519,7 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
         // Note: For debugging, you can add: iceTransportPolicy: "relay" to force TURN only
       });
       
-      // === DETAILED ICE LOGGING FOR DIAGNOSTICS ===
+      // === ICE LOGGING FOR DIAGNOSTICS ===
       const localCandidates = [];
       const candidateTypes = { host: 0, srflx: 0, relay: 0, other: 0 };
       
@@ -7573,28 +7532,11 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
           const typeMatch = candidateStr.match(/ typ (\w+)/);
           const type = typeMatch ? typeMatch[1] : 'unknown';
           candidateTypes[type] = (candidateTypes[type] || 0) + 1;
-          
-          console.log(`[ICE] Local candidate (${type}):`, candidateStr);
-          console.log(`[ICE] Candidate details:`, {
-            type: type,
-            protocol: event.candidate.protocol,
-            address: event.candidate.address,
-            port: event.candidate.port,
-            sdpMid: event.candidate.sdpMid,
-            sdpMLineIndex: event.candidate.sdpMLineIndex
-          });
         } else {
-          console.log('[ICE] Local candidate gathering complete');
-          console.log('[ICE] Total candidates collected:', localCandidates.length);
-          console.log('[ICE] Candidate types summary:', candidateTypes);
-          console.log('[ICE] All local candidates:', localCandidates);
-          
           // Check if we have relay candidates
           if (candidateTypes.relay === 0) {
             console.warn('[ICE] ⚠️ NO RELAY CANDIDATES COLLECTED!');
             console.warn('[ICE] This means TURN servers are not working or credentials are wrong.');
-          } else {
-            console.log(`[ICE] ✅ Collected ${candidateTypes.relay} relay candidate(s) from TURN server(s)`);
           }
         }
       };
@@ -7619,12 +7561,7 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
         }
       };
       
-      pc.onicegatheringstatechange = () => {
-        console.log('[ICE] Gathering state changed:', pc.iceGatheringState);
-      };
-      
       pc.oniceconnectionstatechange = () => {
-        console.log('[ICE] Connection state changed:', pc.iceConnectionState);
         if (pc.iceConnectionState === 'failed') {
           console.error('[ICE] ❌ ICE connection FAILED');
           console.error('[ICE] Local candidates were:', localCandidates);
@@ -7738,18 +7675,9 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
               }
             }).catch(e => console.warn('[ICE] Error getting stats:', e));
           }
-        } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-          console.log('[ICE] ✅ ICE connection established successfully');
-          console.log('[ICE] Selected candidate pair:', pc.iceConnectionState);
-        } else if (pc.iceConnectionState === 'checking') {
-          console.log('[ICE] 🔄 ICE checking candidate pairs...');
         }
       };
-      
-      pc.onconnectionstatechange = () => {
-        console.log('[PC] Connection state changed:', pc.connectionState);
-      };
-      // === END DETAILED ICE LOGGING ===
+      // === END ICE LOGGING ===
       
       // Create DataChannel for messaging
       const dataChannel = pc.createDataChannel('messages', {
@@ -7798,11 +7726,8 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
                 sdpMid: event.candidate.sdpMid
               });
               candidateCount++;
-              console.log(`[Telecom] Collected ICE candidate ${candidateCount} (${type}) for invite to:`, targetGuid);
           } else {
             // null candidate means gathering is complete
-            console.log('[Telecom] ICE candidate gathering complete, total candidates:', iceCandidates.length);
-            console.log('[Telecom] ICE candidate types:', candidateTypes);
             if (candidateTypes.relay === 0) {
               console.warn('[Telecom] ⚠️ No TURN (relay) candidates collected.');
               console.warn('[Telecom] ⚠️ Connection will likely FAIL if both peers are behind NAT/firewall.');
@@ -7820,7 +7745,6 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
         
         // Timeout after 15 seconds to allow TURN servers to respond (they can be slow)
         candidateTimeout = setTimeout(() => {
-          console.log('[Telecom] ICE candidate gathering timeout after 15s, collected:', iceCandidates.length, 'candidates');
           if (iceCandidates.length === 0) {
             console.warn('[Telecom] ⚠️ No ICE candidates collected. Check STUN/TURN server configuration.');
           }
@@ -7836,7 +7760,6 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
       
       // Set local description
       await pc.setLocalDescription(offer);
-      console.log('[Telecom] Created WebRTC offer, waiting for ICE candidates...');
       
       // Wait for ICE candidates (with timeout)
       await iceCandidatePromise;
@@ -7847,12 +7770,6 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
         type: offer.type,
         iceCandidates: iceCandidates
       };
-      
-      console.log('[Telecom] WebRTC offer created successfully:', {
-        sdpLength: offer.sdp.length,
-        candidatesCount: iceCandidates.length,
-        totalSize: JSON.stringify(webrtcOffer).length
-      });
       
     } catch (e) {
       console.error('[Telecom] ❌ Error creating WebRTC offer:', e);
@@ -7871,19 +7788,9 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
   // Get public key from account
   const publicKey = senderAccount.publicKey || null;
   
-  console.log('[Telecom] Sender account data for invite:', {
-    username: senderAccount.username,
-    displayName: displayName,
-    firstName: firstName,
-    lastName: lastName,
-    email: email ? 'present' : 'missing',
-    publicKey: publicKey ? `present (${publicKey.length} chars)` : 'missing'
-  });
-  
   if (!publicKey) {
     console.warn('[Telecom] ⚠️ WARNING: Public key is missing from sender account!');
     console.warn('[Telecom] ⚠️ Encryption will not be possible without public key.');
-    console.warn('[Telecom] ⚠️ Check that account has publicKey field set.');
   }
   
   // Create invite object - use effective GUID as fromGuid
@@ -7904,27 +7811,8 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
     status: 'pending' // pending, accepted, declined
   };
   
-  console.log('[Telecom] Created invite with fields:', {
-    hasUsername: !!invite.fromUsername,
-    hasDisplayName: !!invite.fromDisplayName,
-    hasFirstName: !!invite.fromFirstName,
-    hasLastName: !!invite.fromLastName,
-    hasEmail: !!invite.fromEmail,
-    hasPublicKey: !!invite.fromPublicKey,
-    publicKeyLength: invite.fromPublicKey ? invite.fromPublicKey.length : 0
-  });
-  
   // Only add webrtcOffer if it's valid (not null/undefined)
   // This prevents webrtcOffer: null from being saved, which can cause confusion
-  console.log('[Telecom] Final webrtcOffer check before adding to invite:', {
-    webrtcOfferExists: !!webrtcOffer,
-    webrtcOfferType: typeof webrtcOffer,
-    webrtcOfferValue: webrtcOffer,
-    hasSdp: webrtcOffer?.sdp ? true : false,
-    hasType: webrtcOffer?.type ? true : false,
-    sdpLength: webrtcOffer?.sdp?.length || 0
-  });
-  
   if (webrtcOffer && typeof webrtcOffer === 'object' && webrtcOffer.sdp && webrtcOffer.type) {
     invite.webrtcOffer = webrtcOffer;
     console.log('[Telecom] ✅ Created invite with valid WebRTC offer:', {
@@ -7932,19 +7820,8 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
       type: webrtcOffer.type,
       candidatesCount: webrtcOffer.iceCandidates?.length || 0
     });
-  } else {
-    console.warn('[Telecom] ⚠️ Created invite WITHOUT WebRTC offer:', {
-      reason: !webrtcOffer ? 'webrtcOffer is null/undefined' : 
-              typeof webrtcOffer !== 'object' ? 'webrtcOffer is not an object' :
-              !webrtcOffer.sdp ? 'webrtcOffer missing sdp' :
-              !webrtcOffer.type ? 'webrtcOffer missing type' : 'unknown',
-      webrtcOfferValue: webrtcOffer
-    });
   }
   
-  console.log('[Telecom] Created invite object with avatar:', invite.fromAvatar ? (invite.fromAvatar.substring(0, 50) + '...') : 'null');
-  console.log('[Telecom] Invite object keys:', Object.keys(invite));
-  console.log('[Telecom] Invite has webrtcOffer:', 'webrtcOffer' in invite, invite.webrtcOffer ? 'valid' : 'missing');
   console.log('[Telecom] ===== sendContactInvite END =====');
 
   // Check: is there already a pending invite to this GUID?
@@ -7986,14 +7863,10 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
   try {
     const sentInvitesJson = JSON.stringify(sentInvites);
     const recipientInvitesJson = JSON.stringify(recipientInvites);
-    const sentInvitesSize = new Blob([sentInvitesJson]).size;
-    const recipientInvitesSize = new Blob([recipientInvitesJson]).size;
-    
-    console.log('[Telecom] Saving invites - sent:', (sentInvitesSize / 1024).toFixed(2), 'KB, recipient:', (recipientInvitesSize / 1024).toFixed(2), 'KB');
     
     localStorage.setItem(SENT_INVITES_STORAGE_KEY, sentInvitesJson);
     localStorage.setItem(RECIPIENT_STORAGE_KEY, recipientInvitesJson);
-    console.log('[Telecom] Invite sent to', targetGuid, 'ID:', invite.id);
+    console.log('[Telecom] Invite created and saved for', targetGuid, 'ID:', invite.id);
   } catch (e) {
     console.error('[Telecom] Error saving invite:', e);
     
@@ -8084,7 +7957,6 @@ function initInvitePolling(winId, config, storageKey) {
         const invite = pendingInvites[0];
         processedInviteIds.add(invite.id);
         
-        console.log('[Telecom] Found new invite from', invite.fromDisplayName || invite.fromUsername || invite.fromGuid, 'ID:', invite.id);
         
         // Show invite dialog
         showInviteReceivedDialog(winId, invite, config, storageKey);
@@ -8193,10 +8065,8 @@ function showInviteReceivedDialog(winId, invite, config, storageKey) {
   // WebRTC cross-origin check removed - using localStorage-based messaging instead
   
   // Build avatar HTML
-  console.log('[Telecom] showInviteReceivedDialog - invite.fromAvatar:', invite.fromAvatar ? (invite.fromAvatar.substring(0, 50) + '...') : 'null');
   let avatarHtml = '<div style="font-size:48px; margin-bottom:16px;">👤</div>';
   if (invite.fromAvatar && invite.fromAvatar.startsWith('data:image/')) {
-    console.log('[Telecom] showInviteReceivedDialog - Using avatar data URI');
     // Data URI doesn't need escaping, but we need to ensure it's properly quoted
     const avatarSrc = invite.fromAvatar.replace(/"/g, '&quot;');
     avatarHtml = `<img src="${avatarSrc}" alt="Avatar" style="width:80px; height:80px; border-radius:50%; object-fit:cover; margin:0 auto 16px; display:block; border:2px solid var(--accent);" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"><div style="font-size:48px; margin-bottom:16px; display:none;">👤</div>`;
@@ -8260,28 +8130,32 @@ function showInviteReceivedDialog(winId, invite, config, storageKey) {
   // Handle accept button (only for non-WebRTC invites)
   const acceptBtn = dialog.querySelector('#telecom-invite-accept');
   if (acceptBtn) {
-    acceptBtn.addEventListener('click', async () => {
-      // Close invite received dialog first
+    acceptBtn.addEventListener('click', () => {
+      // Close invite received dialog first (synchronous UI update)
       backdrop.remove();
       dialog.remove();
 
-      // Show progress dialog
+      // Show progress dialog (synchronous UI update)
       const verboseLogging = config.verboseLogging !== undefined ? config.verboseLogging : false;
       const progressDialog = showProgressDialog(winId, 'Contact adding...', verboseLogging);
       
       if (!progressDialog) {
-        if (window.Dialog && window.Dialog.alert) {
-          await window.Dialog.alert('Error showing progress dialog');
-        } else {
-          alert('Error showing progress dialog');
-        }
+        // Use setTimeout to avoid blocking UI
+        setTimeout(async () => {
+          if (window.Dialog && window.Dialog.alert) {
+            await window.Dialog.alert('Error showing progress dialog');
+          } else {
+            alert('Error showing progress dialog');
+          }
+        }, 0);
         return;
       }
 
       // Intercept console.log to capture logs if verbose logging is enabled
-      const originalConsoleLog = console.log;
-      const originalConsoleWarn = console.warn;
-      const originalConsoleError = console.error;
+      // Use original console functions from progressDialog to avoid conflicts
+      const originalConsoleLog = progressDialog.originalConsoleLog || console.log;
+      const originalConsoleWarn = progressDialog.originalConsoleWarn || console.warn;
+      const originalConsoleError = progressDialog.originalConsoleError || console.error;
       
       if (verboseLogging) {
         console.log = (...args) => {
@@ -8307,49 +8181,52 @@ function showInviteReceivedDialog(winId, invite, config, storageKey) {
         };
       }
 
-      try {
-        await handleInviteResponse(invite, 'accepted', config, storageKey, winId);
-        
-        // Restore console functions
-        if (verboseLogging) {
-          console.log = originalConsoleLog;
-          console.warn = originalConsoleWarn;
-          console.error = originalConsoleError;
+      // Defer heavy async work to next event loop tick to avoid blocking UI
+      setTimeout(async () => {
+        try {
+          await handleInviteResponse(invite, 'accepted', config, storageKey, winId);
+          
+          // Restore console functions
+          if (verboseLogging) {
+            console.log = originalConsoleLog;
+            console.warn = originalConsoleWarn;
+            console.error = originalConsoleError;
+          }
+          
+          // Close progress dialog
+          progressDialog.close();
+          
+          // Show success message
+          if (window.Dialog && window.Dialog.alert) {
+            await window.Dialog.alert(I18n.t('telecom.contactsInviteAccepted'));
+          } else {
+            alert(I18n.t('telecom.contactsInviteAccepted'));
+          }
+          
+          // Refresh contacts dialog if it's open
+          const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
+          if (contactsDialog) {
+            showContactsDialog(null, winId, config, storageKey);
+          }
+        } catch (e) {
+          // Restore console functions
+          if (verboseLogging) {
+            console.log = originalConsoleLog;
+            console.warn = originalConsoleWarn;
+            console.error = originalConsoleError;
+          }
+          
+          // Close progress dialog
+          progressDialog.close();
+          
+          console.error('[Telecom] Error accepting invite:', e);
+          if (window.Dialog && window.Dialog.alert) {
+            await window.Dialog.alert(I18n.t('telecom.contactsAddContactError'));
+          } else {
+            alert(I18n.t('telecom.contactsAddContactError'));
+          }
         }
-        
-        // Close progress dialog
-        progressDialog.close();
-        
-        // Show success message
-        if (window.Dialog && window.Dialog.alert) {
-          await window.Dialog.alert(I18n.t('telecom.contactsInviteAccepted'));
-        } else {
-          alert(I18n.t('telecom.contactsInviteAccepted'));
-        }
-        
-        // Refresh contacts dialog if it's open
-        const contactsDialog = windowContent.querySelector('.telecom-contacts-dialog');
-        if (contactsDialog) {
-          showContactsDialog(null, winId, config, storageKey);
-        }
-      } catch (e) {
-        // Restore console functions
-        if (verboseLogging) {
-          console.log = originalConsoleLog;
-          console.warn = originalConsoleWarn;
-          console.error = originalConsoleError;
-        }
-        
-        // Close progress dialog
-        progressDialog.close();
-        
-        console.error('[Telecom] Error accepting invite:', e);
-        if (window.Dialog && window.Dialog.alert) {
-          await window.Dialog.alert(I18n.t('telecom.contactsAddContactError'));
-        } else {
-          alert(I18n.t('telecom.contactsAddContactError'));
-        }
-      }
+      }, 0);
     });
   }
   
@@ -8424,10 +8301,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
   // Get the actual invite from storage (it may have more data than the passed invite parameter)
   const storedInvite = recipientInvites[recipientInviteIndex];
   
-  console.log('[Telecom] Updating invite status:', invite.id, 'from', storedInvite.status, 'to', response);
-  console.log('[Telecom] Stored invite has webrtcOffer:', !!storedInvite.webrtcOffer);
-  console.log('[Telecom] Passed invite has webrtcOffer:', !!invite.webrtcOffer);
-  
   // Use stored invite (it has the complete data including webrtcOffer)
   const inviteToProcess = storedInvite;
   
@@ -8453,12 +8326,10 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
   // If accepted, add to contacts and process WebRTC answer if available
   if (response === 'accepted') {
     const contacts = getContacts();
-    console.log('[Telecom] handleInviteResponse: Current contacts count:', contacts.length);
     
     // Check if contact already exists
     const existingContact = contacts.find(c => c.guid === invite.fromGuid);
     if (!existingContact) {
-      console.log('[Telecom] Adding new contact from invite:', invite.fromGuid, 'displayName:', invite.fromDisplayName);
       // Add new contact with all available data including public key
       const newContact = {
         guid: invite.fromGuid,
@@ -8473,8 +8344,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
       
       contacts.push(newContact);
       saveContacts(contacts);
-      console.log('[Telecom] Contact added:', newContact.displayName, 'Total contacts now:', contacts.length);
-      console.log('[Telecom] Contact public key:', newContact.publicKey ? 'present' : 'missing');
     } else {
       console.log('[Telecom] Contact already exists for invite.fromGuid:', invite.fromGuid);
       // Update existing contact with public key if missing
@@ -8500,14 +8369,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                           inviteForAnswer.webrtcOffer.sdp &&
                           inviteForAnswer.webrtcOffer.type;
     
-    console.log('[Telecom] Checking WebRTC answer generation conditions:');
-    console.log('[Telecom]   inviteForAnswer.webrtcOffer exists:', !!inviteForAnswer.webrtcOffer);
-    console.log('[Telecom]   inviteForAnswer.webrtcOffer type:', typeof inviteForAnswer.webrtcOffer);
-    console.log('[Telecom]   inviteForAnswer.webrtcOffer value:', inviteForAnswer.webrtcOffer);
-    console.log('[Telecom]   hasValidOffer:', hasValidOffer);
-    console.log('[Telecom]   RTCPeerConnection available:', typeof RTCPeerConnection !== 'undefined');
-    console.log('[Telecom]   inviteForAnswer object keys:', Object.keys(inviteForAnswer));
-    
     if (hasValidOffer && typeof RTCPeerConnection !== 'undefined') {
       try {
         console.log('[Telecom] ✅ Generating WebRTC answer for invite:', inviteForAnswer.id);
@@ -8518,10 +8379,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
           { urls: 'stun:stun1.l.google.com:19302' }
         ];
         
-        // Log full ICE server configuration for debugging
-        console.log('[Telecom] Full ICE server configuration for answer:', JSON.stringify(iceServers, null, 2));
-        console.log('[Telecom] Using ICE servers from Network config for answer:', iceServers.length, 'servers');
-        
         // Clean ICE servers - remove non-standard fields that might interfere with RTCPeerConnection
         // If server.urls is an array, expand it into separate server objects (one per URL)
         // This ensures maximum compatibility with RTCPeerConnection
@@ -8529,13 +8386,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         const cleanIceServers = [];
         iceServers.forEach((server, idx) => {
           const urlsArray = Array.isArray(server.urls) ? server.urls : [server.urls];
-          const urlsType = Array.isArray(server.urls) ? 'array' : typeof server.urls;
-          const urlsCount = urlsArray.length;
-          
-          console.log(`[Telecom] Server ${idx + 1} (answer): urls type=${urlsType}, count=${urlsCount}, hasUsername=${!!server.username}, hasCredential=${!!server.credential}`);
-          if (Array.isArray(server.urls)) {
-            console.log(`[Telecom] Server ${idx + 1} (answer) URLs array:`, server.urls);
-          }
           
           // Check if this is a TURN server (requires username/credential)
           const isTurnServer = urlsArray.some(url => 
@@ -8544,7 +8394,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
           
           // Skip TURN servers with empty username or credential
           if (isTurnServer && (!server.username || !server.credential || server.username === '' || server.credential === '')) {
-            console.warn(`[Telecom] ⚠️ Skipping TURN server ${idx + 1} (answer) (${urlsArray.join(', ')}) - empty username or credential`);
             return; // Skip this server
           }
           
@@ -8563,12 +8412,9 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
             if (server.username) clean.username = server.username;
             if (server.credential) clean.credential = server.credential;
             
-            console.log(`[Telecom]   Expanded server ${idx + 1}.${urlIdx + 1} (answer): url="${url}", hasAuth=${!!clean.username}`);
             cleanIceServers.push(clean);
           });
         });
-        
-        console.log('[Telecom] Cleaned ICE servers for RTCPeerConnection (answer):', JSON.stringify(cleanIceServers, null, 2));
         
         const pc = new RTCPeerConnection({
           iceServers: cleanIceServers,
@@ -8594,35 +8440,28 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         const turnServersFailed = new Set();
         
         pc.onicecandidateerror = (event) => {
-          console.error('[ICE-RECIPIENT] ❌ TURN server error:', {
-            url: event.url,
-            hostCandidate: event.hostCandidate,
-            errorText: event.errorText,
-            errorCode: event.errorCode
-          });
-          
           // Track failed servers
           if (event.url) {
+            const wasNew = !turnServersFailed.has(event.url);
             turnServersFailed.add(event.url);
             
-            if (event.url.includes('expressturn.com')) {
-              console.error('[ICE-RECIPIENT] ⚠️ ExpressTURN server error - this server may be rate-limited or unavailable');
-            } else if (event.url.includes('openrelay.metered.ca')) {
-              console.error('[ICE-RECIPIENT] ⚠️ Metered.ca OpenRelay server error - check if port is blocked or server is down');
-              console.error('[ICE-RECIPIENT] 💡 Metered.ca may require different URL format or may be temporarily unavailable');
-            } else {
-              console.error('[ICE-RECIPIENT] ⚠️ Unknown TURN server error');
+            // Log only first error per server to avoid spam
+            if (wasNew) {
+              if (event.url.includes('expressturn.com')) {
+                console.warn('[ICE-RECIPIENT] ⚠️ ExpressTURN server error - this server may be rate-limited or unavailable');
+              } else if (event.url.includes('openrelay.metered.ca')) {
+                console.warn('[ICE-RECIPIENT] ⚠️ Metered.ca OpenRelay server error - check if port is blocked or server is down');
+              } else if (event.url.includes('stun.l.google.com') || event.url.includes('stun1.l.google.com')) {
+                // STUN errors are less critical, log only if many fail
+              } else {
+                console.warn('[ICE-RECIPIENT] ⚠️ TURN server error:', event.url);
+              }
             }
           }
         };
         
-        pc.onicegatheringstatechange = () => {
-          console.log('[ICE-RECIPIENT] Gathering state changed:', pc.iceGatheringState);
-        };
-        
         // Enhanced ICE connection state logging (will be enhanced below)
         originalIceConnectionStateHandler = () => {
-          console.log('[ICE-RECIPIENT] Connection state changed:', pc.iceConnectionState);
           if (pc.iceConnectionState === 'failed') {
             console.error('[ICE-RECIPIENT] ❌ ICE connection FAILED');
             console.error('[ICE-RECIPIENT] Local candidates were:', localCandidatesRecipient);
@@ -8635,7 +8474,7 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         
         // Enhanced connection state logging (will be enhanced below)
         originalConnectionStateHandler = () => {
-          console.log('[PC-RECIPIENT] Connection state changed:', pc.connectionState);
+          // Connection state changes are logged only on errors
         };
         // === END DETAILED ICE LOGGING (RECIPIENT) ===
         
@@ -8832,7 +8671,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                 } else {
                   // Chat is not selected - blink was already added to Set after decryption
                   // renderChatsList will restore blink effect from Set
-                  console.log('[Telecom] ✅ Chat is not selected, refreshing list (blink already in Set)');
                   renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
                   
                   // Also ensure blinkChatItem is called to apply blink immediately
@@ -9039,7 +8877,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                   } else {
                     // Chat is not selected - blink was already added to Set after decryption
                     // renderChatsList will restore blink effect from Set
-                    console.log('[Telecom] ✅ Chat is not selected (incoming channel), refreshing list (blink already in Set). Set:', Array.from(window._telecomBlinkingChats || []));
                     renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
                     
                     // Also ensure blinkChatItem is called to apply blink immediately
@@ -9069,12 +8906,9 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
           type: inviteForAnswer.webrtcOffer.type,
           sdp: inviteForAnswer.webrtcOffer.sdp
         }));
-        console.log('[Telecom] Set remote description (offer)');
-        
         // Set up connection state handlers for recipient side
         pc.onconnectionstatechange = () => {
           const contactGuid = invite.fromGuid;
-          console.log('[Telecom] Connection state changed:', pc.connectionState, 'for contact (recipient):', contactGuid);
           if (pc.connectionState === 'connected') {
             console.log('[Telecom] ✅ WebRTC connection established with contact (recipient):', contactGuid);
             updateConnectionStatusForChat(contactGuid, 'connected');
@@ -9088,7 +8922,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
             console.warn('[Telecom] ⚠️ WebRTC connection disconnected with contact (recipient):', contactGuid);
             updateConnectionStatusForChat(contactGuid, 'disconnected');
           } else if (pc.connectionState === 'connecting') {
-            console.log('[Telecom] 🔄 WebRTC connection establishing with contact (recipient):', contactGuid);
             updateConnectionStatusForChat(contactGuid, 'connecting');
           }
         };
@@ -9100,7 +8933,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
           // Call detailed logging handler first
           if (existingRecipientIceHandler) existingRecipientIceHandler();
           
-          console.log('[Telecom] ICE connection state:', pc.iceConnectionState, 'for contact (recipient):', invite.fromGuid);
           if (pc.iceConnectionState === 'failed') {
             console.error('[Telecom] ❌ ICE connection failed (recipient). Possible causes:');
             console.error('[Telecom] 1. NAT/firewall blocking peer-to-peer connection');
@@ -9228,24 +9060,15 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
             }
           } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
             console.log('[Telecom] ✅ ICE connection established (recipient)');
-          } else if (pc.iceConnectionState === 'checking') {
-            console.log('[Telecom] 🔄 ICE connection checking... (recipient)');
           }
         };
         
-        // Add remote ICE candidates with detailed logging
+        // Add remote ICE candidates
         if (inviteForAnswer.webrtcOffer.iceCandidates && inviteForAnswer.webrtcOffer.iceCandidates.length > 0) {
-          console.log('[ICE-RECIPIENT] Adding', inviteForAnswer.webrtcOffer.iceCandidates.length, 'remote ICE candidates from offer');
           for (const candidateData of inviteForAnswer.webrtcOffer.iceCandidates) {
             try {
               const candidateStr = candidateData.candidate;
               remoteCandidatesRecipient.push(candidateStr);
-              
-              // Extract candidate type
-              const typeMatch = candidateStr.match(/ typ (\w+)/);
-              const type = typeMatch ? typeMatch[1] : 'unknown';
-              
-              console.log(`[ICE-RECIPIENT] Adding remote candidate (${type}):`, candidateStr);
               
               await pc.addIceCandidate(new RTCIceCandidate({
                 candidate: candidateData.candidate,
@@ -9256,8 +9079,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
               console.error('[ICE-RECIPIENT] Error adding remote ICE candidate:', e, candidateData);
             }
           }
-          console.log('[ICE-RECIPIENT] Successfully added', inviteForAnswer.webrtcOffer.iceCandidates.length, 'remote ICE candidates');
-          console.log('[ICE-RECIPIENT] All remote candidates:', remoteCandidatesRecipient);
         }
         
         // Collect local ICE candidates
@@ -9299,17 +9120,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
               const protocol = getCandidateProtocol(candidateStr, event.candidate.protocol);
               candidateProtocols[protocol] = (candidateProtocols[protocol] || 0) + 1;
               
-              console.log(`[ICE-RECIPIENT] Local candidate (${type}):`, candidateStr);
-              console.log(`[ICE-RECIPIENT] Candidate details:`, {
-                type: type,
-                protocol: event.candidate.protocol,
-                protocolCategory: protocol,
-                address: event.candidate.address,
-                port: event.candidate.port,
-                sdpMid: event.candidate.sdpMid,
-                sdpMLineIndex: event.candidate.sdpMLineIndex
-              });
-              
               // Collect for invite
               const collectType = getCandidateType(candidateStr);
               candidateTypes[collectType] = (candidateTypes[collectType] || 0) + 1;
@@ -9320,13 +9130,8 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                 sdpMid: event.candidate.sdpMid
               });
               candidateCount++;
-              console.log(`[Telecom] Collected local ICE candidate ${candidateCount} (${collectType}) for answer`);
             } else {
               // null candidate means gathering is complete
-              console.log('[ICE-RECIPIENT] Local candidate gathering complete');
-              console.log('[ICE-RECIPIENT] Total candidates collected:', localCandidatesRecipient.length);
-              console.log('[ICE-RECIPIENT] Candidate types summary:', candidateTypesRecipient);
-              console.log('[ICE-RECIPIENT] All local candidates:', localCandidatesRecipient);
               
               // Check if we have relay candidates
               if (candidateTypesRecipient.relay === 0) {
@@ -9341,8 +9146,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                   console.warn('[ICE-RECIPIENT] This may mean: 1) Servers are silently failing, 2) Network blocks TURN traffic, 3) Credentials are wrong');
                 }
               } else {
-                console.log(`[ICE-RECIPIENT] ✅ Collected ${candidateTypesRecipient.relay} relay candidate(s) from TURN server(s)`);
-                
                 // Check protocol distribution for relay candidates
                 const relayProtocols = { udp: 0, tcp: 0, tls: 0 };
                 const relayServers = new Set();
@@ -9366,9 +9169,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                   }
                 });
                 
-                console.log('[ICE-RECIPIENT] Relay candidate protocols:', relayProtocols);
-                console.log('[ICE-RECIPIENT] Relay candidates from servers:', Array.from(relayServers));
-                
                 // Check if Metered.ca gave any candidates
                 if (!relayServers.has('ExpressTURN') || relayServers.size === 1) {
                   console.warn('[ICE-RECIPIENT] ⚠️ Only ExpressTURN relay candidates found. Metered.ca OpenRelay did not provide relay candidates.');
@@ -9382,10 +9182,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
                 }
               }
               
-              console.log('[ICE-RECIPIENT] Candidate protocols summary:', candidateProtocols);
-              
-              console.log('[Telecom] Local ICE candidate gathering complete, total candidates:', iceCandidates.length);
-              console.log('[Telecom] Local ICE candidate types:', candidateTypes);
               if (candidateTypes.relay === 0) {
                 console.warn('[Telecom] ⚠️ No TURN (relay) candidates collected.');
                 console.warn('[Telecom] ⚠️ Connection will likely FAIL if both peers are behind NAT/firewall.');
@@ -9403,7 +9199,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
           
           // Timeout after 15 seconds to allow TURN servers to respond (they can be slow)
           candidateTimeout = setTimeout(() => {
-            console.log('[Telecom] Local ICE candidate gathering timeout after 15s, collected:', iceCandidates.length, 'candidates');
             if (iceCandidates.length === 0) {
               console.warn('[Telecom] ⚠️ No ICE candidates collected. Check STUN/TURN server configuration.');
             }
@@ -9419,7 +9214,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         
         // Set local description (answer)
         await pc.setLocalDescription(answer);
-        console.log('[Telecom] Created WebRTC answer, waiting for ICE candidates...');
         
         // Wait for ICE candidates (with timeout)
         await iceCandidatePromise;
@@ -9431,11 +9225,7 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
           iceCandidates: iceCandidates
         };
         
-        console.log('[Telecom] WebRTC answer created successfully:', {
-          sdpLength: answer.sdp.length,
-          candidatesCount: iceCandidates.length,
-          totalSize: JSON.stringify(webrtcAnswer).length
-        });
+        console.log('[Telecom] ✅ WebRTC answer created successfully');
         
         // Add answer to invite in recipient storage
         recipientInvites[recipientInviteIndex].webrtcAnswer = webrtcAnswer;
@@ -9456,15 +9246,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         const recipientEmail = config.email || systemAccount?.email || null;
         const recipientPublicKey = systemAccount?.publicKey || null;
         
-        console.log('[Telecom] Adding recipient data to answer:', {
-          username: recipientUsername,
-          displayName: recipientDisplayName,
-          firstName: recipientFirstName,
-          lastName: recipientLastName,
-          email: recipientEmail ? 'present' : 'missing',
-          publicKey: recipientPublicKey ? 'present' : 'missing'
-        });
-        
         // Create updated invite with answer for sharing back to sender
         // Include recipient's data (toGuid is recipient, so these are "to" fields)
         const inviteWithAnswer = {
@@ -9481,7 +9262,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         };
         
         // Show dialog to share answer back to sender
-        console.log('[Telecom] Calling showShareAnswerDialog with winId:', winId);
         // Use winId if available, otherwise showShareAnswerDialog will find window itself
         try {
           showShareAnswerDialog(winId || null, inviteWithAnswer, config, storageKey);
@@ -9524,7 +9304,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
   // Save updated invites in both storages
   try {
     localStorage.setItem(RECIPIENT_STORAGE_KEY, JSON.stringify(recipientInvites));
-    console.log('[Telecom] Updated invite status in recipient storage:', invite.id, 'status:', response);
     
     if (sentInvites.length > 0) {
       localStorage.setItem(SENT_INVITES_STORAGE_KEY, JSON.stringify(sentInvites));
@@ -9599,16 +9378,13 @@ async function processWebRTCAnswer(invite, config, storageKey) {
       console.warn('[Telecom] WebRTC connections cannot be restored after page reload.');
       console.warn('[Telecom] The answer was processed, but connection cannot be established.');
       
-      // Show user-friendly message
-      if (window.Dialog && window.Dialog.alert) {
-        await window.Dialog.alert('WebRTC connection cannot be established because the original connection was lost (page may have been reloaded).\n\n' +
-            'To establish a connection:\n' +
-            '1. Create a new invite\n' +
-            '2. Have the recipient accept it\n' +
-            '3. Process the answer while the page is still loaded');
-      }
-      
-      return; // Exit early - cannot process answer without original peer connection
+      // Throw error to prevent success message from being shown
+      // Error message will be shown by calling code in .catch() block
+      throw new Error('WebRTC connection cannot be established because the original connection was lost (page may have been reloaded).\n\n' +
+          'To establish a connection:\n' +
+          '1. Create a new invite\n' +
+          '2. Have the recipient accept it\n' +
+          '3. Process the answer while the page is still loaded');
     }
     
     // Check peer connection state
@@ -10249,7 +10025,6 @@ async function processWebRTCAnswer(invite, config, storageKey) {
               } else {
                 // Chat is not selected - blink was already added to Set after decryption
                 // renderChatsList will restore blink effect from Set
-                console.log('[Telecom] ✅ Chat is not selected (sender side), refreshing list (blink already in Set)');
                 renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
                 
                 // Also ensure blinkChatItem is called to apply blink immediately
@@ -10310,13 +10085,11 @@ async function processWebRTCAnswer(invite, config, storageKey) {
         let inviteIndex = -1;
         if (invite.id) {
           inviteIndex = sentInvites.findIndex(inv => inv.id === invite.id);
-          console.log('[Telecom] 🔍 Searching invite by ID:', invite.id, 'found:', inviteIndex !== -1);
         }
         
         // If not found by ID, try by toGuid and status
         if (inviteIndex === -1) {
           inviteIndex = sentInvites.findIndex(inv => inv.toGuid === contactGuid && (inv.status === 'pending' || !inv.status));
-          console.log('[Telecom] 🔍 Searching invite by toGuid:', contactGuid, 'found:', inviteIndex !== -1);
         }
         
         if (inviteIndex !== -1) {
@@ -10543,6 +10316,8 @@ async function processWebRTCAnswer(invite, config, storageKey) {
     
   } catch (e) {
     console.error('[Telecom] Error processing WebRTC answer:', e);
+    // Re-throw error so calling code can handle it properly
+    throw e;
   }
 }
 
@@ -10557,18 +10332,12 @@ function getPendingInvites(userGuid, pendingOnly = true) {
   try {
     const invitesData = localStorage.getItem(SENT_INVITES_STORAGE_KEY);
     if (!invitesData) {
-      console.log('[Telecom] getPendingInvites: No invites data for GUID:', userGuid);
       return [];
     }
     
     const invites = JSON.parse(invitesData);
     if (pendingOnly) {
       const pending = invites.filter(inv => inv.status === 'pending');
-      const accepted = invites.filter(inv => inv.status === 'accepted');
-      console.log('[Telecom] getPendingInvites: total invites:', invites.length, 'pending:', pending.length, 'accepted:', accepted.length, 'for GUID:', userGuid);
-      if (pending.length > 0) {
-        console.log('[Telecom] Pending invite IDs:', pending.map(inv => `${inv.id} (to: ${inv.toGuid})`));
-      }
       return pending;
     } else {
       return invites; // Return all invites
@@ -10610,22 +10379,12 @@ function getReceivedPendingInvites(userGuid, pendingOnly = true) {
   try {
     const invitesData = localStorage.getItem(RECIPIENT_STORAGE_KEY);
     if (!invitesData) {
-      console.log('[Telecom] getReceivedPendingInvites: No invites data for GUID:', userGuid);
       return [];
     }
     
     const invites = JSON.parse(invitesData);
     if (pendingOnly) {
       const pending = invites.filter(inv => inv.status === 'pending');
-      const accepted = invites.filter(inv => inv.status === 'accepted');
-      console.log('[Telecom] getReceivedPendingInvites: total invites:', invites.length, 'pending:', pending.length, 'accepted:', accepted.length, 'for GUID:', userGuid);
-      if (pending.length > 0) {
-        console.log('[Telecom] Pending invite IDs:', pending.map(inv => inv.id));
-        // Log avatar info for each pending invite
-        pending.forEach((inv, idx) => {
-          console.log(`[Telecom] getReceivedPendingInvites: invite #${idx + 1} (${inv.id}) avatar:`, inv.fromAvatar ? (inv.fromAvatar.substring(0, 50) + '...') : 'null');
-        });
-      }
       return pending;
     } else {
       return invites; // Return all invites
@@ -11064,11 +10823,11 @@ async function sendMessage(win, winId, config, storageKey) {
       console.log('[Telecom] ✅ Message sent via WebRTC to contact:', peerId);
     } catch (e) {
       console.error('[Telecom] Error sending message via WebRTC:', e);
-      // Fallback to localStorage-based messaging
+      // Message will be saved locally only (WebRTC delivery failed)
     }
-  } else {
-    console.log('[Telecom] WebRTC data channel not available, using localStorage-based messaging');
   }
+  // Note: If WebRTC is not available, message is saved locally only.
+  // WebRTC is required for real-time delivery to the recipient.
 
   // Save message (always save locally)
   const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${selectedChatId}.v1`;
