@@ -7516,7 +7516,6 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
       const pc = new RTCPeerConnection({
         iceServers: cleanIceServers,
         iceCandidatePoolSize: 10
-        // Note: For debugging, you can add: iceTransportPolicy: "relay" to force TURN only
       });
       
       // === ICE LOGGING FOR DIAGNOSTICS ===
@@ -7528,26 +7527,55 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
           const candidateStr = event.candidate.candidate;
           localCandidates.push(candidateStr);
           
-          // Extract candidate type
+          // Extract candidate type and protocol
           const typeMatch = candidateStr.match(/ typ (\w+)/);
           const type = typeMatch ? typeMatch[1] : 'unknown';
           candidateTypes[type] = (candidateTypes[type] || 0) + 1;
+          
+          // Extract protocol (udp/tcp)
+          const proto = / udp /i.test(candidateStr) ? 'udp' : (/ tcp /i.test(candidateStr) ? 'tcp' : 'n/a');
+          const isRelay = / typ relay /i.test(candidateStr);
+          
+          console.log('[ICE][SENDER] candidate:', {
+            candidate: candidateStr.substring(0, 150) + (candidateStr.length > 150 ? '...' : ''),
+            type: type,
+            protocol: proto,
+            isRelay: isRelay,
+            sdpMLineIndex: event.candidate.sdpMLineIndex,
+            sdpMid: event.candidate.sdpMid
+          });
+          
+          // Log relay(tcp) candidates prominently
+          if (isRelay && proto === 'tcp') {
+            console.log('[ICE][SENDER] ✅ RELAY(TCP) candidate collected!', candidateStr);
+          }
         } else {
+          console.log('[ICE][SENDER] ✅ Local ICE gathering complete');
+          console.log('[ICE][SENDER] 📊 Candidate summary:', candidateTypes);
+          
           // Check if we have relay candidates
           if (candidateTypes.relay === 0) {
-            console.warn('[ICE] ⚠️ NO RELAY CANDIDATES COLLECTED!');
-            console.warn('[ICE] This means TURN servers are not working or credentials are wrong.');
+            console.warn('[ICE][SENDER] ⚠️ NO RELAY CANDIDATES COLLECTED!');
+            console.warn('[ICE][SENDER] This means TURN servers are not working or credentials are wrong.');
+          } else {
+            console.log(`[ICE][SENDER] ✅ Collected ${candidateTypes.relay} relay candidate(s)`);
           }
         }
       };
       
       pc.onicecandidateerror = (event) => {
-        console.error('[ICE] ❌ TURN server error:', {
+        console.error('[ICE][SENDER] ❌ TURN server error:', {
           url: event.url,
           hostCandidate: event.hostCandidate,
           errorText: event.errorText,
           errorCode: event.errorCode
         });
+        
+        // Check if it's ExpressTURN TCP
+        if (event.url && event.url.includes('free.expressturn.com:3478') && event.url.includes('transport=tcp')) {
+          console.error('[ICE][SENDER] ⚠️ ExpressTURN TCP error - check credentials and network connectivity');
+          console.error('[ICE][SENDER] 💡 Verify: 1) Credentials are correct, 2) Network allows TCP:3478, 3) Server is not rate-limited');
+        }
         
         // Identify which TURN server failed
         if (event.url) {
@@ -8507,7 +8535,6 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         const pc = new RTCPeerConnection({
           iceServers: cleanIceServers,
           iceCandidatePoolSize: 10
-          // Note: For debugging, you can add: iceTransportPolicy: "relay" to force TURN only
         });
         
         // === DETAILED ICE LOGGING FOR DIAGNOSTICS (RECIPIENT SIDE) ===
@@ -8535,14 +8562,24 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
             
             // Log only first error per server to avoid spam
             if (wasNew) {
-              if (event.url.includes('expressturn.com')) {
-                console.warn('[ICE-RECIPIENT] ⚠️ ExpressTURN server error - this server may be rate-limited or unavailable');
+              console.error('[ICE][RECIPIENT] ❌ TURN server error:', {
+                url: event.url,
+                errorText: event.errorText,
+                errorCode: event.errorCode,
+                hostCandidate: event.hostCandidate
+              });
+              
+              if (event.url.includes('free.expressturn.com:3478') && event.url.includes('transport=tcp')) {
+                console.error('[ICE][RECIPIENT] ⚠️ ExpressTURN TCP error - check credentials and network connectivity');
+                console.error('[ICE][RECIPIENT] 💡 Verify: 1) Credentials are correct, 2) Network allows TCP:3478, 3) Server is not rate-limited');
+              } else if (event.url.includes('expressturn.com')) {
+                console.warn('[ICE][RECIPIENT] ⚠️ ExpressTURN server error - this server may be rate-limited or unavailable');
               } else if (event.url.includes('openrelay.metered.ca')) {
-                console.warn('[ICE-RECIPIENT] ⚠️ Metered.ca OpenRelay server error - check if port is blocked or server is down');
+                console.warn('[ICE][RECIPIENT] ⚠️ Metered.ca OpenRelay server error - check if port is blocked or server is down');
               } else if (event.url.includes('stun.l.google.com') || event.url.includes('stun1.l.google.com')) {
                 // STUN errors are less critical, log only if many fail
               } else {
-                console.warn('[ICE-RECIPIENT] ⚠️ TURN server error:', event.url);
+                console.warn('[ICE][RECIPIENT] ⚠️ TURN server error:', event.url);
               }
             }
           }
@@ -9214,6 +9251,24 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
               const type = typeMatch ? typeMatch[1] : 'unknown';
               candidateTypesRecipient[type] = (candidateTypesRecipient[type] || 0) + 1;
               
+              // Extract protocol (udp/tcp)
+              const proto = / udp /i.test(candidateStr) ? 'udp' : (/ tcp /i.test(candidateStr) ? 'tcp' : 'n/a');
+              const isRelay = / typ relay /i.test(candidateStr);
+              
+              console.log('[ICE][RECIPIENT] candidate:', {
+                candidate: candidateStr.substring(0, 150) + (candidateStr.length > 150 ? '...' : ''),
+                type: type,
+                protocol: proto,
+                isRelay: isRelay,
+                sdpMLineIndex: event.candidate.sdpMLineIndex,
+                sdpMid: event.candidate.sdpMid
+              });
+              
+              // Log relay(tcp) candidates prominently
+              if (isRelay && proto === 'tcp') {
+                console.log('[ICE][RECIPIENT] ✅ RELAY(TCP) candidate collected!', candidateStr);
+              }
+              
               // Track protocol
               const protocol = getCandidateProtocol(candidateStr, event.candidate.protocol);
               candidateProtocols[protocol] = (candidateProtocols[protocol] || 0) + 1;
@@ -9230,11 +9285,13 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
               candidateCount++;
             } else {
               // null candidate means gathering is complete
+              console.log('[ICE][RECIPIENT] ✅ Local ICE gathering complete');
+              console.log('[ICE][RECIPIENT] 📊 Candidate summary:', candidateTypesRecipient);
               
               // Check if we have relay candidates
               if (candidateTypesRecipient.relay === 0) {
-                console.warn('[ICE-RECIPIENT] ⚠️ NO RELAY CANDIDATES COLLECTED!');
-                console.warn('[ICE-RECIPIENT] This means TURN servers are not working or credentials are wrong.');
+                console.warn('[ICE][RECIPIENT] ⚠️ NO RELAY CANDIDATES COLLECTED!');
+                console.warn('[ICE][RECIPIENT] This means TURN servers are not working or credentials are wrong.');
                 
                 // Check which servers failed
                 if (turnServersFailed.size > 0) {
