@@ -1071,6 +1071,426 @@ function updateConnectionStatusIndicator(win, peerId, isConnected) {
   }
 }
 
+/**
+ * Extract DTLS fingerprint from SDP for peer identity
+ */
+function extractPeerIdentityFromSDP(sdp) {
+  if (!sdp) return null;
+  
+  // Extract DTLS fingerprint from SDP
+  const fingerprintMatch = sdp.match(/a=fingerprint:(\w+)\s+([A-F0-9:]+)/i);
+  if (fingerprintMatch) {
+    return {
+      algorithm: fingerprintMatch[1],
+      fingerprint: fingerprintMatch[2]
+    };
+  }
+  
+  // Fallback: extract ICE ufrag/pwd as identity
+  const ufragMatch = sdp.match(/a=ice-ufrag:(\S+)/);
+  const pwdMatch = sdp.match(/a=ice-pwd:(\S+)/);
+  
+  if (ufragMatch && pwdMatch) {
+    return {
+      ufrag: ufragMatch[1],
+      pwd: pwdMatch[1]
+    };
+  }
+  
+  return null;
+}
+
+/**
+ * Save peer identity to localStorage after successful connection
+ */
+function savePeerIdentity(contactGuid, peerIdentity) {
+  if (!contactGuid || !peerIdentity) return;
+  
+  try {
+    const storageKey = `webos.telecom.peer_identity.${contactGuid}`;
+    const data = {
+      contactGuid,
+      peerIdentity,
+      savedAt: new Date().toISOString(),
+      persistent: true
+    };
+    localStorage.setItem(storageKey, JSON.stringify(data));
+    console.log('[Telecom] ✅ Saved peer identity for contact:', contactGuid);
+  } catch (e) {
+    console.error('[Telecom] ❌ Error saving peer identity:', e);
+  }
+}
+
+/**
+ * Get saved peer identity from localStorage
+ */
+function getPeerIdentity(contactGuid) {
+  if (!contactGuid) return null;
+  
+  try {
+    const storageKey = `webos.telecom.peer_identity.${contactGuid}`;
+    const data = localStorage.getItem(storageKey);
+    if (data) {
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.error('[Telecom] ❌ Error loading peer identity:', e);
+  }
+  
+  return null;
+}
+
+/**
+ * Create control DataChannel for persistent signaling
+ */
+function createControlChannel(pc, contactGuid) {
+  if (!pc || !contactGuid) return null;
+  
+  try {
+    // Check if control channel already exists
+    if (!window._telecomControlChannels) {
+      window._telecomControlChannels = new Map();
+    }
+    
+    const existing = window._telecomControlChannels.get(contactGuid);
+    if (existing && existing.readyState === 'open') {
+      console.log('[Telecom] Control channel already exists for contact:', contactGuid);
+      return existing;
+    }
+    
+    // Create new control channel
+    const controlChannel = pc.createDataChannel('control', {
+      ordered: true
+    });
+    
+    window._telecomControlChannels.set(contactGuid, controlChannel);
+    
+    controlChannel.onopen = () => {
+      console.log('[Telecom] ✅ Control channel opened for contact:', contactGuid);
+    };
+    
+    controlChannel.onerror = (error) => {
+      console.error('[Telecom] ❌ Control channel error for contact:', contactGuid, error);
+    };
+    
+    controlChannel.onclose = () => {
+      console.log('[Telecom] Control channel closed for contact:', contactGuid);
+      window._telecomControlChannels.delete(contactGuid);
+    };
+    
+    console.log('[Telecom] ✅ Created control channel for contact:', contactGuid);
+    return controlChannel;
+  } catch (e) {
+    console.error('[Telecom] ❌ Error creating control channel:', e);
+    return null;
+  }
+}
+
+/**
+ * Setup control channel message handler for reconnect signaling
+ */
+function setupControlChannelHandler(controlChannel, contactGuid, pc, config, storageKey) {
+  if (!controlChannel || !contactGuid || !pc) return;
+  
+  controlChannel.onmessage = async (event) => {
+    try {
+      const messageData = JSON.parse(event.data);
+      
+      // Handle reconnect offer
+      if (messageData.type === 'reconnect-offer' && messageData.offer) {
+        console.log('[Telecom] 🔄 Received reconnect offer from contact:', contactGuid);
+        
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(messageData.offer));
+          const answer = await pc.createAnswer({
+            offerToReceiveAudio: false,
+            offerToReceiveVideo: false
+          });
+          await pc.setLocalDescription(answer);
+          
+          // Send answer back through control channel
+          controlChannel.send(JSON.stringify({
+            type: 'reconnect-answer',
+            answer: answer
+          }));
+          
+          console.log('[Telecom] ✅ Sent reconnect answer to contact:', contactGuid);
+        } catch (e) {
+          console.error('[Telecom] ❌ Error processing reconnect offer:', e);
+        }
+        return;
+      }
+      
+      // Handle reconnect answer
+      if (messageData.type === 'reconnect-answer' && messageData.answer) {
+        console.log('[Telecom] 🔄 Received reconnect answer from contact:', contactGuid);
+        
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(messageData.answer));
+          console.log('[Telecom] ✅ Reconnect answer processed for contact:', contactGuid);
+        } catch (e) {
+          console.error('[Telecom] ❌ Error processing reconnect answer:', e);
+        }
+        return;
+      }
+    } catch (e) {
+      console.error('[Telecom] ❌ Error parsing control channel message:', e);
+    }
+  };
+}
+
+/**
+ * Automatically reconnect to a contact using saved peer identity
+ */
+async function autoReconnectToContact(contactGuid, config, storageKey) {
+  if (!contactGuid || typeof RTCPeerConnection === 'undefined') {
+    return false;
+  }
+  
+  // Check if we have saved peer identity
+  const peerIdentityData = getPeerIdentity(contactGuid);
+  if (!peerIdentityData) {
+    console.log('[Telecom] No saved peer identity for contact:', contactGuid);
+    return false;
+  }
+  
+  console.log('[Telecom] 🔄 Attempting auto-reconnect to contact:', contactGuid);
+  
+  try {
+    // Get ICE servers
+    const iceServers = window.Network ? window.Network.getIceServersConfig() : [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ];
+    
+    // Clean ICE servers
+    const cleanIceServers = [];
+    iceServers.forEach((server) => {
+      const urlsArray = Array.isArray(server.urls) ? server.urls : [server.urls];
+      urlsArray.forEach((url) => {
+        const isTurnUrl = typeof url === 'string' && (url.includes('turn:') || url.includes('turns:'));
+        if (isTurnUrl && (!server.username || !server.credential)) {
+          return;
+        }
+        const clean = { urls: url };
+        if (server.username) clean.username = server.username;
+        if (server.credential) clean.credential = server.credential;
+        cleanIceServers.push(clean);
+      });
+    });
+    
+    // Create new peer connection
+    const pc = new RTCPeerConnection({
+      iceServers: cleanIceServers,
+      iceCandidatePoolSize: 10
+    });
+    
+    // Create control channel first (for signaling)
+    const controlChannel = createControlChannel(pc, contactGuid);
+    if (controlChannel) {
+      setupControlChannelHandler(controlChannel, contactGuid, pc, config, storageKey);
+    }
+    
+    // Create messages channel
+    const dataChannel = pc.createDataChannel('messages', {
+      ordered: true
+    });
+    
+    // Store connections
+    if (!window._telecomPeerConnections) {
+      window._telecomPeerConnections = new Map();
+    }
+    if (!window._telecomDataChannels) {
+      window._telecomDataChannels = new Map();
+    }
+    window._telecomPeerConnections.set(contactGuid, pc);
+    window._telecomDataChannels.set(contactGuid, dataChannel);
+    
+    // Set up data channel handlers - reuse existing handler from processWebRTCAnswer
+    // The handler will be set up when connection is established, but we need basic handlers here
+    dataChannel.onopen = () => {
+      console.log('[Telecom] ✅ Auto-reconnected data channel opened for contact:', contactGuid);
+      updateConnectionStatusForChat(contactGuid, 'connected');
+      
+      // Save peer identity after reconnect
+      try {
+        if (pc.remoteDescription && pc.remoteDescription.sdp) {
+          const peerIdentity = extractPeerIdentityFromSDP(pc.remoteDescription.sdp);
+          if (peerIdentity) {
+            savePeerIdentity(contactGuid, peerIdentity);
+          }
+        }
+      } catch (e) {
+        console.error('[Telecom] Error saving peer identity after reconnect:', e);
+      }
+    };
+    
+    // Set up message handler - reuse the same handler logic from processWebRTCAnswer
+    // We'll set it up properly after reconnect answer is received
+    dataChannel.onmessage = async (event) => {
+      try {
+        const messageData = JSON.parse(event.data);
+        
+        // Handle regular messages (same as existing handler)
+        if (messageData.type === 'message' && messageData.text) {
+          const chatId = `contact-${contactGuid}`;
+          
+          // Decrypt if needed
+          let decryptedText = messageData.text;
+          if (messageData.encrypted) {
+            try {
+              const systemAccount = window.Auth ? window.Auth.getAccount() : null;
+              if (systemAccount && systemAccount.privateKeyEncrypted) {
+                const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+                const foundWinId = telecomWindows.length > 0 ? telecomWindows[0].dataset.winId : null;
+                const privateKey = await getDecryptedPrivateKey(foundWinId);
+                if (privateKey) {
+                  decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
+                } else {
+                  decryptedText = '[Encrypted message - enter password to decrypt]';
+                }
+              } else {
+                decryptedText = '[Encrypted message - decryption failed]';
+              }
+            } catch (e) {
+              console.error('[Telecom] Error decrypting:', e);
+              decryptedText = '[Encrypted message - decryption failed]';
+            }
+          }
+          
+          // Save message
+          const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
+          const messages = getChatMessages(chatId);
+          messages.push({
+            id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+            chatId: chatId,
+            senderId: contactGuid,
+            senderName: messageData.senderName || contactGuid.substring(0, 8) + '...',
+            text: decryptedText,
+            timestamp: messageData.timestamp || new Date().toISOString(),
+            type: 'user',
+            viaWebRTC: true,
+            wasEncrypted: messageData.encrypted || false
+          });
+          localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+          
+          // Update chat
+          const chats = getChats();
+          const chat = chats.find(c => c.id === chatId);
+          if (chat) {
+            chat.lastMessage = {
+              text: decryptedText.length > 50 ? decryptedText.substring(0, 50) + '...' : decryptedText,
+              timestamp: new Date().toISOString()
+            };
+            localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
+          }
+          
+          // Refresh UI
+          if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
+          window._telecomBlinkingChats.add(chatId);
+          blinkChatItem(chatId);
+          
+          const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+          telecomWindows.forEach(winEl => {
+            const winId = winEl.dataset.winId;
+            if (winId) {
+              const win = WindowManager.findWindow(winId);
+              if (win) {
+                const selectedChatId = win.dataset.selectedChatId;
+                const effectiveStorageKey = storageKey || 'webos.telecom.v1';
+                let effectiveConfig = config;
+                if (!effectiveConfig) {
+                  try {
+                    const configData = localStorage.getItem(effectiveStorageKey);
+                    if (configData) effectiveConfig = JSON.parse(configData);
+                  } catch (e) {}
+                }
+                
+                if (selectedChatId === chatId) {
+                  selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
+                } else {
+                  renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                  blinkChatItem(chatId);
+                }
+              }
+            }
+          });
+        }
+      } catch (e) {
+        console.error('[Telecom] Error parsing message:', e);
+      }
+    };
+    
+    // Handle incoming data channels
+    pc.ondatachannel = (event) => {
+      const incomingChannel = event.channel;
+      if (incomingChannel.label === 'control') {
+        window._telecomControlChannels.set(contactGuid, incomingChannel);
+        setupControlChannelHandler(incomingChannel, contactGuid, pc, config, storageKey);
+      } else if (incomingChannel.label === 'messages') {
+        window._telecomDataChannels.set(contactGuid, incomingChannel);
+      }
+    };
+    
+    // Initiate ICE Restart
+    updateConnectionStatusForChat(contactGuid, 'connecting');
+    
+    const offer = await pc.createOffer({
+      offerToReceiveAudio: false,
+      offerToReceiveVideo: false,
+      iceRestart: true
+    });
+    
+    await pc.setLocalDescription(offer);
+    
+    // Wait for control channel to be ready, then send offer
+    const waitForControlChannel = () => {
+      return new Promise((resolve) => {
+        if (controlChannel && controlChannel.readyState === 'open') {
+          resolve();
+        } else {
+          const checkInterval = setInterval(() => {
+            if (controlChannel && controlChannel.readyState === 'open') {
+              clearInterval(checkInterval);
+              resolve();
+            }
+          }, 100);
+          
+          // Timeout after 5 seconds
+          setTimeout(() => {
+            clearInterval(checkInterval);
+            resolve();
+          }, 5000);
+        }
+      });
+    };
+    
+    await waitForControlChannel();
+    
+    if (controlChannel && controlChannel.readyState === 'open') {
+      controlChannel.send(JSON.stringify({
+        type: 'reconnect-offer',
+        offer: offer
+      }));
+      console.log('[Telecom] ✅ Sent reconnect offer through control channel');
+    } else {
+      console.warn('[Telecom] ⚠️ Control channel not ready, reconnect offer will be sent when channel opens');
+      controlChannel.onopen = () => {
+        controlChannel.send(JSON.stringify({
+          type: 'reconnect-offer',
+          offer: pc.localDescription
+        }));
+      };
+    }
+    
+    return true;
+  } catch (e) {
+    console.error('[Telecom] ❌ Error during auto-reconnect:', e);
+    updateConnectionStatusForChat(contactGuid, 'disconnected');
+    return false;
+  }
+}
+
 // WebRTC connection restoration removed - using localStorage-based messaging instead
 
 /**
@@ -1643,6 +2063,22 @@ function formatMessageTime(timestamp) {
  * Select and display a chat
  */
 function selectChat(win, winId, chat, config, storageKey) {
+  // For contact chats, check if we need to auto-reconnect
+  if (chat.type === 'contact' && chat.contactGuid) {
+    const connectionState = getConnectionStateForContact(chat.contactGuid);
+    
+    // If disconnected and we have saved peer identity, try auto-reconnect
+    if (connectionState === 'disconnected') {
+      const peerIdentityData = getPeerIdentity(chat.contactGuid);
+      if (peerIdentityData && peerIdentityData.persistent) {
+        console.log('[Telecom] 🔄 Attempting auto-reconnect for contact:', chat.contactGuid);
+        autoReconnectToContact(chat.contactGuid, config, storageKey).catch(e => {
+          console.error('[Telecom] Auto-reconnect failed:', e);
+        });
+      }
+    }
+  }
+  
   // Update chat header
   const chatHeader = win.querySelector('.telecom-chat-header');
   if (chatHeader) {
@@ -4298,7 +4734,29 @@ function showContactsDialog(win, winId, config, storageKey) {
   actionsContainer.appendChild(acceptInviteBtn);
   actionsSection.appendChild(actionsContainer);
   
-  // Pending invites section
+  // Sent Invites section (all sent invites - pending + accepted)
+  const sentSection = document.createElement('div');
+  sentSection.style.cssText = 'margin-bottom: 24px;';
+  
+  const sentTitle = document.createElement('h4');
+  sentTitle.style.cssText = 'font-size: 14px; font-weight: 500; color: var(--text); margin: 0 0 12px 0;';
+  sentTitle.textContent = I18n.t('telecom.invitesSent') || 'Sent Invites';
+  sentSection.appendChild(sentTitle);
+  
+  const sentInvitesContainer = document.createElement('div');
+  sentInvitesContainer.id = 'telecom-contacts-sent-invites';
+  sentInvitesContainer.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+  
+  if (allSentInvites.length === 0) {
+    sentInvitesContainer.innerHTML = `
+      <div style="padding:20px; text-align:center; color:var(--muted); font-size:13px;">
+        ${I18n.t('telecom.invitesNoSent') || 'No sent invites'}
+      </div>
+    `;
+  }
+  sentSection.appendChild(sentInvitesContainer);
+  
+  // Pending invites section (only received pending invites)
   const pendingSection = document.createElement('div');
   pendingSection.style.cssText = 'margin-bottom: 24px;';
   
@@ -4311,7 +4769,7 @@ function showContactsDialog(win, winId, config, storageKey) {
   pendingInvitesContainer.id = 'telecom-contacts-pending-invites';
   pendingInvitesContainer.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
   
-  if (pendingInvites.length === 0 && receivedPendingInvites.length === 0) {
+  if (receivedPendingInvites.length === 0) {
     pendingInvitesContainer.innerHTML = `
       <div style="padding:20px; text-align:center; color:var(--muted); font-size:13px;">
         ${I18n.t('telecom.invitesNoPending') || 'No pending invites'}
@@ -4320,7 +4778,7 @@ function showContactsDialog(win, winId, config, storageKey) {
   }
   pendingSection.appendChild(pendingInvitesContainer);
   
-  // Accepted invites section
+  // Accepted invites section (only received accepted invites)
   const acceptedSection = document.createElement('div');
   
   const acceptedTitle = document.createElement('h4');
@@ -4332,11 +4790,10 @@ function showContactsDialog(win, winId, config, storageKey) {
   acceptedInvitesContainer.id = 'telecom-contacts-accepted-invites';
   acceptedInvitesContainer.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
   
-  // Filter accepted invites
-  const acceptedSentInvites = allSentInvites.filter(inv => inv.status === 'accepted');
+  // Filter accepted invites (only received)
   const acceptedReceivedInvites = allReceivedInvites.filter(inv => inv.status === 'accepted');
   
-  if (acceptedSentInvites.length === 0 && acceptedReceivedInvites.length === 0) {
+  if (acceptedReceivedInvites.length === 0) {
     acceptedInvitesContainer.innerHTML = `
       <div style="padding:20px; text-align:center; color:var(--muted); font-size:13px;">
         ${I18n.t('telecom.invitesNoAccepted') || 'No accepted invites'}
@@ -4346,6 +4803,7 @@ function showContactsDialog(win, winId, config, storageKey) {
   acceptedSection.appendChild(acceptedInvitesContainer);
   
   invitesTabContent.appendChild(actionsSection);
+  invitesTabContent.appendChild(sentSection);
   invitesTabContent.appendChild(pendingSection);
   invitesTabContent.appendChild(acceptedSection);
   tabContent.appendChild(invitesTabContent);
@@ -4389,18 +4847,26 @@ function showContactsDialog(win, winId, config, storageKey) {
     invitesTabContent.style.display = 'block';
   });
   
-  // Render pending invites in invites tab
-  if (pendingInvites.length > 0) {
-    renderPendingInvitesInInvitesTab(pendingInvitesContainer, pendingInvites, config, storageKey, winId, 'sent');
+  // Render sent invites (all sent invites - pending + accepted)
+  if (allSentInvites.length > 0) {
+    // Separate pending and accepted sent invites
+    const sentPendingInvites = allSentInvites.filter(inv => inv.status === 'pending');
+    const sentAcceptedInvites = allSentInvites.filter(inv => inv.status === 'accepted');
+    
+    if (sentPendingInvites.length > 0) {
+      renderPendingInvitesInInvitesTab(sentInvitesContainer, sentPendingInvites, config, storageKey, winId, 'sent');
+    }
+    if (sentAcceptedInvites.length > 0) {
+      renderAcceptedInvitesInInvitesTab(sentInvitesContainer, sentAcceptedInvites, config, storageKey, winId, 'sent');
+    }
   }
+  
+  // Render pending invites in invites tab (only received)
   if (receivedPendingInvites.length > 0) {
     renderPendingInvitesInInvitesTab(pendingInvitesContainer, receivedPendingInvites, config, storageKey, winId, 'received');
   }
   
-  // Render accepted invites in invites tab
-  if (acceptedSentInvites.length > 0) {
-    renderAcceptedInvitesInInvitesTab(acceptedInvitesContainer, acceptedSentInvites, config, storageKey, winId, 'sent');
-  }
+  // Render accepted invites in invites tab (only received)
   if (acceptedReceivedInvites.length > 0) {
     renderAcceptedInvitesInInvitesTab(acceptedInvitesContainer, acceptedReceivedInvites, config, storageKey, winId, 'received');
   }
@@ -4506,46 +4972,59 @@ function refreshContactsDialog(dialog, config, storageKey, winId) {
     console.log('[Telecom] ⚠️ Contacts list not found in dialog');
   }
   
-  // Refresh Invites tab - Pending section
+  // Refresh Invites tab - Sent section
+  const sentInvitesContainer = dialog.querySelector('#telecom-contacts-sent-invites');
+  if (sentInvitesContainer) {
+    sentInvitesContainer.innerHTML = '';
+    if (allSentInvites.length === 0) {
+      sentInvitesContainer.innerHTML = `
+        <div style="padding:20px; text-align:center; color:var(--muted); font-size:13px;">
+          ${I18n.t('telecom.invitesNoSent') || 'No sent invites'}
+        </div>
+      `;
+    } else {
+      // Separate pending and accepted sent invites
+      const sentPendingInvites = allSentInvites.filter(inv => inv.status === 'pending');
+      const sentAcceptedInvites = allSentInvites.filter(inv => inv.status === 'accepted');
+      
+      if (sentPendingInvites.length > 0) {
+        renderPendingInvitesInInvitesTab(sentInvitesContainer, sentPendingInvites, config, storageKey, winId, 'sent');
+      }
+      if (sentAcceptedInvites.length > 0) {
+        renderAcceptedInvitesInInvitesTab(sentInvitesContainer, sentAcceptedInvites, config, storageKey, winId, 'sent');
+      }
+    }
+  }
+  
+  // Refresh Invites tab - Pending section (only received)
   const pendingInvitesContainer = dialog.querySelector('#telecom-contacts-pending-invites');
   if (pendingInvitesContainer) {
     pendingInvitesContainer.innerHTML = '';
-    if (pendingInvites.length === 0 && receivedPendingInvites.length === 0) {
+    if (receivedPendingInvites.length === 0) {
       pendingInvitesContainer.innerHTML = `
         <div style="padding:20px; text-align:center; color:var(--muted); font-size:13px;">
           ${I18n.t('telecom.invitesNoPending') || 'No pending invites'}
         </div>
       `;
     } else {
-      if (pendingInvites.length > 0) {
-        renderPendingInvitesInInvitesTab(pendingInvitesContainer, pendingInvites, config, storageKey, winId, 'sent');
-      }
-      if (receivedPendingInvites.length > 0) {
-        renderPendingInvitesInInvitesTab(pendingInvitesContainer, receivedPendingInvites, config, storageKey, winId, 'received');
-      }
+      renderPendingInvitesInInvitesTab(pendingInvitesContainer, receivedPendingInvites, config, storageKey, winId, 'received');
     }
   }
   
-  // Refresh Invites tab - Accepted section
+  // Refresh Invites tab - Accepted section (only received)
   const acceptedInvitesContainer = dialog.querySelector('#telecom-contacts-accepted-invites');
   if (acceptedInvitesContainer) {
     acceptedInvitesContainer.innerHTML = '';
-    const acceptedSentInvites = allSentInvites.filter(inv => inv.status === 'accepted');
     const acceptedReceivedInvites = allReceivedInvites.filter(inv => inv.status === 'accepted');
     
-    if (acceptedSentInvites.length === 0 && acceptedReceivedInvites.length === 0) {
+    if (acceptedReceivedInvites.length === 0) {
       acceptedInvitesContainer.innerHTML = `
         <div style="padding:20px; text-align:center; color:var(--muted); font-size:13px;">
           ${I18n.t('telecom.invitesNoAccepted') || 'No accepted invites'}
         </div>
       `;
     } else {
-      if (acceptedSentInvites.length > 0) {
-        renderAcceptedInvitesInInvitesTab(acceptedInvitesContainer, acceptedSentInvites, config, storageKey, winId, 'sent');
-      }
-      if (acceptedReceivedInvites.length > 0) {
-        renderAcceptedInvitesInInvitesTab(acceptedInvitesContainer, acceptedReceivedInvites, config, storageKey, winId, 'received');
-      }
+      renderAcceptedInvitesInInvitesTab(acceptedInvitesContainer, acceptedReceivedInvites, config, storageKey, winId, 'received');
     }
   }
 }
@@ -7765,7 +8244,17 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
         const incomingChannel = event.channel;
         console.log('[Telecom] Incoming data channel (sender):', incomingChannel.label, 'for contact:', targetGuid, 'readyState:', incomingChannel.readyState);
         
-        // Store incoming channel
+        // Handle control channel
+        if (incomingChannel.label === 'control') {
+          if (!window._telecomControlChannels) {
+            window._telecomControlChannels = new Map();
+          }
+          window._telecomControlChannels.set(targetGuid, incomingChannel);
+          setupControlChannelHandler(incomingChannel, targetGuid, pc, null, 'webos.telecom.v1');
+          return;
+        }
+        
+        // Store incoming channel (messages)
         window._telecomDataChannels.set(targetGuid, incomingChannel);
         
         // Set up message handler for trickle ICE candidates and answers
@@ -8772,6 +9261,25 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         dataChannel.onopen = () => {
           console.log('[Telecom] Data channel opened (recipient outgoing):', inviteForAnswer.fromGuid);
           updateConnectionStatusForChat(inviteForAnswer.fromGuid, 'connected');
+          
+          // Save peer identity and create control channel for auto-reconnect
+          try {
+            // Extract peer identity from remote description (offer)
+            if (pc.remoteDescription && pc.remoteDescription.sdp) {
+              const peerIdentity = extractPeerIdentityFromSDP(pc.remoteDescription.sdp);
+              if (peerIdentity) {
+                savePeerIdentity(inviteForAnswer.fromGuid, peerIdentity);
+              }
+            }
+            
+            // Create control channel for persistent signaling
+            const controlChannel = createControlChannel(pc, inviteForAnswer.fromGuid);
+            if (controlChannel) {
+              setupControlChannelHandler(controlChannel, inviteForAnswer.fromGuid, pc, config, storageKey);
+            }
+          } catch (e) {
+            console.error('[Telecom] Error setting up auto-reconnect (recipient):', e);
+          }
         };
         
         dataChannel.onmessage = async (event) => {
@@ -8975,12 +9483,43 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
           const incomingChannel = event.channel;
           console.log('[Telecom] Incoming data channel (recipient):', incomingChannel.label, 'for contact:', inviteForAnswer.fromGuid, 'readyState:', incomingChannel.readyState);
           
-          // Store incoming channel
+          // Handle control channel
+          if (incomingChannel.label === 'control') {
+            if (!window._telecomControlChannels) {
+              window._telecomControlChannels = new Map();
+            }
+            window._telecomControlChannels.set(inviteForAnswer.fromGuid, incomingChannel);
+            setupControlChannelHandler(incomingChannel, inviteForAnswer.fromGuid, pc, config, storageKey);
+            return;
+          }
+          
+          // Store incoming channel (messages)
           window._telecomDataChannels.set(inviteForAnswer.fromGuid, incomingChannel);
           
           incomingChannel.onopen = () => {
             console.log('[Telecom] Incoming data channel opened (recipient):', inviteForAnswer.fromGuid, 'connectionState:', pc.connectionState, 'iceConnectionState:', pc.iceConnectionState);
             updateConnectionStatusForChat(inviteForAnswer.fromGuid, 'connected');
+            
+            // Save peer identity and create control channel for auto-reconnect
+            if (incomingChannel.label === 'messages') {
+              try {
+                // Extract peer identity from remote description (offer)
+                if (pc.remoteDescription && pc.remoteDescription.sdp) {
+                  const peerIdentity = extractPeerIdentityFromSDP(pc.remoteDescription.sdp);
+                  if (peerIdentity) {
+                    savePeerIdentity(inviteForAnswer.fromGuid, peerIdentity);
+                  }
+                }
+                
+                // Create control channel for persistent signaling
+                const controlChannel = createControlChannel(pc, inviteForAnswer.fromGuid);
+                if (controlChannel) {
+                  setupControlChannelHandler(controlChannel, inviteForAnswer.fromGuid, pc, config, storageKey);
+                }
+              } catch (e) {
+                console.error('[Telecom] Error setting up auto-reconnect (recipient incoming):', e);
+              }
+            }
             
             // Automatically send answer via incoming data channel as soon as it opens
             // This is the preferred channel as it's created by sender and will definitely reach sender
@@ -10552,6 +11091,25 @@ async function processWebRTCAnswer(invite, config, storageKey) {
       if (pc.connectionState === 'connected') {
         console.log('[Telecom] ✅ WebRTC connection established with contact:', contactGuid);
         
+        // Save peer identity and create control channel for auto-reconnect
+        try {
+          // Extract peer identity from remote description
+          if (pc.remoteDescription && pc.remoteDescription.sdp) {
+            const peerIdentity = extractPeerIdentityFromSDP(pc.remoteDescription.sdp);
+            if (peerIdentity) {
+              savePeerIdentity(contactGuid, peerIdentity);
+            }
+          }
+          
+          // Create control channel for persistent signaling
+          const controlChannel = createControlChannel(pc, contactGuid);
+          if (controlChannel) {
+            setupControlChannelHandler(controlChannel, contactGuid, pc, config, storageKey);
+          }
+        } catch (e) {
+          console.error('[Telecom] Error setting up auto-reconnect:', e);
+        }
+        
         // Add contact automatically for sender when connection is established
         const contacts = getContacts();
         const existingContact = contacts.find(c => c.guid === contactGuid);
@@ -10849,6 +11407,25 @@ async function processWebRTCAnswer(invite, config, storageKey) {
       dataChannel.onopen = () => {
         console.log('[Telecom] Data channel opened with contact:', contactGuid);
         updateConnectionStatusForChat(contactGuid, 'connected');
+        
+        // Save peer identity and create control channel for auto-reconnect
+        try {
+          // Extract peer identity from remote description (answer)
+          if (pc.remoteDescription && pc.remoteDescription.sdp) {
+            const peerIdentity = extractPeerIdentityFromSDP(pc.remoteDescription.sdp);
+            if (peerIdentity) {
+              savePeerIdentity(contactGuid, peerIdentity);
+            }
+          }
+          
+          // Create control channel for persistent signaling
+          const controlChannel = createControlChannel(pc, contactGuid);
+          if (controlChannel) {
+            setupControlChannelHandler(controlChannel, contactGuid, pc, config, storageKey);
+          }
+        } catch (e) {
+          console.error('[Telecom] Error setting up auto-reconnect (sender):', e);
+        }
       };
       
       dataChannel.onmessage = async (event) => {
