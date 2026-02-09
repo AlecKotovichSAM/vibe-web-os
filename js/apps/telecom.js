@@ -451,6 +451,67 @@ Apps.register({
       
       // Check for invite in URL parameters (for cross-origin)
       checkUrlInvite(id, config, STORAGE_KEY);
+      
+      // Check for one-tap signaling hash (#offer=... or #answer=...)
+      if (window.OneTapTelecom && typeof window.OneTapTelecom.bootstrapFromHash === 'function') {
+        // Handler function for processing hash
+        const processHash = async () => {
+          try {
+            console.log('[Telecom] Checking for one-tap hash in URL:', location.hash);
+            const result = await window.OneTapTelecom.bootstrapFromHash(config);
+            if (result.handled) {
+              console.log('[Telecom] ✅ One-tap signaling handled:', result);
+              // If answer link was created, show it to user in a proper dialog
+              if (result.shareUrl) {
+                console.log('[Telecom] Answer link created, showing dialog...');
+                // Use the same dialog function as for offer links
+                showOneTapLinkDialog(result.shareUrl, 0, 0, id); // tokenBytes/sdpBytes not available here
+              } else if (result.error) {
+                console.error('[Telecom] Error in one-tap processing:', result.error);
+                if (window.Dialog && window.Dialog.alert) {
+                  await window.Dialog.alert('Error processing one-tap connection: ' + (result.error.message || result.error));
+                }
+              }
+            } else {
+              console.log('[Telecom] No one-tap hash found or not handled');
+            }
+          } catch (e) {
+            console.error('[Telecom] ❌ Error handling one-tap hash:', e);
+            console.error('[Telecom] Error stack:', e.stack);
+          }
+        };
+        
+        // Process hash on initial load
+        setTimeout(processHash, 500); // Small delay to ensure UI is ready
+        
+        // Also listen for hash changes (when user pastes link in existing tab)
+        window.addEventListener('hashchange', () => {
+          console.log('[Telecom] Hash changed, processing one-tap hash:', location.hash);
+          processHash();
+        });
+        
+        // Also check periodically (fallback for browsers that don't fire hashchange properly)
+        // But only if hash starts with #offer= or #answer=
+        const hashCheckInterval = setInterval(() => {
+          const hash = location.hash || '';
+          if (hash.startsWith('#offer=') || hash.startsWith('#answer=')) {
+            console.log('[Telecom] Periodic check: one-tap hash detected:', hash.substring(0, 50) + '...');
+            processHash();
+            // Clear hash after processing to prevent repeated processing
+            if (hash.startsWith('#offer=') || hash.startsWith('#answer=')) {
+              // Don't clear immediately - let the handler clear it
+              // Just prevent this interval from firing again for this hash
+            }
+          }
+        }, 1000); // Check every second
+        
+        // Clean up interval when window closes
+        Bus.once('wm:closed', (payload) => {
+          if (payload.id === id) {
+            clearInterval(hashCheckInterval);
+          }
+        });
+      }
     }
   }
 });
@@ -5536,6 +5597,175 @@ function showEnterGuidDialog(win, winId, config, storageKey) {
 }
 
 /**
+ * Show one-tap link dialog with copy functionality
+ */
+function showOneTapLinkDialog(linkUrl, tokenBytes, sdpBytes, winId) {
+  const windowElement = WindowManager.findWindow(winId);
+  if (!windowElement) {
+    console.error('[Telecom] Window not found:', winId);
+    return;
+  }
+
+  const windowContent = windowElement.querySelector('.win-content');
+  if (!windowContent) {
+    console.error('[Telecom] Window content not found');
+    return;
+  }
+
+  // Create backdrop
+  const backdrop = document.createElement('div');
+  backdrop.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  `;
+
+  // Create dialog
+  const dialog = document.createElement('div');
+  dialog.style.cssText = `
+    position: relative;
+    width: 600px;
+    max-width: 90%;
+    max-height: 90vh;
+    background: var(--panel);
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    z-index: 10001;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: fadeIn 0.2s ease;
+  `;
+
+  // Header
+  const header = document.createElement('div');
+  header.style.cssText = `
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--panel-2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  `;
+  header.innerHTML = `
+    <h3 style="margin:0; font-size:18px; font-weight:500;">⚡ One-Tap Connection Link</h3>
+    <button class="telecom-one-tap-link-close" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text); padding:4px 8px; border-radius:4px;">✕</button>
+  `;
+
+  // Content
+  const content = document.createElement('div');
+  content.style.cssText = `
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+  `;
+  content.innerHTML = `
+    <div style="margin-bottom:20px;">
+      <p style="margin:0 0 12px 0; font-size:14px; color:var(--text); line-height:1.5;">
+        Share this link with the recipient. They can open it to automatically connect via One-Tap.
+      </p>
+      <div style="font-size:12px; color:var(--muted); margin-top:8px;">
+        Token size: ${tokenBytes} bytes | SDP: ${sdpBytes} bytes
+      </div>
+    </div>
+    
+    <div style="margin-bottom:20px;">
+      <label style="display:block; font-size:13px; font-weight:500; margin-bottom:8px; color:var(--text);">
+        Connection Link:
+      </label>
+      <textarea id="telecom-one-tap-link-url" readonly
+        style="width:100%; min-height:80px; padding:12px; background:var(--panel-2); border:1px solid var(--panel-2); border-radius:6px; color:var(--text); font-size:12px; font-family:monospace; resize:vertical; outline:none; box-sizing:border-box; word-break:break-all;"
+      >${linkUrl}</textarea>
+    </div>
+    
+    <div style="display:flex; gap:12px; justify-content:flex-end;">
+      <button id="telecom-one-tap-link-copy" 
+        style="padding:10px 20px; background:var(--accent); color:white; border:none; border-radius:6px; cursor:pointer; font-size:14px; font-weight:500;">
+        📋 Copy Link
+      </button>
+      <button id="telecom-one-tap-link-close-btn" 
+        style="padding:10px 20px; background:var(--panel-2); color:var(--text); border:none; border-radius:6px; cursor:pointer; font-size:14px; font-weight:500;">
+        Close
+      </button>
+    </div>
+  `;
+
+  dialog.appendChild(header);
+  dialog.appendChild(content);
+  backdrop.appendChild(dialog);
+  document.body.appendChild(backdrop);
+
+  // Copy button handler
+  const copyBtn = dialog.querySelector('#telecom-one-tap-link-copy');
+  const urlTextarea = dialog.querySelector('#telecom-one-tap-link-url');
+  if (copyBtn && urlTextarea) {
+    copyBtn.addEventListener('click', async () => {
+      urlTextarea.select();
+      try {
+        await navigator.clipboard.writeText(linkUrl);
+        copyBtn.textContent = '✓ Copied!';
+        setTimeout(() => {
+          copyBtn.textContent = '📋 Copy Link';
+        }, 2000);
+      } catch (e) {
+        try {
+          document.execCommand('copy');
+          copyBtn.textContent = '✓ Copied!';
+          setTimeout(() => {
+            copyBtn.textContent = '📋 Copy Link';
+          }, 2000);
+        } catch (err) {
+          console.error('[Telecom] Error copying link:', err);
+          copyBtn.textContent = 'Select & Copy manually';
+          setTimeout(() => {
+            copyBtn.textContent = '📋 Copy Link';
+          }, 3000);
+        }
+      }
+    });
+  }
+
+  // Close handlers
+  const closeBtn = dialog.querySelector('.telecom-one-tap-link-close');
+  const closeBtn2 = dialog.querySelector('#telecom-one-tap-link-close-btn');
+  const closeDialog = () => {
+    backdrop.remove();
+    dialog.remove();
+  };
+
+  if (closeBtn) closeBtn.addEventListener('click', closeDialog);
+  if (closeBtn2) closeBtn2.addEventListener('click', closeDialog);
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) {
+      closeDialog();
+    }
+  });
+
+  // Close on Escape key
+  const handleEscape = (e) => {
+    if (e.key === 'Escape') {
+      closeDialog();
+      document.removeEventListener('keydown', handleEscape);
+    }
+  };
+  document.addEventListener('keydown', handleEscape);
+
+  // Focus textarea
+  setTimeout(() => {
+    if (urlTextarea) {
+      urlTextarea.focus();
+      urlTextarea.select();
+    }
+  }, 100);
+}
+
+/**
  * Show Create Invite dialog - displays invite data for sharing
  * @param {Object} existingInvite - Optional: if provided, shows existing invite instead of creating new one
  */
@@ -5917,12 +6147,16 @@ async function showCreateInviteDialog(win, winId, config, storageKey, existingIn
     </div>
 
     <div style="display:flex; gap:12px; justify-content:flex-end;">
+      <button id="telecom-create-invite-one-tap" 
+        style="padding:10px 20px; background:var(--accent); color:white; border:none; border-radius:6px; cursor:pointer; font-size:14px; font-weight:500; opacity:0.9;">
+        ⚡ One-Tap Connect
+      </button>
       <button id="telecom-create-invite-copy-qr" 
         style="padding:10px 20px; background:var(--panel-2); color:var(--text); border:none; border-radius:6px; cursor:pointer; font-size:14px; font-weight:500;">
         📷 Copy QR Code
       </button>
       <button id="telecom-create-invite-copy" 
-        style="padding:10px 20px; background:var(--accent); color:white; border:none; border-radius:6px; cursor:pointer; font-size:14px; font-weight:500;">
+        style="padding:10px 20px; background:var(--panel-2); color:var(--text); border:none; border-radius:6px; cursor:pointer; font-size:14px; font-weight:500;">
         📋 Copy JSON
       </button>
       <button id="telecom-create-invite-close-btn" 
@@ -6043,6 +6277,7 @@ async function showCreateInviteDialog(win, winId, config, storageKey, existingIn
   const closeBtn2 = nestedDialog.querySelector('#telecom-create-invite-close-btn');
   const copyBtn = nestedDialog.querySelector('#telecom-create-invite-copy');
   const copyQrBtn = nestedDialog.querySelector('#telecom-create-invite-copy-qr');
+  const oneTapBtn = nestedDialog.querySelector('#telecom-create-invite-one-tap');
   const jsonTextarea = nestedDialog.querySelector('#telecom-create-invite-json');
 
   const closeDialog = () => {
@@ -6137,6 +6372,78 @@ async function showCreateInviteDialog(win, winId, config, storageKey, existingIn
       });
     }
   });
+
+  // Handle One-Tap Connect button
+  if (oneTapBtn && window.OneTapTelecom && typeof window.OneTapTelecom.createOfferLink === 'function') {
+    oneTapBtn.addEventListener('click', async () => {
+      try {
+        console.log('[Telecom] One-Tap button clicked, invite:', invite);
+        oneTapBtn.disabled = true;
+        oneTapBtn.textContent = '⏳ Creating link...';
+        
+        // Get target GUID from invite
+        if (!invite) {
+          throw new Error('Invite object not found');
+        }
+        const targetGuid = invite.toGuid;
+        console.log('[Telecom] Target GUID:', targetGuid);
+        if (!targetGuid) {
+          throw new Error('Target GUID not found in invite. Invite object: ' + JSON.stringify(invite, null, 2));
+        }
+
+        console.log('[Telecom] Calling OneTapTelecom.createOfferLink...');
+        // Create one-tap offer link
+        const link = await window.OneTapTelecom.createOfferLink(targetGuid, config);
+        console.log('[Telecom] ✅ Link created:', link);
+        
+        // Share link using Web Share API if available
+        if (navigator.share) {
+          try {
+            await navigator.share({
+              title: document.title || 'Telecom Invite',
+              url: link.url,
+              text: 'Connect via One-Tap'
+            });
+            oneTapBtn.textContent = '✓ Shared!';
+            setTimeout(() => {
+              oneTapBtn.textContent = '⚡ One-Tap Connect';
+              oneTapBtn.disabled = false;
+            }, 2000);
+            // Close dialog after successful share
+            setTimeout(() => {
+              closeDialog();
+            }, 2500);
+          } catch (shareError) {
+            // User cancelled or share failed - show link in custom dialog
+            console.log('[Telecom] Share cancelled or failed:', shareError);
+            showOneTapLinkDialog(link.url, link.tokenBytes, link.sdpBytes, winId);
+            oneTapBtn.textContent = '⚡ One-Tap Connect';
+            oneTapBtn.disabled = false;
+          }
+        } else {
+          // Fallback: show link in custom dialog
+          showOneTapLinkDialog(link.url, link.tokenBytes, link.sdpBytes, winId);
+          oneTapBtn.textContent = '⚡ One-Tap Connect';
+          oneTapBtn.disabled = false;
+        }
+      } catch (error) {
+        console.error('[Telecom] Error creating one-tap link:', error);
+        oneTapBtn.textContent = '❌ Error';
+        setTimeout(() => {
+          oneTapBtn.textContent = '⚡ One-Tap Connect';
+          oneTapBtn.disabled = false;
+        }, 2000);
+        if (window.Dialog && window.Dialog.alert) {
+          await window.Dialog.alert('Failed to create one-tap link: ' + (error.message || error));
+        } else {
+          alert('Failed to create one-tap link: ' + (error.message || error));
+        }
+      }
+    });
+  } else if (oneTapBtn) {
+    // Hide button if OneTapTelecom is not available
+    oneTapBtn.style.display = 'none';
+  }
 
   // Close on backdrop click
   nestedBackdrop.addEventListener('click', (e) => {
@@ -12956,3 +13263,1463 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
     }
   });
 }
+
+/**
+ * One-Tap Signaling Integration for Telecom
+ * Provides one-click WebRTC connection setup via URL hash fragments
+ */
+(function (global) {
+  'use strict';
+  
+  // Only initialize if OneTap module is available
+  if (!global.OneTap) {
+    console.warn('[OneTapTelecom] OneTap module not available');
+    return;
+  }
+
+  const OneTapTelecom = {};
+
+  /**
+   * Get ICE servers from Network module configuration
+   */
+  function getIceServersSafe(config) {
+    try {
+      if (global.Network && typeof global.Network.getIceServersConfig === 'function') {
+        return global.Network.getIceServersConfig();
+      }
+      // Fallback to default STUN servers
+      return [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ];
+    } catch (e) {
+      console.warn('[OneTapTelecom] Error getting ICE servers:', e);
+      return [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ];
+    }
+  }
+
+  /**
+   * Ensure peer connection exists for contact, create if needed
+   */
+  OneTapTelecom.ensurePeerForContact = function (contactGuid, config) {
+    global._telecomPeerConnections = global._telecomPeerConnections || new Map();
+    
+    if (global._telecomPeerConnections.has(contactGuid)) {
+      return global._telecomPeerConnections.get(contactGuid);
+    }
+
+    const iceServers = getIceServersSafe(config);
+    
+    // Clean ICE servers (same logic as in handleInviteResponse)
+    const cleanIceServers = [];
+    iceServers.forEach((server) => {
+      const urlsArray = Array.isArray(server.urls) ? server.urls : [server.urls];
+      const isTurnServer = urlsArray.some(url => 
+        typeof url === 'string' && (url.includes('turn:') || url.includes('turns:'))
+      );
+      
+      if (isTurnServer && (!server.username || !server.credential || server.username === '' || server.credential === '')) {
+        return; // Skip TURN servers without credentials
+      }
+      
+      urlsArray.forEach((url) => {
+        const isTurnUrl = typeof url === 'string' && (url.includes('turn:') || url.includes('turns:'));
+        if (isTurnUrl && (!server.username || !server.credential || server.username === '' || server.credential === '')) {
+          return; // Skip TURN URLs without credentials
+        }
+        
+        const clean = { urls: url };
+        if (server.username) clean.username = server.username;
+        if (server.credential) clean.credential = server.credential;
+        cleanIceServers.push(clean);
+      });
+    });
+
+    const pc = new RTCPeerConnection({ 
+      iceServers: cleanIceServers,
+      iceCandidatePoolSize: 10
+    });
+    
+    global._telecomPeerConnections.set(contactGuid, pc);
+
+    // Handle incoming data channels
+    pc.ondatachannel = (e) => {
+      const ch = e.channel;
+      global._telecomDataChannels = global._telecomDataChannels || new Map();
+      global._telecomControlChannels = global._telecomControlChannels || new Map();
+      
+      if (ch.label === 'messages') {
+        global._telecomDataChannels.set(contactGuid, ch);
+        ch.onopen = () => {
+          console.log('[OneTapTelecom] messages channel open', contactGuid);
+          // Set up message handler when channel opens (for incoming channels)
+          ch.onmessage = async (event) => {
+            try {
+              const messageData = JSON.parse(event.data);
+              console.log('[OneTapTelecom] 📥 Received message via incoming WebRTC channel:', {
+                contactGuid: contactGuid,
+                type: messageData.type,
+                encrypted: messageData.encrypted || false
+              });
+              
+              // Handle regular messages (same as existing handler)
+              if (messageData.type === 'message' && messageData.text) {
+                const chatId = `contact-${contactGuid}`;
+                
+                // Decrypt if needed
+                let decryptedText = messageData.text;
+                if (messageData.encrypted) {
+                  try {
+                    const systemAccount = window.Auth ? window.Auth.getAccount() : null;
+                    if (systemAccount && systemAccount.privateKeyEncrypted) {
+                      const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+                      const foundWinId = telecomWindows.length > 0 ? telecomWindows[0].dataset.winId : null;
+                      const privateKey = await getDecryptedPrivateKey(foundWinId);
+                      if (privateKey) {
+                        decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
+                      } else {
+                        decryptedText = '[Encrypted message - enter password to decrypt]';
+                      }
+                    } else {
+                      decryptedText = '[Encrypted message - decryption failed]';
+                    }
+                  } catch (e) {
+                    console.error('[OneTapTelecom] Error decrypting:', e);
+                    decryptedText = '[Encrypted message - decryption failed]';
+                  }
+                }
+                
+                // Save message
+                const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
+                const messages = getChatMessages(chatId);
+                messages.push({
+                  id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+                  chatId: chatId,
+                  senderId: contactGuid,
+                  senderName: messageData.senderName || contactGuid.substring(0, 8) + '...',
+                  text: decryptedText,
+                  timestamp: messageData.timestamp || new Date().toISOString(),
+                  type: 'user',
+                  viaWebRTC: true,
+                  wasEncrypted: messageData.encrypted || false
+                });
+                localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+                
+                // Update chat
+                const chats = getChats();
+                const chat = chats.find(c => c.id === chatId);
+                if (chat) {
+                  chat.lastMessage = {
+                    text: decryptedText.length > 50 ? decryptedText.substring(0, 50) + '...' : decryptedText,
+                    timestamp: new Date().toISOString()
+                  };
+                  localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
+                }
+                
+                // Refresh UI
+                if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
+                window._telecomBlinkingChats.add(chatId);
+                blinkChatItem(chatId);
+                
+                const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+                telecomWindows.forEach(winEl => {
+                  const winId = winEl.dataset.winId;
+                  if (winId) {
+                    const win = WindowManager.findWindow(winId);
+                    if (win) {
+                      const selectedChatId = win.dataset.selectedChatId;
+                      const effectiveStorageKey = 'webos.telecom.v1';
+                      let effectiveConfig = null;
+                      try {
+                        const configData = localStorage.getItem(effectiveStorageKey);
+                        if (configData) effectiveConfig = JSON.parse(configData);
+                      } catch (e) {}
+                      
+                      if (selectedChatId === chatId) {
+                        const chat = chats.find(c => c.id === chatId);
+                        if (chat) {
+                          selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
+                        }
+                      } else {
+                        renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                        blinkChatItem(chatId);
+                      }
+                    }
+                  }
+                });
+              }
+            } catch (e) {
+              console.error('[OneTapTelecom] Error parsing incoming message:', e);
+            }
+          };
+        };
+        ch.onclose = () => console.log('[OneTapTelecom] messages channel close', contactGuid);
+        ch.onerror = (err) => console.warn('[OneTapTelecom] messages channel error', contactGuid, err);
+      } else if (ch.label === 'control') {
+        global._telecomControlChannels.set(contactGuid, ch);
+        if (typeof setupControlChannelHandler === 'function') {
+          try {
+            const STORAGE_KEY = 'webos.telecom.v1';
+            let telecomConfig = null;
+            try {
+              const configData = localStorage.getItem(STORAGE_KEY);
+              if (configData) {
+                telecomConfig = JSON.parse(configData);
+              }
+            } catch (e) {
+              console.warn('[OneTapTelecom] Error loading config:', e);
+            }
+            setupControlChannelHandler(ch, contactGuid, pc, telecomConfig, 'webos.telecom.v1');
+          } catch (e) {
+            console.warn('[OneTapTelecom] Error setting up control channel handler:', e);
+          }
+        }
+        ch.onopen = () => console.log('[OneTapTelecom] control channel open', contactGuid);
+        ch.onclose = () => console.log('[OneTapTelecom] control channel close', contactGuid);
+        ch.onerror = (err) => console.warn('[OneTapTelecom] control channel error', contactGuid, err);
+      }
+    };
+
+    // Optional: log selected ICE pair
+    if (global.OneTap.logSelectedIcePairOnceConnected) {
+      global.OneTap.logSelectedIcePairOnceConnected(pc);
+    }
+
+    return pc;
+  };
+
+  /**
+   * Create one-tap offer link for a contact
+   * This creates a peer connection, generates offer, and returns a shareable link
+   */
+  OneTapTelecom.createOfferLink = async function (contactGuid, config) {
+    console.log('[OneTapTelecom] createOfferLink called for contact:', contactGuid);
+    try {
+      console.log('[OneTapTelecom] Ensuring peer connection...');
+      const pc = OneTapTelecom.ensurePeerForContact(contactGuid, config);
+      console.log('[OneTapTelecom] Peer connection ready, state:', pc.connectionState, 'signalingState:', pc.signalingState);
+
+      // Create data channels (same as in sendContactInvite)
+      global._telecomDataChannels = global._telecomDataChannels || new Map();
+      global._telecomControlChannels = global._telecomControlChannels || new Map();
+
+      console.log('[OneTapTelecom] Creating data channels...');
+      const dcMessages = pc.createDataChannel('messages', { ordered: true });
+      global._telecomDataChannels.set(contactGuid, dcMessages);
+      dcMessages.onopen = () => console.log('[OneTapTelecom] messages channel created', contactGuid);
+      dcMessages.onclose = () => console.log('[OneTapTelecom] messages channel closed', contactGuid);
+
+      const dcControl = pc.createDataChannel('control', { ordered: true });
+      global._telecomControlChannels.set(contactGuid, dcControl);
+      if (typeof setupControlChannelHandler === 'function') {
+        try {
+          setupControlChannelHandler(dcControl, contactGuid, pc, config, 'webos.telecom.v1');
+        } catch (e) {
+          console.warn('[OneTapTelecom] Error setting up control channel:', e);
+        }
+      }
+      dcControl.onopen = () => console.log('[OneTapTelecom] control channel created', contactGuid);
+      dcControl.onclose = () => console.log('[OneTapTelecom] control channel closed', contactGuid);
+
+      // Get sender's GUID (fromGuid) and recipient's GUID (toGuid)
+      const senderGuid = getEffectiveGuid(config);
+      const recipientGuid = contactGuid; // This is the target contact (recipient)
+      console.log('[OneTapTelecom] Sender GUID (fromGuid):', senderGuid, 'Recipient GUID (toGuid):', recipientGuid);
+
+      console.log('[OneTapTelecom] Calling OneTap.createOfferLink...');
+      // Create offer link with metadata
+      // IMPORTANT: Pass both fromGuid and toGuid in meta
+      // Recipient will verify that toGuid matches their GUID, then use fromGuid to create chat
+      const link = await global.OneTap.createOfferLink(pc, {
+        appUrl: location.origin + location.pathname,
+        isPolite: false, // Initiator is not polite
+        gzip: true, // Enable compression (fallback to uncompressed if fails)
+        meta: { 
+          fromGuid: senderGuid, // Sender's GUID - recipient will use this to create chat
+          toGuid: recipientGuid // Recipient's GUID - recipient will verify this matches their GUID
+        }
+      });
+
+      console.log('[OneTapTelecom] ✅ Offer link created:', {
+        url: link.url.substring(0, 100) + '...',
+        tokenBytes: link.tokenBytes,
+        sdpBytes: link.sdpBytes
+      });
+      
+      // Save offer SDP to localStorage so we can restore it if PC is lost
+      // This is critical for one-tap: if user reloads page, PC is lost, but answer
+      // was created for this specific offer, so we need to restore it
+      try {
+        const OFFER_STORAGE_KEY = `webos.telecom.onetap.offer.${contactGuid}`;
+        const offerData = {
+          sdp: pc.localDescription.sdp,
+          type: pc.localDescription.type,
+          createdAt: new Date().toISOString(),
+          contactGuid: contactGuid
+        };
+        localStorage.setItem(OFFER_STORAGE_KEY, JSON.stringify(offerData));
+        console.log('[OneTapTelecom] ✅ Offer SDP saved to localStorage');
+      } catch (e) {
+        console.warn('[OneTapTelecom] ⚠️ Failed to save offer SDP:', e);
+      }
+
+      return link;
+    } catch (error) {
+      console.error('[OneTapTelecom] ❌ Error creating offer link:', error);
+      console.error('[OneTapTelecom] Error stack:', error.stack);
+      throw error;
+    }
+  };
+
+  /**
+   * Handle incoming offer from URL hash and produce answer link
+   */
+  OneTapTelecom.handleIncomingOfferFromUrl = async function (config) {
+    console.log('[OneTapTelecom] handleIncomingOfferFromUrl called');
+    const hash = location.hash || '';
+    console.log('[OneTapTelecom] Hash:', hash.substring(0, 50) + '...');
+    if (!hash.startsWith('#offer=')) {
+      console.log('[OneTapTelecom] Hash does not start with #offer=');
+      return { handled: false };
+    }
+
+    try {
+      console.log('[OneTapTelecom] Extracting contactGuid from token...');
+      // Extract contactGuid from token metadata (without applying to PC yet)
+      const tokenB64 = hash.slice('#offer='.length);
+      console.log('[OneTapTelecom] Token length:', tokenB64.length);
+      
+      // Use OneTap.unpack instead of manual unpacking - it's more reliable
+      let fromGuid = null;
+      let toGuid = null;
+      try {
+        console.log('[OneTapTelecom] Unpacking token to get metadata...');
+        const data = await global.OneTap.unpack ? 
+          await global.OneTap.unpack(tokenB64, { gzip: true }) :
+          null;
+        
+        if (data && data.meta) {
+          fromGuid = data.meta.fromGuid; // Sender's GUID
+          toGuid = data.meta.toGuid; // Recipient's GUID
+          console.log('[OneTapTelecom] Metadata extracted:', { fromGuid, toGuid });
+        } else {
+          console.warn('[OneTapTelecom] No meta in unpacked data');
+          // Fallback: try old format with contactGuid
+          if (data && data.meta && data.meta.contactGuid) {
+            fromGuid = data.meta.contactGuid;
+            console.warn('[OneTapTelecom] Using old format (contactGuid as fromGuid):', fromGuid);
+          }
+        }
+      } catch (e) {
+        console.error('[OneTapTelecom] Error extracting metadata from token:', e);
+        console.error('[OneTapTelecom] Error stack:', e.stack);
+      }
+
+      if (!fromGuid) {
+        console.warn('[OneTapTelecom] No fromGuid in offer token, cannot proceed');
+        return { handled: false };
+      }
+
+      // Verify that this offer is for the current user (recipient)
+      const effectiveGuid = getEffectiveGuid(config);
+      if (toGuid && toGuid !== effectiveGuid) {
+        console.warn('[OneTapTelecom] ⚠️ Offer is not for this user!', {
+          offerToGuid: toGuid,
+          currentUserGuid: effectiveGuid
+        });
+        // Still proceed, but log warning
+      } else if (toGuid) {
+        console.log('[OneTapTelecom] ✅ Offer verified: toGuid matches current user');
+      } else {
+        console.warn('[OneTapTelecom] ⚠️ No toGuid in offer metadata, cannot verify recipient');
+      }
+
+      // Use fromGuid as contactGuid (sender's GUID) for peer connection and chat creation
+      const contactGuid = fromGuid;
+
+      console.log('[OneTapTelecom] Ensuring peer connection for contact:', contactGuid);
+      // Ensure peer connection exists
+      const pc = OneTapTelecom.ensurePeerForContact(contactGuid, config);
+      console.log('[OneTapTelecom] Peer connection ready');
+
+      console.log('[OneTapTelecom] Calling OneTap.handleIncomingOfferAndProduceAnswer...');
+      // Get sender's GUID (fromGuid) and recipient's GUID (toGuid) for answer metadata
+      // effectiveGuid was already declared above, reuse it
+      const senderGuid = contactGuid; // contactGuid is fromGuid (sender's GUID) from offer
+      const recipientGuid = effectiveGuid; // Current user is the recipient
+      
+      console.log('[OneTapTelecom] [RECIPIENT] Answer metadata:', {
+        fromGuid: recipientGuid, // Recipient's GUID (who is creating the answer) - this is the current user
+        toGuid: senderGuid // Sender's GUID (who sent the offer) - initiator will use this to find saved offer
+      });
+      
+      // Handle offer and produce answer
+      // IMPORTANT: In answer, fromGuid is who created the answer (recipient), toGuid is who should receive it (initiator)
+      // But for finding saved offer, initiator needs to use toGuid (their own GUID) or fromGuid (recipient's GUID)?
+      // Actually, offer was saved with key: webos.telecom.onetap.offer.${recipientGuid}
+      // So initiator should use fromGuid (recipient's GUID) from answer to find saved offer
+      const res = await global.OneTap.handleIncomingOfferAndProduceAnswer(pc, {
+        isPolite: true, // Recipient is polite
+        gzip: true,
+        autoShare: true,
+        answerMeta: { 
+          fromGuid: recipientGuid, // Recipient's GUID (who is creating the answer) - initiator will use this to find saved offer
+          toGuid: senderGuid // Sender's GUID (who sent the offer) - for reference
+        }
+      });
+
+      console.log('[OneTapTelecom] handleIncomingOfferAndProduceAnswer result:', res);
+      if (res.handled && res.shareUrl) {
+        console.log('[OneTapTelecom] ✅ Answer link created:', res.shareUrl.substring(0, 100) + '...');
+        
+        // Add contact and create chat (same logic as handleInviteResponse)
+        try {
+          const effectiveGuid = getEffectiveGuid(config);
+          if (effectiveGuid) {
+            // Find invite in recipient storage (where we received it)
+            const RECIPIENT_STORAGE_KEY = `webos.telecom.invites.${effectiveGuid}.v1`;
+            const recipientInvitesData = localStorage.getItem(RECIPIENT_STORAGE_KEY);
+            if (recipientInvitesData) {
+              const recipientInvites = JSON.parse(recipientInvitesData);
+              // contactGuid is now fromGuid (sender's GUID) from offer metadata
+              // Find invite by fromGuid to get full invite data
+              const invite = recipientInvites.find(inv => 
+                inv.fromGuid === contactGuid && inv.status === 'pending'
+              );
+              
+              // Use contactGuid (fromGuid) as the sender's GUID for creating chat
+              const correctContactGuid = contactGuid; // This is sender's GUID (fromGuid)
+              console.log('[OneTapTelecom] [RECIPIENT] Found invite:', {
+                found: !!invite,
+                inviteFromGuid: invite?.fromGuid,
+                inviteToGuid: invite?.toGuid,
+                effectiveGuid: effectiveGuid,
+                fromGuidFromOffer: contactGuid, // This is sender's GUID (fromGuid)
+                correctContactGuid: correctContactGuid
+              });
+              
+              if (!invite) {
+                console.warn('[OneTapTelecom] [RECIPIENT] ⚠️ No pending invite found for sender GUID:', contactGuid);
+                console.warn('[OneTapTelecom] [RECIPIENT] Available invites:', recipientInvites.map(inv => ({
+                  id: inv.id,
+                  fromGuid: inv.fromGuid,
+                  toGuid: inv.toGuid,
+                  status: inv.status
+                })));
+              }
+              
+              if (invite && correctContactGuid) {
+                console.log('[OneTapTelecom] [RECIPIENT] Found pending invite, accepting it...');
+                console.log('[OneTapTelecom] [RECIPIENT] Sender GUID (fromGuid):', correctContactGuid);
+                console.log('[OneTapTelecom] [RECIPIENT] Recipient GUID (toGuid):', invite.toGuid);
+                
+                // Update invite status to accepted
+                invite.status = 'accepted';
+                invite.respondedAt = new Date().toISOString();
+                localStorage.setItem(RECIPIENT_STORAGE_KEY, JSON.stringify(recipientInvites));
+                
+                // Also update in sent invites storage (by sender's GUID)
+                const SENT_INVITES_STORAGE_KEY = `webos.telecom.sent_invites.guid_from.${correctContactGuid}`;
+                try {
+                  const sentInvitesData = localStorage.getItem(SENT_INVITES_STORAGE_KEY);
+                  if (sentInvitesData) {
+                    const sentInvites = JSON.parse(sentInvitesData);
+                    const sentInviteIndex = sentInvites.findIndex(inv => inv.id === invite.id);
+                    if (sentInviteIndex !== -1) {
+                      sentInvites[sentInviteIndex].status = 'accepted';
+                      sentInvites[sentInviteIndex].respondedAt = new Date().toISOString();
+                      localStorage.setItem(SENT_INVITES_STORAGE_KEY, JSON.stringify(sentInvites));
+                    }
+                  }
+                } catch (e) {
+                  console.warn('[OneTapTelecom] [RECIPIENT] Error updating sent invites:', e);
+                }
+                
+                // Add contact if not exists (use correctContactGuid from invite.fromGuid - sender's GUID)
+                const contacts = getContacts();
+                const existingContact = contacts.find(c => c.guid === correctContactGuid);
+                if (!existingContact) {
+                  const newContact = {
+                    guid: correctContactGuid,
+                    username: invite.fromUsername || null,
+                    displayName: invite.fromDisplayName || invite.fromUsername || correctContactGuid.substring(0, 8) + '...',
+                    firstName: invite.fromFirstName || null,
+                    lastName: invite.fromLastName || null,
+                    email: invite.fromEmail || null,
+                    publicKey: invite.fromPublicKey || null,
+                    addedAt: new Date().toISOString()
+                  };
+                  contacts.push(newContact);
+                  saveContacts(contacts);
+                  console.log('[OneTapTelecom] [RECIPIENT] ✅ Contact added:', correctContactGuid, 'displayName:', newContact.displayName);
+                  
+                  // Verify contact was saved
+                  const savedContacts = getContacts();
+                  const savedContact = savedContacts.find(c => c.guid === correctContactGuid);
+                  if (savedContact) {
+                    console.log('[OneTapTelecom] [RECIPIENT] ✅ Contact verified in storage');
+                  } else {
+                    console.error('[OneTapTelecom] [RECIPIENT] ❌ Contact NOT found in storage after save!');
+                  }
+                } else {
+                  console.log('[OneTapTelecom] [RECIPIENT] Contact already exists:', correctContactGuid);
+                  // Update existing contact with public key if missing
+                  if (!existingContact.publicKey && invite.fromPublicKey) {
+                    existingContact.publicKey = invite.fromPublicKey;
+                    existingContact.username = existingContact.username || invite.fromUsername;
+                    existingContact.displayName = existingContact.displayName || invite.fromDisplayName || invite.fromUsername;
+                    existingContact.firstName = existingContact.firstName || invite.fromFirstName;
+                    existingContact.lastName = existingContact.lastName || invite.fromLastName;
+                    existingContact.email = existingContact.email || invite.fromEmail;
+                    saveContacts(contacts);
+                    console.log('[OneTapTelecom] [RECIPIENT] ✅ Updated existing contact with public key:', correctContactGuid);
+                  }
+                }
+                
+                // Create chat if not exists (use correctContactGuid from invite.fromGuid - sender's GUID)
+                const chats = getChats();
+                const chatId = `contact-${correctContactGuid}`;
+                if (!chats.find(c => c.id === chatId)) {
+                  chats.push({
+                    id: chatId,
+                    name: invite.fromDisplayName || invite.fromUsername || correctContactGuid.substring(0, 8) + '...',
+                    type: 'contact',
+                    contactGuid: correctContactGuid,
+                    createdAt: new Date().toISOString()
+                  });
+                  localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
+                  console.log('[OneTapTelecom] [RECIPIENT] ✅ Chat created:', chatId, 'with contact:', correctContactGuid);
+                  
+                  // Verify chat was saved
+                  const savedChats = getChats();
+                  const savedChat = savedChats.find(c => c.id === chatId);
+                  if (savedChat) {
+                    console.log('[OneTapTelecom] [RECIPIENT] ✅ Chat verified in storage');
+                  } else {
+                    console.error('[OneTapTelecom] [RECIPIENT] ❌ Chat NOT found in storage after save!');
+                  }
+                  
+                  // Refresh UI
+                  const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+                  telecomWindows.forEach(winEl => {
+                    const winId = winEl.dataset.winId;
+                    if (winId) {
+                      const win = WindowManager.findWindow(winId);
+                      if (win) {
+                        const effectiveStorageKey = 'webos.telecom.v1';
+                        let effectiveConfig = config;
+                        if (!effectiveConfig) {
+                          try {
+                            const configData = localStorage.getItem(effectiveStorageKey);
+                            if (configData) effectiveConfig = JSON.parse(configData);
+                          } catch (e) {}
+                        }
+                        renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                      }
+                    }
+                  });
+                }
+              } else {
+                console.log('[OneTapTelecom] No pending invite found for contactGuid:', contactGuid);
+                // Even if invite not found, add contact and create chat with minimal data
+                const contacts = getContacts();
+                const existingContact = contacts.find(c => c.guid === contactGuid);
+                if (!existingContact) {
+                  const newContact = {
+                    guid: contactGuid,
+                    username: null,
+                    displayName: contactGuid.substring(0, 8) + '...',
+                    firstName: null,
+                    lastName: null,
+                    email: null,
+                    publicKey: null,
+                    addedAt: new Date().toISOString()
+                  };
+                  contacts.push(newContact);
+                  saveContacts(contacts);
+                  console.log('[OneTapTelecom] ✅ Contact added (no invite):', contactGuid);
+                }
+                
+                // Create chat if not exists
+                const chats = getChats();
+                const chatId = `contact-${contactGuid}`;
+                if (!chats.find(c => c.id === chatId)) {
+                  chats.push({
+                    id: chatId,
+                    name: contactGuid.substring(0, 8) + '...',
+                    type: 'contact',
+                    contactGuid: contactGuid,
+                    createdAt: new Date().toISOString()
+                  });
+                  localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
+                  console.log('[OneTapTelecom] ✅ Chat created (no invite):', chatId);
+                  
+                  // Refresh UI
+                  const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+                  telecomWindows.forEach(winEl => {
+                    const winId = winEl.dataset.winId;
+                    if (winId) {
+                      const win = WindowManager.findWindow(winId);
+                      if (win) {
+                        const effectiveStorageKey = 'webos.telecom.v1';
+                        let effectiveConfig = config;
+                        if (!effectiveConfig) {
+                          try {
+                            const configData = localStorage.getItem(effectiveStorageKey);
+                            if (configData) effectiveConfig = JSON.parse(configData);
+                          } catch (e) {}
+                        }
+                        renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                      }
+                    }
+                  });
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.error('[OneTapTelecom] Error adding contact/chat:', e);
+        }
+        
+        // Set up message handlers for data channels (recipient side)
+        // This is critical - without this, messages won't be received!
+        try {
+          console.log('[OneTapTelecom] Setting up message handlers for recipient...');
+          
+          // Get data channels
+          const messagesChannel = global._telecomDataChannels?.get(contactGuid);
+          const controlChannel = global._telecomControlChannels?.get(contactGuid);
+          
+          // Set up connection state monitoring
+          pc.onconnectionstatechange = () => {
+            console.log('[OneTapTelecom] [RECIPIENT] Connection state changed:', pc.connectionState, 'for contact:', contactGuid);
+            if (pc.connectionState === 'connected') {
+              console.log('[OneTapTelecom] [RECIPIENT] 🎉 Connection established!');
+            } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+              console.warn('[OneTapTelecom] [RECIPIENT] ⚠️ Connection failed or disconnected');
+            }
+          };
+          
+          pc.oniceconnectionstatechange = () => {
+            console.log('[OneTapTelecom] [RECIPIENT] ICE connection state changed:', pc.iceConnectionState, 'for contact:', contactGuid);
+            if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+              console.log('[OneTapTelecom] [RECIPIENT] 🎉 ICE connection established!');
+            } else if (pc.iceConnectionState === 'failed') {
+              console.error('[OneTapTelecom] [RECIPIENT] ❌ ICE connection failed');
+            }
+          };
+          
+          // Set up message handler for messages channel
+          if (messagesChannel) {
+            messagesChannel.onopen = () => {
+              console.log('[OneTapTelecom] [RECIPIENT] 🎉 Messages channel opened!');
+              updateConnectionStatusForChat(contactGuid, 'connected');
+            };
+            
+            messagesChannel.onclose = () => {
+              console.log('[OneTapTelecom] [RECIPIENT] Messages channel closed');
+              updateConnectionStatusForChat(contactGuid, 'disconnected');
+            };
+            
+            messagesChannel.onerror = (err) => {
+              console.error('[OneTapTelecom] [RECIPIENT] Messages channel error:', err);
+            };
+            
+            // CRITICAL: Set up message handler (same as on initiator side)
+            messagesChannel.onmessage = async (event) => {
+              try {
+                const messageData = JSON.parse(event.data);
+                console.log('[OneTapTelecom] [RECIPIENT] 📥 Received message via WebRTC:', {
+                  contactGuid: contactGuid,
+                  type: messageData.type,
+                  encrypted: messageData.encrypted || false
+                });
+                
+                // Handle regular messages (same as existing handler)
+                if (messageData.type === 'message' && messageData.text) {
+                  const chatId = `contact-${contactGuid}`;
+                  
+                  // Decrypt if needed (same logic as in existing handler)
+                  let decryptedText = messageData.text;
+                  if (messageData.encrypted) {
+                    try {
+                      const systemAccount = window.Auth ? window.Auth.getAccount() : null;
+                      if (systemAccount && systemAccount.privateKeyEncrypted) {
+                        const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+                        const foundWinId = telecomWindows.length > 0 ? telecomWindows[0].dataset.winId : null;
+                        const privateKey = await getDecryptedPrivateKey(foundWinId);
+                        if (privateKey) {
+                          decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
+                        } else {
+                          decryptedText = '[Encrypted message - enter password to decrypt]';
+                        }
+                      } else {
+                        decryptedText = '[Encrypted message - decryption failed]';
+                      }
+                    } catch (e) {
+                      console.error('[OneTapTelecom] [RECIPIENT] Error decrypting:', e);
+                      decryptedText = '[Encrypted message - decryption failed]';
+                    }
+                  }
+                  
+                  // Save message (same as existing handler)
+                  const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
+                  const messages = getChatMessages(chatId);
+                  messages.push({
+                    id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+                    chatId: chatId,
+                    senderId: contactGuid,
+                    senderName: messageData.senderName || contactGuid.substring(0, 8) + '...',
+                    text: decryptedText,
+                    timestamp: messageData.timestamp || new Date().toISOString(),
+                    type: 'user',
+                    viaWebRTC: true,
+                    wasEncrypted: messageData.encrypted || false
+                  });
+                  localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+                  
+                  // Update chat (same as existing handler)
+                  const chats = getChats();
+                  const chat = chats.find(c => c.id === chatId);
+                  if (chat) {
+                    chat.lastMessage = {
+                      text: decryptedText.length > 50 ? decryptedText.substring(0, 50) + '...' : decryptedText,
+                      timestamp: new Date().toISOString()
+                    };
+                    localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
+                  }
+                  
+                  // Refresh UI (same as existing handler)
+                  if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
+                  window._telecomBlinkingChats.add(chatId);
+                  blinkChatItem(chatId);
+                  
+                  const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+                  telecomWindows.forEach(winEl => {
+                    const winId = winEl.dataset.winId;
+                    if (winId) {
+                      const win = WindowManager.findWindow(winId);
+                      if (win) {
+                        const selectedChatId = win.dataset.selectedChatId;
+                        const effectiveStorageKey = 'webos.telecom.v1';
+                        let effectiveConfig = config;
+                        if (!effectiveConfig) {
+                          try {
+                            const configData = localStorage.getItem(effectiveStorageKey);
+                            if (configData) effectiveConfig = JSON.parse(configData);
+                          } catch (e) {}
+                        }
+                        
+                        if (selectedChatId === chatId) {
+                          const chat = chats.find(c => c.id === chatId);
+                          if (chat) {
+                            selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
+                          }
+                        } else {
+                          renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                          blinkChatItem(chatId);
+                        }
+                      }
+                    }
+                  });
+                }
+              } catch (e) {
+                console.error('[OneTapTelecom] [RECIPIENT] Error parsing message:', e);
+              }
+            };
+            
+            console.log('[OneTapTelecom] [RECIPIENT] ✅ Message handler set up for messages channel');
+          } else {
+            console.warn('[OneTapTelecom] [RECIPIENT] ⚠️ Messages channel not found!');
+          }
+          
+          // Set up control channel handlers
+          if (controlChannel) {
+            controlChannel.onopen = () => {
+              console.log('[OneTapTelecom] [RECIPIENT] 🎉 Control channel opened!');
+            };
+            
+            controlChannel.onclose = () => {
+              console.log('[OneTapTelecom] [RECIPIENT] Control channel closed');
+            };
+            
+            controlChannel.onerror = (err) => {
+              console.error('[OneTapTelecom] [RECIPIENT] Control channel error:', err);
+            };
+          }
+        } catch (e) {
+          console.error('[OneTapTelecom] [RECIPIENT] Error setting up message handlers:', e);
+        }
+        
+        return { handled: true, contactGuid, shareUrl: res.shareUrl, offerMeta: res.offerMeta };
+      }
+
+      return res;
+    } catch (error) {
+      console.error('[OneTapTelecom] ❌ Error handling incoming offer:', error);
+      console.error('[OneTapTelecom] Error stack:', error.stack);
+      return { handled: true, error };
+    }
+  };
+
+  /**
+   * Handle incoming answer from URL hash
+   */
+  OneTapTelecom.handleIncomingAnswerFromUrl = async function (config) {
+    console.log('[OneTapTelecom] handleIncomingAnswerFromUrl called');
+    const hash = location.hash || '';
+    console.log('[OneTapTelecom] Hash:', hash.substring(0, 50) + '...');
+    if (!hash.startsWith('#answer=')) {
+      console.log('[OneTapTelecom] Hash does not start with #answer=');
+      return { handled: false };
+    }
+
+    try {
+      console.log('[OneTapTelecom] Extracting contactGuid from answer token...');
+      // Extract contactGuid from token metadata using OneTap.unpack
+      const tokenB64 = hash.slice('#answer='.length);
+      console.log('[OneTapTelecom] Token length:', tokenB64.length);
+      
+      let fromGuid = null;
+      let toGuid = null;
+      try {
+        console.log('[OneTapTelecom] Unpacking answer token...');
+        const data = await global.OneTap.unpack ? 
+          await global.OneTap.unpack(tokenB64, { gzip: true }) :
+          null;
+        
+        if (data && data.meta) {
+          fromGuid = data.meta.fromGuid; // Sender's GUID (who created the answer - recipient)
+          toGuid = data.meta.toGuid; // Recipient's GUID (who should receive the answer - initiator)
+          console.log('[OneTapTelecom] Answer metadata extracted:', { fromGuid, toGuid });
+        } else {
+          console.warn('[OneTapTelecom] No meta in unpacked answer data');
+          // Fallback: try old format with contactGuid
+          if (data && data.meta && data.meta.contactGuid) {
+            fromGuid = data.meta.contactGuid;
+            console.warn('[OneTapTelecom] Using old format (contactGuid as fromGuid):', fromGuid);
+          }
+        }
+      } catch (e) {
+        console.error('[OneTapTelecom] Error extracting metadata from answer token:', e);
+        console.error('[OneTapTelecom] Error stack:', e.stack);
+      }
+
+      if (!fromGuid) {
+        console.warn('[OneTapTelecom] No fromGuid in answer token, cannot proceed');
+        return { handled: false };
+      }
+
+      // Verify that this answer is for the current user (initiator)
+      const effectiveGuid = getEffectiveGuid(config);
+      if (toGuid && toGuid !== effectiveGuid) {
+        console.warn('[OneTapTelecom] ⚠️ Answer is not for this user!', {
+          answerToGuid: toGuid,
+          currentUserGuid: effectiveGuid
+        });
+        // Still proceed, but log warning
+      } else if (toGuid) {
+        console.log('[OneTapTelecom] ✅ Answer verified: toGuid matches current user');
+      } else {
+        console.warn('[OneTapTelecom] ⚠️ No toGuid in answer metadata, cannot verify recipient');
+      }
+
+      // In answer metadata:
+      // - fromGuid = recipient's GUID (who created the answer)
+      // - toGuid = sender's GUID (who sent the offer, i.e., initiator)
+      // 
+      // For peer connection and chat creation, we use fromGuid (recipient's GUID)
+      const contactGuid = fromGuid; // This is the recipient's GUID (who created the answer)
+      
+      // For restoring offer from localStorage:
+      // Offer was saved with key: webos.telecom.onetap.offer.${recipientGuid}
+      // where recipientGuid was the target contact when creating the offer
+      // In answer, fromGuid is the recipient's GUID (who created the answer)
+      // So we use fromGuid to find the saved offer
+      const offerStorageGuid = fromGuid; // Use fromGuid (recipient's GUID) to find saved offer
+
+      console.log('[OneTapTelecom] Ensuring peer connection for contact:', contactGuid);
+      console.log('[OneTapTelecom] Will restore offer using GUID:', offerStorageGuid);
+      // Ensure peer connection exists
+      let pc = OneTapTelecom.ensurePeerForContact(contactGuid, config);
+      console.log('[OneTapTelecom] Peer connection ready, state:', pc.signalingState);
+      
+      // If PC is in stable/closed state, it means the previous offer/answer cycle completed or was reset
+      // Answer was created for a specific offer SDP - we cannot apply it to a new offer!
+      // Solution: Close old PC and create a new one, but this requires a new offer/answer cycle
+      // OR: Check if PC has a local offer that matches - if not, we need to recreate connection
+      
+      if (pc.signalingState === 'stable' || pc.signalingState === 'closed') {
+        console.log('[OneTapTelecom] ⚠️ PC in stable/closed state - attempting to restore offer from localStorage');
+        console.log('[OneTapTelecom] Closing old PC and creating new one...');
+        
+        // Close old PC
+        try {
+          pc.close();
+        } catch (e) {
+          console.warn('[OneTapTelecom] Error closing old PC:', e);
+        }
+        
+        // Remove from map
+        global._telecomPeerConnections = global._telecomPeerConnections || new Map();
+        global._telecomPeerConnections.delete(contactGuid);
+        
+        // Also remove data channels
+        global._telecomDataChannels = global._telecomDataChannels || new Map();
+        global._telecomControlChannels = global._telecomControlChannels || new Map();
+        global._telecomDataChannels.delete(contactGuid);
+        global._telecomControlChannels.delete(contactGuid);
+        
+        // Create new PC
+        console.log('[OneTapTelecom] Creating new peer connection...');
+        pc = OneTapTelecom.ensurePeerForContact(contactGuid, config);
+        
+        // Continue to restoration logic below - don't return error yet
+        console.log('[OneTapTelecom] Will attempt to restore offer from localStorage...');
+      }
+      
+      // Ensure PC is in have-local-offer state (required for applying answer)
+      // If PC is in new/stable/closed state, try to restore offer from localStorage
+      if (pc.signalingState !== 'have-local-offer') {
+        console.log('[OneTapTelecom] PC is not in have-local-offer state:', pc.signalingState);
+        console.log('[OneTapTelecom] Attempting to restore offer from localStorage...');
+        
+        try {
+          // Use offerStorageGuid (fromGuid from answer, which is recipient's GUID) to find saved offer
+          // Offer was saved with key: webos.telecom.onetap.offer.${recipientGuid}
+          // where recipientGuid was the target contact when creating the offer
+          // In answer, fromGuid is the recipient's GUID, so we use it to find the saved offer
+          const OFFER_STORAGE_KEY = `webos.telecom.onetap.offer.${offerStorageGuid}`;
+          console.log('[OneTapTelecom] Looking for saved offer with key:', OFFER_STORAGE_KEY);
+          console.log('[OneTapTelecom] Answer metadata:', { fromGuid, toGuid, offerStorageGuid });
+          
+          let offerDataStr = localStorage.getItem(OFFER_STORAGE_KEY);
+          
+          // If not found, try alternative keys (for debugging/compatibility)
+          if (!offerDataStr) {
+            console.warn('[OneTapTelecom] Offer not found with primary key, trying alternatives...');
+            // Try with toGuid (initiator's GUID) - might be saved differently
+            const ALT_KEY = `webos.telecom.onetap.offer.${toGuid}`;
+            console.log('[OneTapTelecom] Trying alternative key:', ALT_KEY);
+            offerDataStr = localStorage.getItem(ALT_KEY);
+            
+            // Also list all one-tap offer keys for debugging
+            const allKeys = Object.keys(localStorage).filter(k => k.startsWith('webos.telecom.onetap.offer.'));
+            console.log('[OneTapTelecom] All one-tap offer keys in localStorage:', allKeys);
+          }
+          
+          if (offerDataStr) {
+            const offerData = JSON.parse(offerDataStr);
+            console.log('[OneTapTelecom] ✅ Found saved offer, restoring...', {
+              type: offerData.type,
+              createdAt: offerData.createdAt,
+              contactGuid: offerData.contactGuid
+            });
+            
+            // Ensure data channels exist
+            global._telecomDataChannels = global._telecomDataChannels || new Map();
+            global._telecomControlChannels = global._telecomControlChannels || new Map();
+            
+            if (!global._telecomDataChannels.has(contactGuid)) {
+              console.log('[OneTapTelecom] Creating messages data channel...');
+              const dcMessages = pc.createDataChannel('messages', { ordered: true });
+              global._telecomDataChannels.set(contactGuid, dcMessages);
+              dcMessages.onopen = () => console.log('[OneTapTelecom] messages channel created', contactGuid);
+              dcMessages.onclose = () => console.log('[OneTapTelecom] messages channel closed', contactGuid);
+            }
+            
+            if (!global._telecomControlChannels.has(contactGuid)) {
+              console.log('[OneTapTelecom] Creating control data channel...');
+              const dcControl = pc.createDataChannel('control', { ordered: true });
+              global._telecomControlChannels.set(contactGuid, dcControl);
+              if (typeof setupControlChannelHandler === 'function') {
+                try {
+                  setupControlChannelHandler(dcControl, contactGuid, pc, config, 'webos.telecom.v1');
+                } catch (e) {
+                  console.warn('[OneTapTelecom] Error setting up control channel:', e);
+                }
+              }
+              dcControl.onopen = () => console.log('[OneTapTelecom] control channel created', contactGuid);
+              dcControl.onclose = () => console.log('[OneTapTelecom] control channel closed', contactGuid);
+            }
+            
+            // Restore offer by setting local description
+            console.log('[OneTapTelecom] Setting local description from saved offer...');
+            await pc.setLocalDescription(new RTCSessionDescription({
+              type: offerData.type,
+              sdp: offerData.sdp
+            }));
+            console.log('[OneTapTelecom] ✅ Offer restored, state:', pc.signalingState);
+            
+            // Wait for ICE gathering to complete (in case new candidates are generated)
+            if (pc.iceGatheringState !== 'complete') {
+              console.log('[OneTapTelecom] Waiting for ICE gathering after restore...');
+              await new Promise((resolve) => {
+                const timeout = setTimeout(resolve, 3000);
+                pc.addEventListener('icegatheringstatechange', () => {
+                  if (pc.iceGatheringState === 'complete') {
+                    clearTimeout(timeout);
+                    resolve();
+                  }
+                });
+              });
+            }
+          } else {
+            console.error('[OneTapTelecom] ❌ No saved offer found in localStorage');
+            console.error('[OneTapTelecom] 💡 Solution: Create a new offer link and share it again.');
+            return { handled: true, error: 'No matching offer found. Please create a new offer link.' };
+          }
+        } catch (e) {
+          console.error('[OneTapTelecom] ❌ Error restoring offer:', e);
+          return { handled: true, error: 'Failed to restore offer: ' + e.message };
+        }
+      }
+
+      console.log('[OneTapTelecom] Calling OneTap.handleIncomingAnswer...');
+      // Handle answer
+      const res = await global.OneTap.handleIncomingAnswer(pc, { gzip: true });
+
+      console.log('[OneTapTelecom] handleIncomingAnswer result:', res);
+      if (res.handled && !res.error) {
+        console.log('[OneTapTelecom] ✅ Answer processed for contact:', contactGuid);
+        
+        // Clear saved offer from localStorage (no longer needed)
+        // Use offerStorageGuid (same GUID used to find the offer) to ensure we delete the correct one
+        try {
+          const OFFER_STORAGE_KEY = `webos.telecom.onetap.offer.${offerStorageGuid}`;
+          console.log('[OneTapTelecom] Clearing saved offer with key:', OFFER_STORAGE_KEY);
+          localStorage.removeItem(OFFER_STORAGE_KEY);
+          console.log('[OneTapTelecom] ✅ Cleared saved offer from localStorage');
+          
+          // Also try clearing with contactGuid (for compatibility)
+          if (contactGuid !== offerStorageGuid) {
+            const ALT_OFFER_STORAGE_KEY = `webos.telecom.onetap.offer.${contactGuid}`;
+            localStorage.removeItem(ALT_OFFER_STORAGE_KEY);
+            console.log('[OneTapTelecom] Also cleared alternative key:', ALT_OFFER_STORAGE_KEY);
+          }
+        } catch (e) {
+          console.warn('[OneTapTelecom] ⚠️ Failed to clear saved offer:', e);
+        }
+        
+        // Add contact and create chat (same logic as handleInviteResponse)
+        try {
+          const effectiveGuid = getEffectiveGuid(config);
+          if (effectiveGuid) {
+            // Find invite in sent invites storage (by sender's GUID)
+            const SENT_INVITES_STORAGE_KEY = `webos.telecom.sent_invites.guid_from.${effectiveGuid}`;
+            const sentInvitesData = localStorage.getItem(SENT_INVITES_STORAGE_KEY);
+            if (sentInvitesData) {
+              const sentInvites = JSON.parse(sentInvitesData);
+              // Find invite by toGuid
+              // Note: contactGuid from answer meta might be wrong (could be sender's GUID if answer was created incorrectly)
+              // So we search by toGuid to find the correct invite
+              // We'll use invite.toGuid as the correct contactGuid for chat creation
+              const invite = sentInvites.find(inv => inv.toGuid && inv.status === 'pending');
+              
+              // If not found by status, try to find by contactGuid from answer meta
+              let foundInvite = invite;
+              if (!foundInvite && contactGuid) {
+                foundInvite = sentInvites.find(inv => inv.toGuid === contactGuid && inv.status === 'pending');
+              }
+              
+              // Use invite.toGuid as the correct contactGuid (recipient's GUID)
+              const correctContactGuid = foundInvite ? foundInvite.toGuid : contactGuid;
+              
+              if (foundInvite) {
+                console.log('[OneTapTelecom] Found pending invite, accepting it...');
+                console.log('[OneTapTelecom] Using correct contactGuid from invite.toGuid:', correctContactGuid);
+                // Update invite status to accepted
+                foundInvite.status = 'accepted';
+                foundInvite.respondedAt = new Date().toISOString();
+                localStorage.setItem(SENT_INVITES_STORAGE_KEY, JSON.stringify(sentInvites));
+                
+                // Also update in recipient invites storage (by recipient's GUID)
+                const RECIPIENT_STORAGE_KEY = `webos.telecom.invites.${correctContactGuid}.v1`;
+                try {
+                  const recipientInvitesData = localStorage.getItem(RECIPIENT_STORAGE_KEY);
+                  if (recipientInvitesData) {
+                    const recipientInvites = JSON.parse(recipientInvitesData);
+                    const recipientInviteIndex = recipientInvites.findIndex(inv => inv.id === foundInvite.id);
+                    if (recipientInviteIndex !== -1) {
+                      recipientInvites[recipientInviteIndex].status = 'accepted';
+                      recipientInvites[recipientInviteIndex].respondedAt = new Date().toISOString();
+                      localStorage.setItem(RECIPIENT_STORAGE_KEY, JSON.stringify(recipientInvites));
+                    }
+                  }
+                } catch (e) {
+                  console.warn('[OneTapTelecom] Error updating recipient invites:', e);
+                }
+                
+                // Add contact if not exists (use correctContactGuid from invite.toGuid)
+                const contacts = getContacts();
+                const existingContact = contacts.find(c => c.guid === correctContactGuid);
+                if (!existingContact) {
+                  const newContact = {
+                    guid: correctContactGuid,
+                    username: foundInvite.toUsername || null,
+                    displayName: foundInvite.toDisplayName || foundInvite.toUsername || correctContactGuid.substring(0, 8) + '...',
+                    firstName: foundInvite.toFirstName || null,
+                    lastName: foundInvite.toLastName || null,
+                    email: foundInvite.toEmail || null,
+                    publicKey: foundInvite.toPublicKey || null,
+                    addedAt: new Date().toISOString()
+                  };
+                  contacts.push(newContact);
+                  saveContacts(contacts);
+                  console.log('[OneTapTelecom] ✅ Contact added:', correctContactGuid);
+                } else {
+                  // Update existing contact with public key if missing
+                  if (!existingContact.publicKey && foundInvite.toPublicKey) {
+                    existingContact.publicKey = foundInvite.toPublicKey;
+                    existingContact.username = existingContact.username || foundInvite.toUsername;
+                    existingContact.displayName = existingContact.displayName || foundInvite.toDisplayName || foundInvite.toUsername;
+                    existingContact.firstName = existingContact.firstName || foundInvite.toFirstName;
+                    existingContact.lastName = existingContact.lastName || foundInvite.toLastName;
+                    existingContact.email = existingContact.email || foundInvite.toEmail;
+                    saveContacts(contacts);
+                    console.log('[OneTapTelecom] ✅ Updated existing contact with public key:', correctContactGuid);
+                  }
+                }
+                
+                // Create chat if not exists (use correctContactGuid from invite.toGuid)
+                const chats = getChats();
+                const chatId = `contact-${correctContactGuid}`;
+                if (!chats.find(c => c.id === chatId)) {
+                  chats.push({
+                    id: chatId,
+                    name: foundInvite.toDisplayName || foundInvite.toUsername || correctContactGuid.substring(0, 8) + '...',
+                    type: 'contact',
+                    contactGuid: correctContactGuid,
+                    createdAt: new Date().toISOString()
+                  });
+                  localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
+                  console.log('[OneTapTelecom] ✅ Chat created:', chatId);
+                  
+                  // Refresh UI
+                  const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+                  telecomWindows.forEach(winEl => {
+                    const winId = winEl.dataset.winId;
+                    if (winId) {
+                      const win = WindowManager.findWindow(winId);
+                      if (win) {
+                        const effectiveStorageKey = 'webos.telecom.v1';
+                        let effectiveConfig = config;
+                        if (!effectiveConfig) {
+                          try {
+                            const configData = localStorage.getItem(effectiveStorageKey);
+                            if (configData) effectiveConfig = JSON.parse(configData);
+                          } catch (e) {}
+                        }
+                        renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                      }
+                    }
+                  });
+                }
+              } else {
+                console.log('[OneTapTelecom] No pending invite found for contactGuid:', contactGuid);
+                // Even if invite not found, add contact and create chat with minimal data
+                const contacts = getContacts();
+                const existingContact = contacts.find(c => c.guid === contactGuid);
+                if (!existingContact) {
+                  const newContact = {
+                    guid: contactGuid,
+                    username: null,
+                    displayName: contactGuid.substring(0, 8) + '...',
+                    firstName: null,
+                    lastName: null,
+                    email: null,
+                    publicKey: null,
+                    addedAt: new Date().toISOString()
+                  };
+                  contacts.push(newContact);
+                  saveContacts(contacts);
+                  console.log('[OneTapTelecom] ✅ Contact added (no invite):', contactGuid);
+                }
+                
+                // Create chat if not exists
+                const chats = getChats();
+                const chatId = `contact-${contactGuid}`;
+                if (!chats.find(c => c.id === chatId)) {
+                  chats.push({
+                    id: chatId,
+                    name: contactGuid.substring(0, 8) + '...',
+                    type: 'contact',
+                    contactGuid: contactGuid,
+                    createdAt: new Date().toISOString()
+                  });
+                  localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
+                  console.log('[OneTapTelecom] ✅ Chat created (no invite):', chatId);
+                  
+                  // Refresh UI
+                  const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+                  telecomWindows.forEach(winEl => {
+                    const winId = winEl.dataset.winId;
+                    if (winId) {
+                      const win = WindowManager.findWindow(winId);
+                      if (win) {
+                        const effectiveStorageKey = 'webos.telecom.v1';
+                        let effectiveConfig = config;
+                        if (!effectiveConfig) {
+                          try {
+                            const configData = localStorage.getItem(effectiveStorageKey);
+                            if (configData) effectiveConfig = JSON.parse(configData);
+                          } catch (e) {}
+                        }
+                        renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                      }
+                    }
+                  });
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.error('[OneTapTelecom] Error adding contact/chat:', e);
+        }
+        
+        // Set up connection state monitoring
+        pc.onconnectionstatechange = () => {
+          console.log('[OneTapTelecom] Connection state changed:', pc.connectionState, 'for contact:', contactGuid);
+          if (pc.connectionState === 'connected') {
+            console.log('[OneTapTelecom] 🎉 Connection established!');
+          } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+            console.warn('[OneTapTelecom] ⚠️ Connection failed or disconnected');
+          }
+        };
+        
+        pc.oniceconnectionstatechange = () => {
+          console.log('[OneTapTelecom] ICE connection state changed:', pc.iceConnectionState, 'for contact:', contactGuid);
+          if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+            console.log('[OneTapTelecom] 🎉 ICE connection established!');
+          } else if (pc.iceConnectionState === 'failed') {
+            console.error('[OneTapTelecom] ❌ ICE connection failed');
+          }
+        };
+        
+        // Monitor data channels
+        const messagesChannel = global._telecomDataChannels?.get(contactGuid);
+        const controlChannel = global._telecomControlChannels?.get(contactGuid);
+        
+        if (messagesChannel) {
+          // Set up message handler (same as in existing code at line 1359)
+          messagesChannel.onmessage = async (event) => {
+            try {
+              const messageData = JSON.parse(event.data);
+              console.log('[OneTapTelecom] 📥 Received message via WebRTC:', {
+                contactGuid: contactGuid,
+                type: messageData.type,
+                encrypted: messageData.encrypted || false
+              });
+              
+              // Handle regular messages (same as existing handler)
+              if (messageData.type === 'message' && messageData.text) {
+                const chatId = `contact-${contactGuid}`;
+                
+                // Decrypt if needed (same logic as in existing handler)
+                let decryptedText = messageData.text;
+                if (messageData.encrypted) {
+                  try {
+                    const systemAccount = window.Auth ? window.Auth.getAccount() : null;
+                    if (systemAccount && systemAccount.privateKeyEncrypted) {
+                      const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+                      const foundWinId = telecomWindows.length > 0 ? telecomWindows[0].dataset.winId : null;
+                      const privateKey = await getDecryptedPrivateKey(foundWinId);
+                      if (privateKey) {
+                        decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
+                      } else {
+                        decryptedText = '[Encrypted message - enter password to decrypt]';
+                      }
+                    } else {
+                      decryptedText = '[Encrypted message - decryption failed]';
+                    }
+                  } catch (e) {
+                    console.error('[OneTapTelecom] Error decrypting:', e);
+                    decryptedText = '[Encrypted message - decryption failed]';
+                  }
+                }
+                
+                // Save message (same as existing handler)
+                const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
+                const messages = getChatMessages(chatId);
+                messages.push({
+                  id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+                  chatId: chatId,
+                  senderId: contactGuid,
+                  senderName: messageData.senderName || contactGuid.substring(0, 8) + '...',
+                  text: decryptedText,
+                  timestamp: messageData.timestamp || new Date().toISOString(),
+                  type: 'user',
+                  viaWebRTC: true,
+                  wasEncrypted: messageData.encrypted || false
+                });
+                localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+                
+                // Update chat (same as existing handler)
+                const chats = getChats();
+                const chat = chats.find(c => c.id === chatId);
+                if (chat) {
+                  chat.lastMessage = {
+                    text: decryptedText.length > 50 ? decryptedText.substring(0, 50) + '...' : decryptedText,
+                    timestamp: new Date().toISOString()
+                  };
+                  localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
+                }
+                
+                // Refresh UI (same as existing handler)
+                if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
+                window._telecomBlinkingChats.add(chatId);
+                blinkChatItem(chatId);
+                
+                const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+                telecomWindows.forEach(winEl => {
+                  const winId = winEl.dataset.winId;
+                  if (winId) {
+                    const win = WindowManager.findWindow(winId);
+                    if (win) {
+                      const selectedChatId = win.dataset.selectedChatId;
+                      const effectiveStorageKey = 'webos.telecom.v1';
+                      let effectiveConfig = config;
+                      if (!effectiveConfig) {
+                        try {
+                          const configData = localStorage.getItem(effectiveStorageKey);
+                          if (configData) effectiveConfig = JSON.parse(configData);
+                        } catch (e) {}
+                      }
+                      
+                      if (selectedChatId === chatId) {
+                        selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
+                      } else {
+                        renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                        blinkChatItem(chatId);
+                      }
+                    }
+                  }
+                });
+                
+                console.log('[OneTapTelecom] ✅ Message saved and UI updated');
+              }
+            } catch (e) {
+              console.error('[OneTapTelecom] Error parsing message:', e);
+            }
+          };
+          
+          messagesChannel.onopen = () => {
+            console.log('[OneTapTelecom] 🎉 Messages channel opened!');
+            // Update connection status
+            if (typeof updateConnectionStatusForChat === 'function') {
+              updateConnectionStatusForChat(contactGuid, 'connected');
+            }
+          };
+          messagesChannel.onclose = () => {
+            console.log('[OneTapTelecom] Messages channel closed');
+            if (typeof updateConnectionStatusForChat === 'function') {
+              updateConnectionStatusForChat(contactGuid, 'disconnected');
+            }
+          };
+          messagesChannel.onerror = (e) => {
+            console.error('[OneTapTelecom] Messages channel error:', e);
+          };
+        }
+        
+        if (controlChannel) {
+          controlChannel.onopen = () => {
+            console.log('[OneTapTelecom] 🎉 Control channel opened!');
+          };
+          controlChannel.onclose = () => {
+            console.log('[OneTapTelecom] Control channel closed');
+          };
+          controlChannel.onerror = (e) => {
+            console.error('[OneTapTelecom] Control channel error:', e);
+          };
+        }
+        
+        console.log('[OneTapTelecom] Current connection state:', {
+          connectionState: pc.connectionState,
+          iceConnectionState: pc.iceConnectionState,
+          signalingState: pc.signalingState,
+          hasMessagesChannel: !!messagesChannel,
+          hasControlChannel: !!controlChannel,
+          messagesChannelState: messagesChannel?.readyState,
+          controlChannelState: controlChannel?.readyState
+        });
+        
+        return { handled: true, contactGuid, answerMeta: res.answerMeta };
+      } else if (res.error) {
+        console.error('[OneTapTelecom] ❌ Error processing answer:', res.error);
+        return { handled: true, error: res.error };
+      }
+
+      return res;
+    } catch (error) {
+      console.error('[OneTapTelecom] ❌ Error handling incoming answer:', error);
+      console.error('[OneTapTelecom] Error stack:', error.stack);
+      return { handled: true, error };
+    }
+  };
+
+  /**
+   * Bootstrap: check URL hash and handle one-tap signaling if present
+   * Call this on app startup
+   */
+  // Track processed hashes to avoid duplicate processing
+  const processedHashes = new Set();
+  
+  OneTapTelecom.bootstrapFromHash = async function (config) {
+    const hash = location.hash || '';
+    console.log('[OneTapTelecom] bootstrapFromHash called, hash:', hash.substring(0, 50) + '...');
+    
+    // Skip if hash doesn't contain one-tap signaling
+    if (!hash.startsWith('#offer=') && !hash.startsWith('#answer=')) {
+      console.log('[OneTapTelecom] No one-tap hash found');
+      return { handled: false };
+    }
+    
+    // Skip if this hash was already processed
+    if (processedHashes.has(hash)) {
+      console.log('[OneTapTelecom] Hash already processed, skipping');
+      return { handled: false };
+    }
+    
+    // Mark hash as processed
+    processedHashes.add(hash);
+    
+    // Check for offer first (recipient side)
+    console.log('[OneTapTelecom] Checking for offer...');
+    const offerRes = await OneTapTelecom.handleIncomingOfferFromUrl(config);
+    if (offerRes.handled) {
+      console.log('[OneTapTelecom] Offer handled:', offerRes);
+      // Clear hash after successful processing
+      if (hash.startsWith('#offer=')) {
+        history.replaceState(null, '', location.pathname + location.search);
+        console.log('[OneTapTelecom] Hash cleared after offer processing');
+      }
+      return offerRes;
+    }
+
+    // Check for answer (initiator side)
+    console.log('[OneTapTelecom] Checking for answer...');
+    const answerRes = await OneTapTelecom.handleIncomingAnswerFromUrl(config);
+    if (answerRes.handled) {
+      console.log('[OneTapTelecom] ✅ Answer handled:', answerRes);
+      // Clear hash after successful processing
+      if (hash.startsWith('#answer=')) {
+        history.replaceState(null, '', location.pathname + location.search);
+        console.log('[OneTapTelecom] Hash cleared after answer processing');
+      }
+      return answerRes;
+    }
+
+    // If not handled, remove from processed set so it can be retried
+    processedHashes.delete(hash);
+    console.log('[OneTapTelecom] No one-tap hash found or handled');
+    return { handled: false };
+  };
+
+  // Export
+  global.OneTapTelecom = OneTapTelecom;
+  
+  console.log('[OneTapTelecom] Module initialized');
+})(window);
