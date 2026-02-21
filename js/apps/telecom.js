@@ -14181,37 +14181,52 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
       return global._telecomPeerConnections.get(contactGuid);
     }
 
-    const iceServers = getIceServersSafe(config);
-    
-    // Clean ICE servers (same logic as in handleInviteResponse)
-    const cleanIceServers = [];
-    iceServers.forEach((server) => {
-      const urlsArray = Array.isArray(server.urls) ? server.urls : [server.urls];
-      const isTurnServer = urlsArray.some(url => 
-        typeof url === 'string' && (url.includes('turn:') || url.includes('turns:'))
-      );
-      
-      if (isTurnServer && (!server.username || !server.credential || server.username === '' || server.credential === '')) {
-        return; // Skip TURN servers without credentials
-      }
-      
-      urlsArray.forEach((url) => {
-        const isTurnUrl = typeof url === 'string' && (url.includes('turn:') || url.includes('turns:'));
-        if (isTurnUrl && (!server.username || !server.credential || server.username === '' || server.credential === '')) {
-          return; // Skip TURN URLs without credentials
-        }
-        
-        const clean = { urls: url };
-        if (server.username) clean.username = server.username;
-        if (server.credential) clean.credential = server.credential;
-        cleanIceServers.push(clean);
+      const iceServers = getIceServersSafe(config);
+      console.log('[OneTapTelecom] [SENDER] ICE servers from config:', iceServers.length, 'servers');
+      iceServers.forEach((server, idx) => {
+        const urlsArray = Array.isArray(server.urls) ? server.urls : [server.urls];
+        urlsArray.forEach((url) => {
+          const isTurn = typeof url === 'string' && (url.includes('turn:') || url.includes('turns:'));
+          console.log(`[OneTapTelecom] [SENDER] ICE server ${idx}: ${isTurn ? 'TURN' : 'STUN'} - ${url}`);
+        });
       });
-    });
 
-    const pc = new RTCPeerConnection({ 
-      iceServers: cleanIceServers,
-      iceCandidatePoolSize: 10
-    });
+      // Clean ICE servers (same logic as in handleInviteResponse)
+      const cleanIceServers = [];
+      iceServers.forEach((server) => {
+        const urlsArray = Array.isArray(server.urls) ? server.urls : [server.urls];
+        const isTurnServer = urlsArray.some(url =>
+          typeof url === 'string' && (url.includes('turn:') || url.includes('turns:'))
+        );
+
+        if (isTurnServer && (!server.username || !server.credential || server.username === '' || server.credential === '')) {
+          console.warn('[OneTapTelecom] [SENDER] ⚠️ Skipping TURN server without credentials');
+          return; // Skip TURN servers without credentials
+        }
+
+        urlsArray.forEach((url) => {
+          const isTurnUrl = typeof url === 'string' && (url.includes('turn:') || url.includes('turns:'));
+          if (isTurnUrl && (!server.username || !server.credential || server.username === '' || server.credential === '')) {
+            return; // Skip TURN URLs without credentials
+          }
+          
+          const clean = { urls: url };
+          if (server.username) clean.username = server.username;
+          if (server.credential) clean.credential = server.credential;
+          cleanIceServers.push(clean);
+        });
+      });
+      
+      console.log('[OneTapTelecom] [SENDER] Clean ICE servers:', cleanIceServers.length, 'servers');
+      cleanIceServers.forEach((server, idx) => {
+        const isTurn = server.urls.includes('turn:') || server.urls.includes('turns:');
+        console.log(`[OneTapTelecom] [SENDER] Clean server ${idx}: ${isTurn ? 'TURN' : 'STUN'} - ${server.urls}`);
+      });
+      
+      const pc = new RTCPeerConnection({ 
+        iceServers: cleanIceServers,
+        iceCandidatePoolSize: 10
+      });
     
     global._telecomPeerConnections.set(contactGuid, pc);
 
@@ -14606,6 +14621,18 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
       console.log('[OneTapTelecom] Ensuring peer connection...');
       const pc = OneTapTelecom.ensurePeerForContact(contactGuid, config);
       console.log('[OneTapTelecom] Peer connection ready, state:', pc.connectionState, 'signalingState:', pc.signalingState);
+      
+      // Log ICE servers configuration for debugging
+      const iceServers = getIceServersSafe(config);
+      console.log('[OneTapTelecom] [SENDER] createOfferLink - ICE servers configured:', iceServers.length);
+      const hasTurn = iceServers.some(s => {
+        const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+        return urls.some(url => typeof url === 'string' && (url.includes('turn:') || url.includes('turns:')));
+      });
+      console.log('[OneTapTelecom] [SENDER] createOfferLink - Has TURN server:', hasTurn);
+      if (!hasTurn) {
+        console.warn('[OneTapTelecom] [SENDER] ⚠️ No TURN server configured! Connection may fail behind NAT/firewall.');
+      }
 
       // Create data channels (same as in sendContactInvite)
       global._telecomDataChannels = global._telecomDataChannels || new Map();
@@ -14771,6 +14798,15 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
       
       // Create fresh PC DIRECTLY (don't use ensurePeerForContact - it might return old one)
       const iceServers = getIceServersSafe(config);
+      console.log('[OneTapTelecom] [RECIPIENT] ICE servers from config:', iceServers.length, 'servers');
+      iceServers.forEach((server, idx) => {
+        const urlsArray = Array.isArray(server.urls) ? server.urls : [server.urls];
+        urlsArray.forEach((url) => {
+          const isTurn = typeof url === 'string' && (url.includes('turn:') || url.includes('turns:'));
+          console.log(`[OneTapTelecom] [RECIPIENT] ICE server ${idx}: ${isTurn ? 'TURN' : 'STUN'} - ${url}`);
+        });
+      });
+      
       const cleanIceServers = [];
       iceServers.forEach((server) => {
         const urlsArray = Array.isArray(server.urls) ? server.urls : [server.urls];
@@ -14779,6 +14815,7 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
         );
         
         if (isTurnServer && (!server.username || !server.credential || server.username === '' || server.credential === '')) {
+          console.warn('[OneTapTelecom] [RECIPIENT] ⚠️ Skipping TURN server without credentials');
           return; // Skip TURN servers without credentials
         }
         
@@ -14793,6 +14830,12 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
           if (server.credential) clean.credential = server.credential;
           cleanIceServers.push(clean);
         });
+      });
+      
+      console.log('[OneTapTelecom] [RECIPIENT] Clean ICE servers:', cleanIceServers.length, 'servers');
+      cleanIceServers.forEach((server, idx) => {
+        const isTurn = server.urls.includes('turn:') || server.urls.includes('turns:');
+        console.log(`[OneTapTelecom] [RECIPIENT] Clean server ${idx}: ${isTurn ? 'TURN' : 'STUN'} - ${server.urls}`);
       });
       
       const pc = new RTCPeerConnection({ 
@@ -15201,12 +15244,44 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
             }
           };
           
+          // Log ICE candidates for debugging (recipient side)
+          const localCandidatesRecipient = [];
+          const candidateTypesRecipient = { host: 0, srflx: 0, relay: 0, prflx: 0, other: 0 };
+          pc.onicecandidate = (event) => {
+            if (event.candidate) {
+              const candidateStr = event.candidate.candidate;
+              const typeMatch = candidateStr.match(/ typ (\w+)/);
+              const type = typeMatch ? typeMatch[1] : 'unknown';
+              candidateTypesRecipient[type] = (candidateTypesRecipient[type] || 0) + 1;
+              localCandidatesRecipient.push({ type, candidate: candidateStr });
+              console.log(`[OneTapTelecom] [RECIPIENT] Local ICE candidate (${type}):`, candidateStr.substring(0, 100));
+            } else {
+              console.log('[OneTapTelecom] [RECIPIENT] ✅ Local ICE candidate gathering complete');
+              console.log('[OneTapTelecom] [RECIPIENT] ICE candidate summary:', {
+                total: localCandidatesRecipient.length,
+                host: candidateTypesRecipient.host,
+                srflx: candidateTypesRecipient.srflx,
+                relay: candidateTypesRecipient.relay,
+                prflx: candidateTypesRecipient.prflx,
+                other: candidateTypesRecipient.other
+              });
+              if (candidateTypesRecipient.relay === 0) {
+                console.warn('[OneTapTelecom] [RECIPIENT] ⚠️ No TURN relay candidates found! This may cause connection failures behind NAT/firewall.');
+              }
+            }
+          };
+          
           pc.oniceconnectionstatechange = () => {
             console.log('[OneTapTelecom] [RECIPIENT] ICE connection state changed:', pc.iceConnectionState, 'for contact:', contactGuid);
             if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
               console.log('[OneTapTelecom] [RECIPIENT] 🎉 ICE connection established!');
-            } else if (pc.iceConnectionState === 'failed') {
+            } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
               console.error('[OneTapTelecom] [RECIPIENT] ❌ ICE connection failed');
+              console.error('[OneTapTelecom] [RECIPIENT] Local candidates collected:', localCandidatesRecipient.length);
+              console.error('[OneTapTelecom] [RECIPIENT] Candidate types:', candidateTypesRecipient);
+              if (candidateTypesRecipient.relay === 0) {
+                console.error('[OneTapTelecom] [RECIPIENT] ⚠️ No TURN relay candidates - connection will likely fail behind NAT/firewall');
+              }
             }
           };
           
@@ -16578,14 +16653,29 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
         };
         
         // Log ICE candidates for debugging
+        const localCandidates = [];
+        const candidateTypes = { host: 0, srflx: 0, relay: 0, prflx: 0, other: 0 };
         pc.onicecandidate = (event) => {
           if (event.candidate) {
             const candidateStr = event.candidate.candidate;
             const typeMatch = candidateStr.match(/ typ (\w+)/);
             const type = typeMatch ? typeMatch[1] : 'unknown';
-            console.log(`[OneTapTelecom] Local ICE candidate (${type}):`, candidateStr.substring(0, 100));
+            candidateTypes[type] = (candidateTypes[type] || 0) + 1;
+            localCandidates.push({ type, candidate: candidateStr });
+            console.log(`[OneTapTelecom] [SENDER] Local ICE candidate (${type}):`, candidateStr.substring(0, 100));
           } else {
-            console.log('[OneTapTelecom] ✅ Local ICE candidate gathering complete');
+            console.log('[OneTapTelecom] [SENDER] ✅ Local ICE candidate gathering complete');
+            console.log('[OneTapTelecom] [SENDER] ICE candidate summary:', {
+              total: localCandidates.length,
+              host: candidateTypes.host,
+              srflx: candidateTypes.srflx,
+              relay: candidateTypes.relay,
+              prflx: candidateTypes.prflx,
+              other: candidateTypes.other
+            });
+            if (candidateTypes.relay === 0) {
+              console.warn('[OneTapTelecom] [SENDER] ⚠️ No TURN relay candidates found! This may cause connection failures behind NAT/firewall.');
+            }
           }
         };
         
