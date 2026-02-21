@@ -1740,10 +1740,32 @@ async function autoReconnectToContact(contactGuid, config, storageKey) {
     });
     
     // Create new peer connection
-    const pc = new RTCPeerConnection({
+    // Detect browser for Chrome-specific optimizations
+    const isChrome = /Chrome/.test(navigator.userAgent) && !/Edge|Edg/.test(navigator.userAgent);
+    
+    const rtcConfig = {
       iceServers: cleanIceServers,
-      iceCandidatePoolSize: 10
-    });
+      iceTransportPolicy: 'all', // Try all candidates (host, srflx, relay) for maximum compatibility
+      bundlePolicy: 'max-bundle',
+      rtcpMuxPolicy: 'require'
+    };
+    
+    if (isChrome) {
+      rtcConfig.iceCandidatePoolSize = 16; // Increased for Chrome
+    } else {
+      rtcConfig.iceCandidatePoolSize = 10;
+    }
+    
+    const pc = new RTCPeerConnection(rtcConfig);
+    
+    // Chrome-specific: Optimize configuration
+    if (isChrome && pc.setConfiguration) {
+      try {
+        pc.setConfiguration(rtcConfig);
+      } catch (e) {
+        console.warn('[Telecom] ⚠️ Could not optimize Chrome ICE configuration:', e);
+      }
+    }
     
     // Create control channel first (for signaling)
     const controlChannel = createControlChannel(pc, contactGuid);
@@ -9011,7 +9033,9 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
       // If server.urls is an array, expand it into separate server objects (one per URL)
       // This ensures maximum compatibility with RTCPeerConnection
       // IMPORTANT: Skip TURN servers with empty username/credential (they cause InvalidAccessError)
+      console.log('[Telecom] [SENDER] Processing ICE servers:', iceServers.length, 'servers from config');
       const cleanIceServers = [];
+      let skippedTurnServers = 0;
       iceServers.forEach((server, idx) => {
         const urlsArray = Array.isArray(server.urls) ? server.urls : [server.urls];
         
@@ -9020,8 +9044,21 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
           typeof url === 'string' && (url.includes('turn:') || url.includes('turns:'))
         );
         
+        // Log server details
+        const firstUrl = urlsArray[0];
+        const serverType = isTurnServer ? 'TURN' : 'STUN';
+        console.log(`[Telecom] [SENDER] Server ${idx + 1}: ${serverType}`, {
+          urls: urlsArray.length > 1 ? urlsArray : firstUrl,
+          hasUsername: !!server.username,
+          hasCredential: !!server.credential,
+          usernameLength: server.username?.length || 0,
+          credentialLength: server.credential?.length || 0
+        });
+        
         // Skip TURN servers with empty username or credential
         if (isTurnServer && (!server.username || !server.credential || server.username === '' || server.credential === '')) {
+          skippedTurnServers++;
+          console.warn(`[Telecom] [SENDER] ⚠️ Skipping TURN server ${idx + 1} - empty username or credential`);
           return; // Skip this server
         }
         
@@ -9030,6 +9067,8 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
           // Double-check: skip individual TURN URLs without credentials
           const isTurnUrl = typeof url === 'string' && (url.includes('turn:') || url.includes('turns:'));
           if (isTurnUrl && (!server.username || !server.credential || server.username === '' || server.credential === '')) {
+            skippedTurnServers++;
+            console.warn(`[Telecom] [SENDER] ⚠️ Skipping TURN URL "${url}" - empty username or credential`);
             return; // Skip this URL
           }
           
@@ -9040,13 +9079,49 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
           if (server.credential) clean.credential = server.credential;
           
           cleanIceServers.push(clean);
+          console.log(`[Telecom] [SENDER] ✅ Added ${isTurnUrl ? 'TURN' : 'STUN'} server: ${url}`, {
+            hasCredentials: !!(clean.username && clean.credential)
+          });
         });
       });
       
-      const pc = new RTCPeerConnection({
+      console.log(`[Telecom] [SENDER] Clean ICE servers summary: ${cleanIceServers.length} servers added, ${skippedTurnServers} TURN servers skipped`);
+      if (skippedTurnServers > 0) {
+        console.warn(`[Telecom] [SENDER] ⚠️ ${skippedTurnServers} TURN server(s) were skipped due to missing credentials - no relay candidates will be available!`);
+      }
+      
+      // Detect browser for Chrome-specific optimizations
+      const isChrome = /Chrome/.test(navigator.userAgent) && !/Edge|Edg/.test(navigator.userAgent);
+      const isFirefox = /Firefox/.test(navigator.userAgent);
+      
+      // Chrome-specific optimizations for better srflx candidate usage
+      const rtcConfig = {
         iceServers: cleanIceServers,
-        iceCandidatePoolSize: 10
-      });
+        iceTransportPolicy: 'all', // Try all candidates (host, srflx, relay) for maximum compatibility
+        bundlePolicy: 'max-bundle', // Optimize bundle policy for better performance
+        rtcpMuxPolicy: 'require' // Require RTCP muxing for simpler connection
+      };
+      
+      if (isChrome) {
+        // Chrome-specific: Increase candidate pool size for better srflx candidate collection
+        rtcConfig.iceCandidatePoolSize = 16; // Increased from 10 for Chrome
+        console.log('[Telecom] [SENDER] 🔧 Chrome detected - using optimized ICE settings for better srflx candidate usage');
+      } else {
+        rtcConfig.iceCandidatePoolSize = 10;
+      }
+      
+      const pc = new RTCPeerConnection(rtcConfig);
+      
+      // Chrome-specific: Try to optimize ICE gathering after creation
+      if (isChrome && pc.setConfiguration) {
+        try {
+          // Re-apply configuration to ensure Chrome uses optimal settings
+          pc.setConfiguration(rtcConfig);
+          console.log('[Telecom] [SENDER] ✅ Chrome ICE configuration optimized');
+        } catch (e) {
+          console.warn('[Telecom] [SENDER] ⚠️ Could not re-apply Chrome ICE configuration:', e);
+        }
+      }
       
       // === ICE LOGGING FOR DIAGNOSTICS ===
       const localCandidates = [];
@@ -9575,13 +9650,23 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
             // null candidate means gathering is complete
             if (candidateTypes.relay === 0) {
               console.warn('[Telecom] ⚠️ No TURN (relay) candidates collected.');
-              console.warn('[Telecom] ⚠️ Connection will likely FAIL if both peers are behind NAT/firewall.');
-              console.warn('[Telecom] 💡 Solution: Configure a TURN server in Network app (Settings > Network).');
+              if (candidateTypes.srflx > 0) {
+                console.log('[Telecom] 💡 However, srflx (STUN) candidates are available - peer-to-peer connection may still work via UDP hole punching!');
+                console.log('[Telecom] 💡 Firefox is particularly good at establishing connections without TURN using srflx candidates.');
+                console.warn('[Telecom] ⚠️ Connection may FAIL if both peers are behind symmetric NAT or strict firewall.');
+              } else {
+                console.warn('[Telecom] ⚠️ Connection will likely FAIL if both peers are behind NAT/firewall.');
+              }
+              console.warn('[Telecom] 💡 Solution: Configure a TURN server in Network app (Settings > Network) for guaranteed connectivity.');
               console.warn('[Telecom] 💡 Free TURN servers are unreliable - use your own TURN server for production.');
+            } else {
+              console.log(`[Telecom] ✅ Collected ${candidateTypes.relay} relay candidate(s) - connection should work even behind strict NAT/firewall.`);
             }
             if (candidateTypes.srflx === 0 && candidateTypes.relay === 0) {
               console.warn('[Telecom] ⚠️ No STUN (srflx) or TURN (relay) candidates. Only host candidates available.');
               console.warn('[Telecom] ⚠️ This usually means STUN/TURN servers are not configured or not working.');
+            } else if (candidateTypes.srflx > 0 && candidateTypes.relay === 0) {
+              console.log(`[Telecom] ✅ Collected ${candidateTypes.srflx} srflx (STUN) candidate(s) - peer-to-peer connection may work via UDP hole punching!`);
             }
             clearTimeout(candidateTimeout);
             resolve();
@@ -9598,6 +9683,15 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
       });
       
       // Create offer
+      // Log browser info for debugging
+      const browserInfo = {
+        userAgent: navigator.userAgent,
+        isChrome: /Chrome/.test(navigator.userAgent) && !/Edge|Edg/.test(navigator.userAgent),
+        isFirefox: /Firefox/.test(navigator.userAgent),
+        isSafari: /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent)
+      };
+      console.log('[Telecom] [SENDER] Browser info:', browserInfo);
+      
       const offer = await pc.createOffer({
         offerToReceiveAudio: false,
         offerToReceiveVideo: false
@@ -10340,7 +10434,9 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         // If server.urls is an array, expand it into separate server objects (one per URL)
         // This ensures maximum compatibility with RTCPeerConnection
         // IMPORTANT: Skip TURN servers with empty username/credential (they cause InvalidAccessError)
+        console.log('[Telecom] [RECIPIENT] Processing ICE servers:', iceServers.length, 'servers from config');
         const cleanIceServers = [];
+        let skippedTurnServers = 0;
         iceServers.forEach((server, idx) => {
           const urlsArray = Array.isArray(server.urls) ? server.urls : [server.urls];
           
@@ -10349,8 +10445,21 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
             typeof url === 'string' && (url.includes('turn:') || url.includes('turns:'))
           );
           
+          // Log server details
+          const firstUrl = urlsArray[0];
+          const serverType = isTurnServer ? 'TURN' : 'STUN';
+          console.log(`[Telecom] [RECIPIENT] Server ${idx + 1}: ${serverType}`, {
+            urls: urlsArray.length > 1 ? urlsArray : firstUrl,
+            hasUsername: !!server.username,
+            hasCredential: !!server.credential,
+            usernameLength: server.username?.length || 0,
+            credentialLength: server.credential?.length || 0
+          });
+          
           // Skip TURN servers with empty username or credential
           if (isTurnServer && (!server.username || !server.credential || server.username === '' || server.credential === '')) {
+            skippedTurnServers++;
+            console.warn(`[Telecom] [RECIPIENT] ⚠️ Skipping TURN server ${idx + 1} - empty username or credential`);
             return; // Skip this server
           }
           
@@ -10359,7 +10468,8 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
             // Double-check: skip individual TURN URLs without credentials
             const isTurnUrl = typeof url === 'string' && (url.includes('turn:') || url.includes('turns:'));
             if (isTurnUrl && (!server.username || !server.credential || server.username === '' || server.credential === '')) {
-              console.warn(`[Telecom] ⚠️ Skipping TURN URL "${url}" (answer) - empty username or credential`);
+              skippedTurnServers++;
+              console.warn(`[Telecom] [RECIPIENT] ⚠️ Skipping TURN URL "${url}" (answer) - empty username or credential`);
               return; // Skip this URL
             }
             
@@ -10370,13 +10480,49 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
             if (server.credential) clean.credential = server.credential;
             
             cleanIceServers.push(clean);
+            console.log(`[Telecom] [RECIPIENT] ✅ Added ${isTurnUrl ? 'TURN' : 'STUN'} server: ${url}`, {
+              hasCredentials: !!(clean.username && clean.credential)
+            });
           });
         });
         
-        const pc = new RTCPeerConnection({
+        console.log(`[Telecom] [RECIPIENT] Clean ICE servers summary: ${cleanIceServers.length} servers added, ${skippedTurnServers} TURN servers skipped`);
+        if (skippedTurnServers > 0) {
+          console.warn(`[Telecom] [RECIPIENT] ⚠️ ${skippedTurnServers} TURN server(s) were skipped due to missing credentials - no relay candidates will be available!`);
+        }
+        
+        // Detect browser for Chrome-specific optimizations
+        const isChrome = /Chrome/.test(navigator.userAgent) && !/Edge|Edg/.test(navigator.userAgent);
+        const isFirefox = /Firefox/.test(navigator.userAgent);
+        
+        // Chrome-specific optimizations for better srflx candidate usage
+        const rtcConfig = {
           iceServers: cleanIceServers,
-          iceCandidatePoolSize: 10
-        });
+          iceTransportPolicy: 'all', // Try all candidates (host, srflx, relay) for maximum compatibility
+          bundlePolicy: 'max-bundle', // Optimize bundle policy for better performance
+          rtcpMuxPolicy: 'require' // Require RTCP muxing for simpler connection
+        };
+        
+        if (isChrome) {
+          // Chrome-specific: Increase candidate pool size for better srflx candidate collection
+          rtcConfig.iceCandidatePoolSize = 16; // Increased from 10 for Chrome
+          console.log('[Telecom] [RECIPIENT] 🔧 Chrome detected - using optimized ICE settings for better srflx candidate usage');
+        } else {
+          rtcConfig.iceCandidatePoolSize = 10;
+        }
+        
+        const pc = new RTCPeerConnection(rtcConfig);
+        
+        // Chrome-specific: Try to optimize ICE gathering after creation
+        if (isChrome && pc.setConfiguration) {
+          try {
+            // Re-apply configuration to ensure Chrome uses optimal settings
+            pc.setConfiguration(rtcConfig);
+            console.log('[Telecom] [RECIPIENT] ✅ Chrome ICE configuration optimized');
+          } catch (e) {
+            console.warn('[Telecom] [RECIPIENT] ⚠️ Could not re-apply Chrome ICE configuration:', e);
+          }
+        }
         
         // === DETAILED ICE LOGGING FOR DIAGNOSTICS (RECIPIENT SIDE) ===
         const localCandidatesRecipient = [];
@@ -10397,13 +10543,25 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         
         pc.onicecandidateerror = (event) => {
           // Track failed servers
+          console.error('[ICE][RECIPIENT] ❌ ICE candidate error event fired:', {
+            url: event.url,
+            errorText: event.errorText,
+            errorCode: event.errorCode,
+            errorCodeName: event.errorCode ? `Error ${event.errorCode}` : 'unknown',
+            hostCandidate: event.hostCandidate,
+            address: event.address,
+            port: event.port,
+            protocol: event.protocol,
+            usernameFragment: event.usernameFragment
+          });
+          
           if (event.url) {
             const wasNew = !turnServersFailed.has(event.url);
             turnServersFailed.add(event.url);
             
             // Log only first error per server to avoid spam
             if (wasNew) {
-              console.error('[ICE][RECIPIENT] ❌ TURN server error:', {
+              console.error('[ICE][RECIPIENT] ❌ TURN server error (first occurrence):', {
                 url: event.url,
                 errorText: event.errorText,
                 errorCode: event.errorCode,
@@ -10418,11 +10576,15 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
               } else if (event.url.includes('openrelay.metered.ca')) {
                 console.warn('[ICE][RECIPIENT] ⚠️ Metered.ca OpenRelay server error - check if port is blocked or server is down');
               } else if (event.url.includes('stun.l.google.com') || event.url.includes('stun1.l.google.com')) {
-                // STUN errors are less critical, log only if many fail
+                console.warn('[ICE][RECIPIENT] ⚠️ Google STUN server error - may be temporary network issue');
               } else {
-                console.warn('[ICE][RECIPIENT] ⚠️ TURN server error:', event.url);
+                console.warn('[ICE][RECIPIENT] ⚠️ Unknown TURN/STUN server error:', event.url);
               }
+            } else {
+              console.warn(`[ICE][RECIPIENT] ⚠️ Additional error for ${event.url} (already logged)`);
             }
+          } else {
+            console.error('[ICE][RECIPIENT] ❌ ICE candidate error without URL:', event);
           }
         };
         
@@ -11266,13 +11428,23 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
               
               if (candidateTypes.relay === 0) {
                 console.warn('[Telecom] ⚠️ No TURN (relay) candidates collected.');
-                console.warn('[Telecom] ⚠️ Connection will likely FAIL if both peers are behind NAT/firewall.');
-                console.warn('[Telecom] 💡 Solution: Configure a TURN server in Network app (Settings > Network).');
+                if (candidateTypes.srflx > 0) {
+                  console.log('[Telecom] 💡 However, srflx (STUN) candidates are available - peer-to-peer connection may still work via UDP hole punching!');
+                  console.log('[Telecom] 💡 Firefox is particularly good at establishing connections without TURN using srflx candidates.');
+                  console.warn('[Telecom] ⚠️ Connection may FAIL if both peers are behind symmetric NAT or strict firewall.');
+                } else {
+                  console.warn('[Telecom] ⚠️ Connection will likely FAIL if both peers are behind NAT/firewall.');
+                }
+                console.warn('[Telecom] 💡 Solution: Configure a TURN server in Network app (Settings > Network) for guaranteed connectivity.');
                 console.warn('[Telecom] 💡 Free TURN servers are unreliable - use your own TURN server for production.');
+              } else {
+                console.log(`[Telecom] ✅ Collected ${candidateTypes.relay} relay candidate(s) - connection should work even behind strict NAT/firewall.`);
               }
               if (candidateTypes.srflx === 0 && candidateTypes.relay === 0) {
                 console.warn('[Telecom] ⚠️ No STUN (srflx) or TURN (relay) candidates. Only host candidates available.');
                 console.warn('[Telecom] ⚠️ This usually means STUN/TURN servers are not configured or not working.');
+              } else if (candidateTypes.srflx > 0 && candidateTypes.relay === 0) {
+                console.log(`[Telecom] ✅ Collected ${candidateTypes.srflx} srflx (STUN) candidate(s) - peer-to-peer connection may work via UDP hole punching!`);
               }
               clearTimeout(candidateTimeout);
               resolve();
@@ -11289,6 +11461,15 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
         });
         
         // Create answer
+        // Log browser info for debugging
+        const browserInfo = {
+          userAgent: navigator.userAgent,
+          isChrome: /Chrome/.test(navigator.userAgent) && !/Edge|Edg/.test(navigator.userAgent),
+          isFirefox: /Firefox/.test(navigator.userAgent),
+          isSafari: /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent)
+        };
+        console.log('[Telecom] [RECIPIENT] Browser info:', browserInfo);
+        
         const answer = await pc.createAnswer({
           offerToReceiveAudio: false,
           offerToReceiveVideo: false
@@ -12529,13 +12710,111 @@ async function processWebRTCAnswer(invite, config, storageKey) {
     };
     
     // Set up ICE connection state handler for detailed diagnostics
+    // Chrome-specific: More aggressive handling for srflx candidates
+    const isChrome = /Chrome/.test(navigator.userAgent) && !/Edge|Edg/.test(navigator.userAgent);
+    let iceCheckingStartTime = null;
+    let iceCheckingAttempts = 0;
+    
     pc.oniceconnectionstatechange = () => {
       console.log('[INIT] 🔗 ICE connection state:', pc.iceConnectionState, 'for contact:', contactGuid);
+      
+      if (pc.iceConnectionState === 'checking') {
+        if (!iceCheckingStartTime) {
+          iceCheckingStartTime = Date.now();
+          iceCheckingAttempts = 0;
+          console.log('[INIT] 🔄 ICE connection checking started - Chrome will attempt UDP hole punching via srflx candidates');
+        }
+        iceCheckingAttempts++;
+        
+        // Chrome-specific: Log progress for srflx candidate attempts
+        if (isChrome) {
+          const checkingDuration = Date.now() - iceCheckingStartTime;
+          if (checkingDuration > 2000 && checkingDuration % 2000 < 100) {
+            // Log every 2 seconds during checking
+            console.log(`[INIT] 🔄 Chrome ICE checking in progress (${Math.floor(checkingDuration/1000)}s) - attempting srflx candidate pairs...`);
+          }
+        }
+      }
+      
+      if (pc.iceConnectionState === 'disconnected') {
+        // Chrome-specific: disconnected might be temporary - give it more time
+        if (isChrome && iceCheckingStartTime) {
+          const checkingDuration = Date.now() - iceCheckingStartTime;
+          console.warn(`[INIT] ⚠️ Chrome ICE disconnected after ${Math.floor(checkingDuration/1000)}s - may recover, waiting...`);
+          
+          // Check if we have srflx candidates - Chrome might still establish connection
+          // Use getStats to check local candidates if available
+          const remoteHasSrflxCandidates = remoteCandidatesSender.some(c => c.includes('typ srflx'));
+          
+          if (remoteHasSrflxCandidates) {
+            console.log('[INIT] 💡 Remote has srflx candidates - connection may recover via UDP hole punching');
+            console.log('[INIT] 💡 Firefox successfully uses srflx candidates - Chrome may need more time');
+            console.log('[INIT] ⚠️ Chrome limitation: Chrome may require relay candidates when initiating connection');
+            console.log('[INIT] 💡 Workaround: Use Firefox as initiator, or configure working TURN server for relay candidates');
+            
+            // Chrome-specific: If disconnected too quickly (< 5 seconds), try restartIce multiple times
+            if (checkingDuration < 5000 && pc.restartIce) {
+              const restartCount = (pc._iceRestartCount || 0) + 1;
+              pc._iceRestartCount = restartCount;
+              
+              if (restartCount <= 2) { // Try up to 2 restarts
+                console.log(`[INIT] 🔄 Chrome disconnected too quickly (attempt ${restartCount}/2) - attempting ICE restart...`);
+                try {
+                  pc.restartIce();
+                  iceCheckingStartTime = Date.now(); // Reset timer
+                  iceCheckingAttempts = 0;
+                  console.log('[INIT] ✅ Chrome ICE restart initiated - will retry srflx candidate pairs');
+                } catch (e) {
+                  console.warn('[INIT] ⚠️ Could not restart ICE:', e);
+                }
+              } else {
+                console.error('[INIT] ❌ Chrome failed to establish connection after multiple ICE restarts');
+                console.error('[INIT] 💡 Chrome cannot establish connection via srflx candidates when initiating');
+                console.error('[INIT] 💡 Solution: Use Firefox as initiator, or configure working TURN server');
+              }
+            }
+          }
+        } else {
+          console.warn('[INIT] ⚠️ ICE connection disconnected - may recover');
+        }
+      }
       
       if (pc.iceConnectionState === 'failed') {
         console.error('[INIT] ❌ ICE connection FAILED (initiator side)');
         console.error('[INIT] Remote candidates received:', remoteCandidatesSender.length, 'from answer');
         console.error('[INIT] Candidates added successfully:', candidatesAddedSuccessfully, 'failed:', candidatesFailed);
+        
+        // Chrome-specific: Check if we tried srflx candidates
+        if (isChrome && iceCheckingStartTime) {
+          const checkingDuration = Date.now() - iceCheckingStartTime;
+          console.error(`[INIT] ⏱️ Chrome ICE checking duration: ${Math.floor(checkingDuration/1000)}s (${iceCheckingAttempts} state changes)`);
+          
+          // Check if we have srflx candidates but connection still failed
+          const remoteHasSrflxCandidates = remoteCandidatesSender.some(c => c.includes('typ srflx'));
+          
+          // Try to get local candidates from stats
+          pc.getStats().then(stats => {
+            let hasLocalSrflxCandidates = false;
+            stats.forEach(report => {
+              if (report.type === 'local-candidate' && report.candidate && report.candidate.includes('typ srflx')) {
+                hasLocalSrflxCandidates = true;
+              }
+            });
+            
+            if (hasLocalSrflxCandidates && remoteHasSrflxCandidates) {
+              console.error('[INIT] ⚠️ Chrome had srflx candidates but connection failed - possible symmetric NAT or firewall blocking UDP hole punching');
+              console.error('[INIT] 💡 Firefox successfully uses srflx candidates for UDP hole punching - Chrome may need TURN server');
+              console.error('[INIT] 💡 Solution: Configure a working TURN server for guaranteed connectivity in Chrome');
+            } else {
+              console.error('[INIT] ⚠️ Missing srflx candidates - STUN servers may not be working properly');
+            }
+          }).catch(e => {
+            console.warn('[INIT] ⚠️ Could not get stats to check local candidates:', e);
+            if (remoteHasSrflxCandidates) {
+              console.error('[INIT] ⚠️ Remote has srflx candidates but connection failed - Chrome may need TURN server');
+            }
+          });
+        }
         
         // Check timing
         if (answerAppliedTime) {
@@ -12650,8 +12929,12 @@ async function processWebRTCAnswer(invite, config, storageKey) {
         });
       } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
         console.log('[INIT] ✅ ICE connection established successfully');
+        if (isChrome && iceCheckingStartTime) {
+          const checkingDuration = Date.now() - iceCheckingStartTime;
+          console.log(`[INIT] 🎉 Chrome successfully established connection via srflx candidates in ${Math.floor(checkingDuration/1000)}s!`);
+        }
       } else if (pc.iceConnectionState === 'checking') {
-        console.log('[INIT] 🔄 ICE connection checking...');
+        // Already handled above with detailed logging
       }
     };
     
@@ -14832,10 +15115,34 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
         }
       });
       
-      const pc = new RTCPeerConnection({ 
+      // Detect browser for Chrome-specific optimizations
+      const isChrome = /Chrome/.test(navigator.userAgent) && !/Edge|Edg/.test(navigator.userAgent);
+      
+      const rtcConfig = {
         iceServers: cleanIceServers,
-        iceCandidatePoolSize: 10
-      });
+        iceTransportPolicy: 'all', // Try all candidates (host, srflx, relay) for maximum compatibility
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require'
+      };
+      
+      if (isChrome) {
+        rtcConfig.iceCandidatePoolSize = 16; // Increased for Chrome
+        console.log('[OneTapTelecom] [SENDER] 🔧 Chrome detected - using optimized ICE settings');
+      } else {
+        rtcConfig.iceCandidatePoolSize = 10;
+      }
+      
+      const pc = new RTCPeerConnection(rtcConfig);
+      
+      // Chrome-specific: Optimize configuration
+      if (isChrome && pc.setConfiguration) {
+        try {
+          pc.setConfiguration(rtcConfig);
+          console.log('[OneTapTelecom] [SENDER] ✅ Chrome ICE configuration optimized');
+        } catch (e) {
+          console.warn('[OneTapTelecom] [SENDER] ⚠️ Could not optimize Chrome ICE configuration:', e);
+        }
+      }
     
     global._telecomPeerConnections.set(contactGuid, pc);
 
@@ -15183,10 +15490,34 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
         }
       });
       
-      const pc = new RTCPeerConnection({ 
+      // Detect browser for Chrome-specific optimizations
+      const isChrome = /Chrome/.test(navigator.userAgent) && !/Edge|Edg/.test(navigator.userAgent);
+      
+      const rtcConfig = {
         iceServers: cleanIceServers,
-        iceCandidatePoolSize: 10
-      });
+        iceTransportPolicy: 'all', // Try all candidates (host, srflx, relay) for maximum compatibility
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require'
+      };
+      
+      if (isChrome) {
+        rtcConfig.iceCandidatePoolSize = 16; // Increased for Chrome
+        console.log('[OneTapTelecom] [RECIPIENT] 🔧 Chrome detected - using optimized ICE settings');
+      } else {
+        rtcConfig.iceCandidatePoolSize = 10;
+      }
+      
+      const pc = new RTCPeerConnection(rtcConfig);
+      
+      // Chrome-specific: Optimize configuration
+      if (isChrome && pc.setConfiguration) {
+        try {
+          pc.setConfiguration(rtcConfig);
+          console.log('[OneTapTelecom] [RECIPIENT] ✅ Chrome ICE configuration optimized');
+        } catch (e) {
+          console.warn('[OneTapTelecom] [RECIPIENT] ⚠️ Could not optimize Chrome ICE configuration:', e);
+        }
+      }
       
       // NOTE: New RTCPeerConnection starts with signalingState = "stable" (NOT "new"!)
       // "stable" is the correct initial state - it means no offer/answer exchange is in progress
