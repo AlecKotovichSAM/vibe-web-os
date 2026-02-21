@@ -110,12 +110,14 @@ window.TelecomChannelManager = (() => {
     }
     
     // On sender side, incoming channel replaces outgoing (this is correct)
+    // CRITICAL: On sender side, incoming channel is bidirectional - use it for both sending and receiving
     if (role === 'sender') {
       metadata.incoming = channel;
+      metadata.outgoing = channel; // 🚨 CRITICAL: Also update outgoing so getChannelForSending() returns this channel
       channelMetadata.set(contactGuid, metadata);
       window._telecomDataChannels.set(contactGuid, channel);
       
-      console.log(`[ChannelManager] ✅ Stored INCOMING channel for ${role} (replaced outgoing):`, {
+      console.log(`[ChannelManager] ✅ Stored INCOMING channel for ${role} (replaced outgoing, now bidirectional):`, {
         contactGuid,
         channelId: channel.id,
         label: channel.label,
@@ -1114,6 +1116,214 @@ function createServiceChat() {
 }
 
 /**
+ * Show Telecom wizard for new users
+ */
+function showTelecomWizard(win, winId, config, storageKey) {
+  const WIZARD_STORAGE_KEY = 'webos.telecom.wizard.completed.v1';
+  
+  // Check if wizard was already completed
+  const wizardCompleted = localStorage.getItem(WIZARD_STORAGE_KEY);
+  if (wizardCompleted === 'true') {
+    return; // Wizard already shown
+  }
+  
+  // Wizard steps
+  const steps = [
+    {
+      title: I18n.t('telecom.wizardStep1Title'),
+      description: I18n.t('telecom.wizardStep1Description'),
+      icon: '👋'
+    },
+    {
+      title: I18n.t('telecom.wizardStep2Title'),
+      description: I18n.t('telecom.wizardStep2Description'),
+      icon: '👤'
+    },
+    {
+      title: I18n.t('telecom.wizardStep3Title'),
+      description: I18n.t('telecom.wizardStep3Description'),
+      icon: '➕'
+    },
+    {
+      title: I18n.t('telecom.wizardStep4Title'),
+      description: I18n.t('telecom.wizardStep4Description'),
+      icon: '🔗'
+    },
+    {
+      title: I18n.t('telecom.wizardStep5Title'),
+      description: I18n.t('telecom.wizardStep5Description'),
+      icon: '🔐'
+    },
+    {
+      title: I18n.t('telecom.wizardStep6Title'),
+      description: I18n.t('telecom.wizardStep6Description'),
+      icon: '💬'
+    },
+    {
+      title: I18n.t('telecom.wizardStep7Title'),
+      description: I18n.t('telecom.wizardStep7Description'),
+      icon: '🎉'
+    }
+  ];
+  
+  let currentStep = 0;
+  
+  // Create wizard overlay
+  const wizardOverlay = document.createElement('div');
+  wizardOverlay.id = 'telecom-wizard-overlay';
+  wizardOverlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  `;
+  
+  // Create wizard dialog
+  const wizardDialog = document.createElement('div');
+  wizardDialog.style.cssText = `
+    background: var(--panel);
+    border-radius: 8px;
+    padding: 32px;
+    max-width: 600px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  `;
+  
+  // Wizard content
+  function renderWizardStep() {
+    const step = steps[currentStep];
+    const isLastStep = currentStep === steps.length - 1;
+    
+    wizardDialog.innerHTML = `
+      <div style="display: flex; flex-direction: column; gap: 24px;">
+        <!-- Header -->
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-size: 48px; text-align: center;">${step.icon}</div>
+          <h2 style="margin: 0; font-size: 24px; font-weight: 500; text-align: center; color: var(--text);">
+            ${step.title}
+          </h2>
+          <div style="text-align: center; color: var(--muted); font-size: 14px;">
+            ${I18n.t('telecom.wizardStep', { current: currentStep + 1, total: steps.length })}
+          </div>
+        </div>
+        
+        <!-- Description -->
+        <div style="color: var(--text); font-size: 15px; line-height: 1.6; text-align: center; padding: 0 8px;">
+          ${step.description}
+        </div>
+        
+        <!-- Progress indicator -->
+        <div style="display: flex; gap: 8px; justify-content: center; margin-top: 8px;">
+          ${steps.map((_, index) => `
+            <div style="
+              width: ${index === currentStep ? '24px' : '8px'};
+              height: 8px;
+              background: ${index === currentStep ? 'var(--accent)' : 'var(--panel-2)'};
+              border-radius: 4px;
+              transition: all 0.3s ease;
+            "></div>
+          `).join('')}
+        </div>
+        
+        <!-- Buttons -->
+        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 8px;">
+          ${currentStep > 0 ? `
+            <button id="telecom-wizard-prev" style="
+              padding: 10px 20px;
+              background: var(--panel-2);
+              color: var(--text);
+              border: none;
+              border-radius: 4px;
+              cursor: pointer;
+              font-size: 14px;
+            ">${I18n.t('telecom.wizardPrevious')}</button>
+          ` : ''}
+          <button id="telecom-wizard-skip" style="
+            padding: 10px 20px;
+            background: transparent;
+            color: var(--muted);
+            border: 1px solid var(--panel-2);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+          ">${I18n.t('telecom.wizardSkip')}</button>
+          <button id="telecom-wizard-next" style="
+            padding: 10px 24px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+          ">${isLastStep ? I18n.t('telecom.wizardFinish') : I18n.t('telecom.wizardNext')}</button>
+        </div>
+      </div>
+    `;
+    
+    // Attach event listeners
+    const prevBtn = wizardDialog.querySelector('#telecom-wizard-prev');
+    if (prevBtn) {
+      prevBtn.addEventListener('click', () => {
+        if (currentStep > 0) {
+          currentStep--;
+          renderWizardStep();
+        }
+      });
+    }
+    
+    const nextBtn = wizardDialog.querySelector('#telecom-wizard-next');
+    if (nextBtn) {
+      nextBtn.addEventListener('click', () => {
+        if (isLastStep) {
+          // Finish wizard
+          localStorage.setItem(WIZARD_STORAGE_KEY, 'true');
+          wizardOverlay.remove();
+        } else {
+          currentStep++;
+          renderWizardStep();
+        }
+      });
+    }
+    
+    const skipBtn = wizardDialog.querySelector('#telecom-wizard-skip');
+    if (skipBtn) {
+      skipBtn.addEventListener('click', () => {
+        localStorage.setItem(WIZARD_STORAGE_KEY, 'true');
+        wizardOverlay.remove();
+      });
+    }
+  }
+  
+  // Initial render
+  renderWizardStep();
+  
+  // Append to window
+  wizardOverlay.appendChild(wizardDialog);
+  win.appendChild(wizardOverlay);
+  
+  // Close on overlay click (outside dialog)
+  wizardOverlay.addEventListener('click', (e) => {
+    if (e.target === wizardOverlay) {
+      localStorage.setItem(WIZARD_STORAGE_KEY, 'true');
+      wizardOverlay.remove();
+    }
+  });
+}
+
+/**
  * Get all chats
  */
 function getChats() {
@@ -1245,6 +1455,58 @@ function saveConnectionSDP(peerId, effectiveGuid, type, sdp) {
  * Get WebRTC connection state for a contact GUID
  */
 function getConnectionStateForContact(contactGuid) {
+  // 🚨 CRITICAL: Check if contact still exists in contacts list
+  // If contact was deleted, connection should be considered disconnected
+  const contacts = getContacts();
+  const contactExists = contacts.find(c => c.guid === contactGuid);
+  if (!contactExists) {
+    // Contact was deleted - close any existing connections and return disconnected
+    console.log('[Telecom] ⚠️ Contact not found in contacts list, closing connections:', contactGuid);
+    const pc = window._telecomPeerConnections?.get(contactGuid);
+    if (pc) {
+      try {
+        pc.close();
+        window._telecomPeerConnections.delete(contactGuid);
+      } catch (e) {
+        console.warn('[Telecom] Error closing PC for deleted contact:', e);
+        window._telecomPeerConnections.delete(contactGuid);
+      }
+    }
+    const dataChannel = window._telecomDataChannels?.get(contactGuid);
+    if (dataChannel) {
+      try {
+        if (dataChannel.readyState !== 'closed') {
+          dataChannel.close();
+        }
+        window._telecomDataChannels.delete(contactGuid);
+      } catch (e) {
+        console.warn('[Telecom] Error closing data channel for deleted contact:', e);
+        window._telecomDataChannels.delete(contactGuid);
+      }
+    }
+    const controlChannel = window._telecomControlChannels?.get(contactGuid);
+    if (controlChannel) {
+      try {
+        if (controlChannel.readyState !== 'closed') {
+          controlChannel.close();
+        }
+        window._telecomControlChannels.delete(contactGuid);
+      } catch (e) {
+        console.warn('[Telecom] Error closing control channel for deleted contact:', e);
+        window._telecomControlChannels.delete(contactGuid);
+      }
+    }
+    // Clean up ChannelManager
+    if (window.TelecomChannelManager) {
+      try {
+        window.TelecomChannelManager.removeChannelsForContact(contactGuid);
+      } catch (e) {
+        console.warn('[Telecom] Error removing channels from ChannelManager:', e);
+      }
+    }
+    return 'disconnected';
+  }
+  
   const pc = window._telecomPeerConnections?.get(contactGuid);
   if (!pc) {
     return 'disconnected';
@@ -1305,6 +1567,39 @@ function updateConnectionStatusForChat(contactGuid, state) {
             statusIndicator.title = I18n.t('telecom.connectionDisconnected') || 'Disconnected';
           }
         }
+        
+        // Update reconnect button visibility based on connection state
+        const reconnectBtn = chatHeader.querySelector('.telecom-reconnect-btn-header');
+        if (reconnectBtn) {
+          // Show button only when disconnected
+          if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+            reconnectBtn.style.display = 'flex';
+          } else {
+            reconnectBtn.style.display = 'none';
+          }
+        } else {
+          // If button doesn't exist but should be shown, we need to re-render chat header
+          // This happens when status changes but chat header wasn't updated yet
+          // We'll let selectChat handle this on next render
+        }
+      }
+    }
+  });
+  
+  // Also update reconnect button in sidebar (renderChatsList)
+  // Re-render chats list to update reconnect buttons
+  telecomWindows.forEach(win => {
+    const winId = win.dataset.winId;
+    if (winId) {
+      const storageKey = 'webos.telecom.v1';
+      let config = null;
+      try {
+        const configData = localStorage.getItem(storageKey);
+        if (configData) config = JSON.parse(configData);
+      } catch (e) {}
+      
+      if (config) {
+        renderChatsList(win, winId, config, storageKey);
       }
     }
   });
@@ -1466,8 +1761,311 @@ function setupMessagesChannelHandler(channel, contactGuid, role = 'unknown', opt
         console.log(`[Telecom] [${role.toUpperCase()}] 📥 Received message via data channel:`, {
           contactGuid: contactGuid,
           type: messageData.type,
-          encrypted: messageData.encrypted || false
+          encrypted: messageData.encrypted || false,
+          hasText: !!messageData.text,
+          textLength: messageData.text?.length,
+          senderId: messageData.senderId
         });
+        
+        // Special logging for edit messages
+        if (messageData.type === 'message-edit') {
+          console.log(`[Telecom] [${role.toUpperCase()}] 🔍 EDIT MESSAGE RECEIVED:`, {
+            contactGuid,
+            encrypted: messageData.encrypted,
+            textPreview: messageData.text?.substring(0, 100),
+            senderId: messageData.senderId
+          });
+        }
+        
+        // Handle message deletion
+        if (messageData.type === 'message-delete') {
+          let deleteData = null;
+          try {
+            // Decrypt if needed
+            let decryptedData = messageData.text;
+            if (messageData.encrypted) {
+              try {
+                const systemAccount = window.Auth ? window.Auth.getAccount() : null;
+                if (systemAccount && systemAccount.privateKeyEncrypted) {
+                  const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+                  const foundWinId = telecomWindows.length > 0 ? telecomWindows[0].dataset.winId : null;
+                  const privateKey = await getDecryptedPrivateKey(foundWinId);
+                  if (privateKey) {
+                    decryptedData = await decryptMessageForTelecom(messageData.text, privateKey);
+                  } else {
+                    console.warn('[Telecom] Cannot decrypt delete message - password required');
+                    return;
+                  }
+                } else {
+                  console.warn('[Telecom] Cannot decrypt delete message - no private key');
+                  return;
+                }
+              } catch (e) {
+                console.error(`[Telecom] [${role.toUpperCase()}] Error decrypting delete message:`, e);
+                return;
+              }
+            }
+            
+            deleteData = JSON.parse(decryptedData);
+            const chatId = deleteData.chatId || `contact-${contactGuid}`;
+            const messageId = deleteData.messageId;
+            
+            if (!messageId) {
+              console.warn('[Telecom] Delete message missing messageId');
+              return;
+            }
+            
+            // Find and mark message as deleted
+            const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
+            const messages = getChatMessages(chatId);
+            const messageIndex = messages.findIndex(m => m.id === messageId);
+            
+            if (messageIndex !== -1) {
+              messages[messageIndex].deleted = true;
+              messages[messageIndex].deletedAt = new Date().toISOString();
+              localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+              
+              console.log('[Telecom] ✅ Message deleted:', messageId);
+              
+              // Refresh UI
+              const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+              telecomWindows.forEach(winEl => {
+                const winId = winEl.dataset.winId;
+                if (winId) {
+                  const win = WindowManager.findWindow(winId);
+                  if (win) {
+                    const selectedChatId = win.dataset.selectedChatId;
+                    const effectiveStorageKey = 'webos.telecom.v1';
+                    let effectiveConfig = null;
+                    try {
+                      const configData = localStorage.getItem(effectiveStorageKey);
+                      if (configData) effectiveConfig = JSON.parse(configData);
+                    } catch (e) {}
+                    
+                    if (selectedChatId === chatId) {
+                      const chats = getChats();
+                      const chat = chats.find(c => c.id === chatId);
+                      if (chat) {
+                        selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
+                      }
+                    }
+                  }
+                }
+              });
+            } else {
+              console.warn('[Telecom] Message not found for deletion:', messageId);
+            }
+          } catch (e) {
+            console.error(`[Telecom] [${role.toUpperCase()}] Error processing delete message:`, e);
+          }
+          return; // Don't process as regular message
+        }
+        
+        // Handle message editing
+        if (messageData.type === 'message-edit') {
+          let editData = null;
+          try {
+            // Decrypt if needed
+            let decryptedData = messageData.text;
+            if (messageData.encrypted) {
+              try {
+                const systemAccount = window.Auth ? window.Auth.getAccount() : null;
+                if (systemAccount && systemAccount.privateKeyEncrypted) {
+                  const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+                  const foundWinId = telecomWindows.length > 0 ? telecomWindows[0].dataset.winId : null;
+                  const privateKey = await getDecryptedPrivateKey(foundWinId);
+                  if (privateKey) {
+                    decryptedData = await decryptMessageForTelecom(messageData.text, privateKey);
+                  } else {
+                    console.warn('[Telecom] Cannot decrypt edit message - password required');
+                    return;
+                  }
+                } else {
+                  console.warn('[Telecom] Cannot decrypt edit message - no private key');
+                  return;
+                }
+              } catch (e) {
+                console.error(`[Telecom] [${role.toUpperCase()}] Error decrypting edit message:`, e);
+                return;
+              }
+            }
+            
+            editData = JSON.parse(decryptedData);
+            const messageId = editData.messageId;
+            const newText = editData.newText;
+            
+            // 🚨 CRITICAL: chatId must match the chat where the message was originally sent
+            // For both sender and recipient, chatId should be `contact-{peerGuid}`
+            // where peerGuid is the GUID of the OTHER person in the chat
+            // 
+            // When recipient edits: contactGuid is sender's GUID → chatId = `contact-${contactGuid}` ✅
+            // When sender edits: contactGuid is recipient's GUID → chatId = `contact-${contactGuid}` ✅
+            // 
+            // BUT: editData.chatId might be wrong if sender used wrong chatId when editing
+            // So we need to try both: editData.chatId and `contact-${contactGuid}`
+            let chatId = editData.chatId;
+            const fallbackChatId = `contact-${contactGuid}`;
+            
+            console.log('[Telecom] 📝 Processing edit message:', {
+              editDataChatId: editData.chatId,
+              fallbackChatId,
+              contactGuid,
+              role,
+              messageId,
+              newTextLength: newText?.length
+            });
+            
+            if (!messageId || !newText) {
+              console.warn('[Telecom] Edit message missing messageId or newText');
+              return;
+            }
+            
+            // Find and update message
+            // 🚨 CRITICAL: chatId must be correct - if editData.chatId is wrong, use fallback
+            // The correct chatId should be `contact-${contactGuid}` where contactGuid is the OTHER person's GUID
+            // For recipient: contactGuid is sender's GUID → correct chatId = `contact-${contactGuid}` ✅
+            // For sender: contactGuid is recipient's GUID → correct chatId = `contact-${contactGuid}` ✅
+            // 
+            // If editData.chatId is provided but wrong, use fallbackChatId instead
+            if (chatId && chatId !== fallbackChatId) {
+              // Verify chatId is correct by checking if it matches the expected format
+              // If editData.chatId uses current user's GUID, it's wrong - use fallback
+              const systemAccount = window.Auth ? window.Auth.getAccount() : null;
+              const currentUserGuid = systemAccount?.guid || null;
+              const chatIdGuid = chatId.startsWith('contact-') ? chatId.replace('contact-', '') : null;
+              
+              if (currentUserGuid && chatIdGuid === currentUserGuid) {
+                // editData.chatId is wrong - it uses current user's GUID instead of peer's GUID
+                console.warn('[Telecom] ⚠️ editData.chatId is incorrect (uses current user GUID), using fallback:', {
+                  editDataChatId: chatId,
+                  fallbackChatId,
+                  currentUserGuid,
+                  contactGuid
+                });
+                chatId = fallbackChatId;
+              }
+            } else if (!chatId) {
+              // No chatId provided, use fallback
+              chatId = fallbackChatId;
+            }
+            
+            const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
+            const messages = getChatMessages(chatId);
+            const messageIndex = messages.findIndex(m => m.id === messageId);
+            
+            console.log('[Telecom] 📋 Messages in chat:', {
+              chatId,
+              totalMessages: messages.length,
+              messageIds: messages.map(m => m.id).slice(0, 10) // Show first 10 IDs
+            });
+            
+            console.log('[Telecom] 🔍 Message search result:', {
+              messageId,
+              found: messageIndex !== -1,
+              index: messageIndex,
+              chatId,
+              totalMessages: messages.length,
+              allMessageIds: messages.map(m => ({ id: m.id, text: m.text?.substring(0, 30) })).slice(0, 20)
+            });
+            
+            if (messageIndex !== -1) {
+              const message = messages[messageIndex];
+              const oldText = message.text;
+              
+              // Keep original text if not already set
+              if (!message.originalText) {
+                message.originalText = message.text;
+                console.log('[Telecom] 📝 Saved original text:', message.originalText.substring(0, 50));
+              }
+              
+              message.text = newText;
+              message.edited = true;
+              message.editedAt = new Date().toISOString();
+              localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+              
+              console.log('[Telecom] ✅ Message edited:', {
+                messageId,
+                oldText: oldText.substring(0, 50) + (oldText.length > 50 ? '...' : ''),
+                newText: newText.substring(0, 50) + (newText.length > 50 ? '...' : ''),
+                edited: message.edited,
+                editedAt: message.editedAt,
+                hasOriginalText: !!message.originalText
+              });
+              
+              // Refresh UI - reload messages from localStorage to ensure we have latest data
+              const updatedMessages = getChatMessages(chatId);
+              console.log('[Telecom] 🔄 Reloaded messages after edit:', {
+                totalMessages: updatedMessages.length,
+                editedMessageIndex: updatedMessages.findIndex(m => m.id === messageId),
+                editedMessageText: updatedMessages.find(m => m.id === messageId)?.text?.substring(0, 50)
+              });
+              
+              const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+              const chats = getChats();
+              const chat = chats.find(c => c.id === chatId);
+              
+              telecomWindows.forEach(winEl => {
+                const winId = winEl.dataset.winId;
+                if (winId) {
+                  const win = WindowManager.findWindow(winId);
+                  if (win) {
+                    const selectedChatId = win.dataset.selectedChatId;
+                    const effectiveStorageKey = 'webos.telecom.v1';
+                    let effectiveConfig = null;
+                    try {
+                      const configData = localStorage.getItem(effectiveStorageKey);
+                      if (configData) effectiveConfig = JSON.parse(configData);
+                    } catch (e) {}
+                    
+                    // Always refresh chats list
+                    renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                    
+                    // If this chat is selected, refresh messages with updated data
+                    if (selectedChatId === chatId && chat) {
+                      // Use updated messages from localStorage
+                      const editedMsg = updatedMessages.find(m => m.id === messageId);
+                      console.log('[Telecom] 🔄 About to refresh UI:', {
+                        messageId,
+                        foundInUpdatedMessages: !!editedMsg,
+                        editedMsgText: editedMsg?.text?.substring(0, 50),
+                        editedMsgEdited: editedMsg?.edited,
+                        totalMessages: updatedMessages.length
+                      });
+                      renderMessages(win, updatedMessages, effectiveConfig);
+                      console.log('[Telecom] ✅ UI refreshed for selected chat');
+                      
+                      // Verify message is displayed correctly
+                      setTimeout(() => {
+                        const messageElement = win.querySelector(`[data-message-id="${messageId}"]`);
+                        if (messageElement) {
+                          const messageText = messageElement.textContent || '';
+                          console.log('[Telecom] ✅ Message element found in DOM:', {
+                            messageId,
+                            displayedText: messageText.substring(0, 100),
+                            containsEdited: messageText.includes('(edited)')
+                          });
+                        } else {
+                          console.warn('[Telecom] ⚠️ Message element not found in DOM after refresh:', messageId);
+                        }
+                      }, 100);
+                    } else {
+                      console.log('[Telecom] ℹ️ Chat not selected, skipping UI refresh:', {
+                        selectedChatId,
+                        chatId,
+                        chatExists: !!chat
+                      });
+                    }
+                  }
+                }
+              });
+            } else {
+              console.warn('[Telecom] Message not found for editing:', messageId);
+            }
+          } catch (e) {
+            console.error(`[Telecom] [${role.toUpperCase()}] Error processing edit message:`, e);
+          }
+          return; // Don't process as regular message
+        }
         
         // Handle regular messages
         if (messageData.type === 'message' && messageData.text) {
@@ -1499,8 +2097,18 @@ function setupMessagesChannelHandler(channel, contactGuid, role = 'unknown', opt
           // Save message
           const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
           const messages = getChatMessages(chatId);
+          // Use messageId from payload if available, otherwise generate new one
+          const messageId = messageData.messageId || ('msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9));
+          
+          // Check if message already exists (to avoid duplicates when resending)
+          const existingMessageIndex = messages.findIndex(m => m.id === messageId);
+          if (existingMessageIndex !== -1) {
+            console.log('[Telecom] ℹ️ Message already exists, skipping duplicate:', messageId);
+            return; // Message already received, skip
+          }
+          
           messages.push({
-            id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+            id: messageId, // Use same ID as sender
             chatId: chatId,
             senderId: contactGuid,
             senderName: messageData.senderName || contactGuid.substring(0, 8) + '...',
@@ -1574,7 +2182,7 @@ function setupMessagesChannelHandler(channel, contactGuid, role = 'unknown', opt
 
   // Set up handler in onopen callback (for channels that open later)
   const originalOnopen = channel.onopen;
-  channel.onopen = () => {
+  channel.onopen = async () => {
     console.log(`[Telecom] [${role.toUpperCase()}] 🎉 Messages channel opened for contact:`, contactGuid);
     
     // Call original callback if exists
@@ -1588,6 +2196,15 @@ function setupMessagesChannelHandler(channel, contactGuid, role = 'unknown', opt
       console.log(`[Telecom] [${role.toUpperCase()}] ℹ️ Handler already exists, skipping (overwrite=false)`);
     }
     
+    // Resend undelivered messages if we're the sender
+    if (role === 'sender' || role === 'ensurePeerForContact') {
+      try {
+        await resendUndeliveredMessages(contactGuid, channel);
+      } catch (e) {
+        console.error(`[Telecom] [${role.toUpperCase()}] Error resending undelivered messages:`, e);
+      }
+    }
+    
     // Call optional callback
     if (onOpenCallback) {
       try {
@@ -1599,6 +2216,119 @@ function setupMessagesChannelHandler(channel, contactGuid, role = 'unknown', opt
   };
 
   console.log(`[Telecom] [${role.toUpperCase()}] ✅ setupMessagesChannelHandler completed for contact:`, contactGuid);
+}
+
+/**
+ * Resend undelivered messages to a contact when connection is re-established
+ */
+async function resendUndeliveredMessages(contactGuid, dataChannel) {
+  if (!dataChannel || dataChannel.readyState !== 'open') {
+    console.log('[Telecom] ⚠️ Cannot resend messages - channel not open');
+    return;
+  }
+  
+  const chatId = `contact-${contactGuid}`;
+  const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
+  const messages = getChatMessages(chatId);
+  
+  if (messages.length === 0) {
+    console.log('[Telecom] ℹ️ No messages to resend');
+    return;
+  }
+  
+  // Get effective GUID to identify our own messages
+  const storageKey = 'webos.telecom.v1';
+  let config = null;
+  try {
+    const configData = localStorage.getItem(storageKey);
+    if (configData) config = JSON.parse(configData);
+  } catch (e) {}
+  
+  if (!config) {
+    console.warn('[Telecom] ⚠️ Cannot resend messages - config not available');
+    return;
+  }
+  
+  const effectiveGuid = getEffectiveGuid(config);
+  
+  // Find messages sent by us that might not have been delivered
+  // We'll resend messages sent in the last 24 hours that are from us
+  const now = Date.now();
+  const oneDayAgo = now - (24 * 60 * 60 * 1000);
+  
+  const undeliveredMessages = messages.filter(msg => {
+    // Only our own messages
+    if (msg.senderId !== effectiveGuid && msg.senderId !== config.systemGuid) {
+      return false;
+    }
+    
+    // Only messages sent in the last 24 hours
+    const msgTime = new Date(msg.timestamp).getTime();
+    if (msgTime < oneDayAgo) {
+      return false;
+    }
+    
+    // Skip deleted messages
+    if (msg.deleted) {
+      return false;
+    }
+    
+    // Skip reconnect links
+    if (msg.isReconnectLink) {
+      return false;
+    }
+    
+    return true;
+  });
+  
+  if (undeliveredMessages.length === 0) {
+    console.log('[Telecom] ℹ️ No undelivered messages to resend');
+    return;
+  }
+  
+  console.log(`[Telecom] 📤 Resending ${undeliveredMessages.length} potentially undelivered messages to ${contactGuid}`);
+  
+  // Get recipient's public key for encryption
+  const contacts = getContacts();
+  const contact = contacts.find(c => c.guid === contactGuid);
+  const recipientPublicKey = contact?.publicKey || null;
+  
+  // Resend messages one by one with a small delay
+  for (const msg of undeliveredMessages) {
+    try {
+      // Encrypt message if recipient has public key
+      let encryptedText = msg.text;
+      if (recipientPublicKey && !msg.wasEncrypted) {
+        try {
+          encryptedText = await encryptMessageForTelecom(msg.text, recipientPublicKey);
+        } catch (e) {
+          console.warn('[Telecom] Error encrypting message for resend, sending unencrypted:', e);
+        }
+      }
+      
+      const messagePayload = {
+        type: 'message',
+        messageId: msg.id, // Use same ID
+        text: encryptedText,
+        encrypted: !!recipientPublicKey,
+        senderId: msg.senderId,
+        senderName: msg.senderName,
+        timestamp: msg.timestamp
+      };
+      
+      const payloadJson = JSON.stringify(messagePayload);
+      dataChannel.send(payloadJson);
+      
+      console.log(`[Telecom] ✅ Resent message: ${msg.id.substring(0, 20)}...`);
+      
+      // Small delay between messages to avoid overwhelming the channel
+      await new Promise(resolve => setTimeout(resolve, 100));
+    } catch (e) {
+      console.error('[Telecom] ❌ Error resending message:', e);
+    }
+  }
+  
+  console.log(`[Telecom] ✅ Finished resending ${undeliveredMessages.length} messages`);
 }
 
 /**
@@ -1786,7 +2516,13 @@ async function autoReconnectToContact(contactGuid, config, storageKey) {
       window._telecomDataChannels = new Map();
     }
     window._telecomPeerConnections.set(contactGuid, pc);
-    window._telecomDataChannels.set(contactGuid, dataChannel);
+    
+    // 🚨 CRITICAL: Use ChannelManager to store outgoing channel for proper channel management
+    if (window.TelecomChannelManager) {
+      window.TelecomChannelManager.storeOutgoingChannel(contactGuid, dataChannel, 'sender');
+    } else {
+      window._telecomDataChannels.set(contactGuid, dataChannel);
+    }
     
     // Set up data channel handlers - reuse existing handler from processWebRTCAnswer
     // The handler will be set up when connection is established, but we need basic handlers here
@@ -2105,6 +2841,11 @@ function renderMainScreen(winId, config, storageKey, restoreState = null) {
   
   // Initialize invite polling
   initInvitePolling(winId, config, storageKey);
+  
+  // Show wizard for new users (after a short delay to ensure UI is rendered)
+  setTimeout(() => {
+    showTelecomWizard(win, winId, config, storageKey);
+  }, 500);
   
   // WebRTC removed - using localStorage-based messaging instead
   // No need to restore connections or initialize signaling
@@ -2613,6 +3354,9 @@ function renderChatsList(win, winId, config, storageKey) {
   // Get selected chat ID for visual highlighting
   const selectedChatId = win.dataset.selectedChatId || null;
   
+  // Get contacts for contact name lookup
+  const contacts = getContacts();
+  
   chatsList.innerHTML = chats.map(chat => {
     const lastMessageText = chat.lastMessage?.text || '';
     const lastMessageTime = chat.lastMessage?.timestamp ? formatMessageTime(chat.lastMessage.timestamp) : '';
@@ -2620,34 +3364,60 @@ function renderChatsList(win, winId, config, storageKey) {
     const isSelected = selectedChatId === chat.id;
     const shouldBlink = blinkingChats.has(chat.id) && !isSelected;
     
+    // 🚨 CRITICAL: For contact chats, always get name from contact, not from chat.name
+    // chat.name might be outdated or incorrect (e.g., showing current user's name instead of contact's name)
+    let chatDisplayName = chat.name;
+    if (chat.type === 'contact' && chat.contactGuid) {
+      const contact = contacts.find(c => c.guid === chat.contactGuid);
+      if (contact) {
+        // Always use contact's displayName, fallback to username, then GUID
+        chatDisplayName = contact.displayName || contact.username || chat.contactGuid;
+        // Update chat.name if it's different (to keep it in sync)
+        if (chat.name !== chatDisplayName) {
+          const chats = getChats();
+          const chatIndex = chats.findIndex(c => c.id === chat.id);
+          if (chatIndex !== -1) {
+            chats[chatIndex].name = chatDisplayName;
+            localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
+            console.log('[Telecom] [renderChatsList] Updated chat name:', chat.id, 'from:', chat.name, 'to:', chatDisplayName);
+          }
+        }
+      } else {
+        console.warn('[Telecom] [renderChatsList] Contact not found for chat:', chat.id, 'contactGuid:', chat.contactGuid);
+      }
+    }
+    
     // Check connection status for contact chats
     let showReconnectButton = false;
     if (chat.type === 'contact' && chat.contactGuid) {
       const connectionState = getConnectionStateForContact(chat.contactGuid);
       showReconnectButton = connectionState === 'disconnected';
       // Debug logging
-      console.log('[Telecom] [renderChatsList] Chat:', chat.id, 'contactGuid:', chat.contactGuid, 'connectionState:', connectionState, 'showReconnectButton:', showReconnectButton);
+      console.log('[Telecom] [renderChatsList] Chat:', chat.id, 'contactGuid:', chat.contactGuid, 'displayName:', chatDisplayName, 'connectionState:', connectionState, 'showReconnectButton:', showReconnectButton);
     }
     
     // Visual styling for selected chat (but don't override blink)
     // If chat should blink, don't set background/border/animation inline - let CSS class handle it
     const backgroundColor = shouldBlink ? '' : (isSelected ? 'var(--panel-2)' : 'transparent');
     const borderLeft = shouldBlink ? '' : (isSelected ? '3px solid var(--accent)' : 'none');
+    // Enhanced visual highlighting for selected chat
+    const fontWeight = isSelected ? '600' : '500';
+    const selectedOpacity = isSelected ? '1' : '';
     // CRITICAL: Don't set animation inline for blinking items - CSS class handles it
     const animation = shouldBlink ? '' : 'none';
     // CRITICAL: Remove transition for blinking items - it conflicts with animation
     const transition = shouldBlink ? 'none' : 'background 0.2s ease';
     
     return `
-      <div class="telecom-chat-item${shouldBlink ? ' telecom-chat-blink' : ''}" data-chat-id="${chat.id}" data-contact-guid="${chat.contactGuid || ''}"
-        style="padding:10px 12px; display:flex; align-items:center; gap:12px; cursor:pointer; transition:${transition}; border-bottom:1px solid var(--panel-2);${backgroundColor ? ` background:${backgroundColor};` : ''}${borderLeft ? ` border-left:${borderLeft};` : ''}${animation ? ` animation:${animation};` : ''}">
+      <div class="telecom-chat-item${shouldBlink ? ' telecom-chat-blink' : ''}${isSelected ? ' telecom-chat-selected' : ''}" data-chat-id="${chat.id}" data-contact-guid="${chat.contactGuid || ''}"
+        style="padding:10px 12px; display:flex; align-items:center; gap:12px; cursor:pointer; transition:${transition}; border-bottom:1px solid var(--panel-2);${backgroundColor ? ` background:${backgroundColor};` : ''}${borderLeft ? ` border-left:${borderLeft};` : ''}${animation ? ` animation:${animation};` : ''}${selectedOpacity ? ` opacity:${selectedOpacity};` : ''}">
         <div style="width:48px; height:48px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0;">
           ${chat.icon || '💬'}
         </div>
         <div style="flex:1; min-width:0;">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
             <div style="font-weight:${isSelected ? '600' : '500'}; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:flex; align-items:center; gap:4px; color:${isSelected ? 'var(--text)' : 'var(--text)'};">
-              ${chat.name}
+              ${chatDisplayName}
               ${isVerified ? `<span style="display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:50%; background:var(--accent); color:white; font-size:10px; font-weight:bold; flex-shrink:0; line-height:1; margin-left:2px;" title="${I18n.t('telecom.verified')}">✓</span>` : ''}
             </div>
             <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
@@ -2866,6 +3636,7 @@ function selectChat(win, winId, chat, config, storageKey) {
     
     // Get connection status for contact chats
     let connectionStatusIndicator = '';
+    let showReconnectButton = false;
     if (chat.type === 'contact' && chat.contactGuid) {
       const connectionState = getConnectionStateForContact(chat.contactGuid);
       let statusColor = '#ff6b6b'; // disconnected (red)
@@ -2877,9 +3648,22 @@ function selectChat(win, winId, chat, config, storageKey) {
       } else if (connectionState === 'connecting') {
         statusColor = '#ffa500'; // connecting (orange)
         statusTitle = I18n.t('telecom.connectionConnecting') || 'Connecting...';
+      } else {
+        // disconnected, failed, or closed - show reconnect button
+        showReconnectButton = true;
       }
       
       connectionStatusIndicator = `<span class="telecom-connection-status-indicator" style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${statusColor}; box-shadow:0 0 4px ${statusColor}; flex-shrink:0; margin-left:6px;" title="${statusTitle}"></span>`;
+    }
+    
+    // 🚨 CRITICAL: For contact chats, always get name from contact, not from chat.name
+    let chatHeaderDisplayName = chat.name;
+    if (chat.type === 'contact' && chat.contactGuid) {
+      const contacts = getContacts();
+      const contact = contacts.find(c => c.guid === chat.contactGuid);
+      if (contact) {
+        chatHeaderDisplayName = contact.displayName || contact.username || chat.contactGuid;
+      }
     }
     
     chatHeader.innerHTML = `
@@ -2888,13 +3672,25 @@ function selectChat(win, winId, chat, config, storageKey) {
       </div>
       <div style="flex:1; min-width:0;">
         <div style="font-weight:500; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:flex; align-items:center; gap:4px;">
-          ${chat.name}
+          ${chatHeaderDisplayName}
           ${isVerified ? `<span style="display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:50%; background:var(--accent); color:white; font-size:10px; font-weight:bold; flex-shrink:0; line-height:1; margin-left:2px;" title="${I18n.t('telecom.verified')}">✓</span>` : ''}
           ${connectionStatusIndicator || ''}
         </div>
         ${chat.type === 'service' ? `<div style="font-size:12px; color:var(--muted);">${I18n.t('telecom.serviceChat')}</div>` : ''}
       </div>
+      ${showReconnectButton ? `<button class="telecom-reconnect-btn-header" data-contact-guid="${chat.contactGuid}" style="background:none; border:none; font-size:18px; cursor:pointer; color:var(--accent); padding:8px; min-width:32px; height:32px; display:flex; align-items:center; justify-content:center; opacity:0.8; transition:all 0.2s; flex-shrink:0; border-radius:6px;" title="${I18n.t('telecom.reconnect') || 'Reconnect'}" onmouseover="this.style.opacity='1'; this.style.background='var(--panel-2)';" onmouseout="this.style.opacity='0.8'; this.style.background='none';">🔄</button>` : ''}
     `;
+    
+    // Add click handler for reconnect button in header
+    if (showReconnectButton && chat.contactGuid) {
+      const reconnectBtnHeader = chatHeader.querySelector('.telecom-reconnect-btn-header');
+      if (reconnectBtnHeader) {
+        reconnectBtnHeader.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await handleReconnectClick(chat.contactGuid, win, winId, config, storageKey);
+        });
+      }
+    }
     
     // Ensure status indicator is updated after rendering
     if (chat.type === 'contact' && chat.contactGuid) {
@@ -2980,22 +3776,38 @@ function renderMessages(win, messages, config) {
     const isService = msg.type === 'service' || msg.senderId === 'telecom';
     const effectiveGuid = getEffectiveGuid(config);
     const isOwn = msg.senderId === effectiveGuid || msg.senderId === config.systemGuid;
+    const isDeleted = msg.deleted === true;
+    const isEdited = msg.edited === true; // Show edited indicator if edited flag is set
+    
+    // Show deleted message indicator
+    const messageText = isDeleted ? 
+      '<span style="font-style:italic; opacity:0.6;">Message deleted</span>' : 
+      (isEdited ? escapeHtml(msg.text) + ' <span style="font-size:11px; opacity:0.7;">(edited)</span>' :
+        (() => {
+          // Check if this is a reconnect link message
+          const reconnectUrl = msg.reconnectUrl || (msg.text && msg.text.includes('#offer=') ? msg.text.match(/(https?:\/\/[^\s]+)/)?.[1] : null);
+          if (reconnectUrl && (msg.isReconnectLink || msg.text?.includes('Reconnect link') || msg.text?.includes('🔄'))) {
+            return `<a href="${escapeHtml(reconnectUrl)}" style="color:${isService || isOwn ? 'white' : 'var(--accent)'}; text-decoration:underline; cursor:pointer; word-break:break-all;" onclick="event.preventDefault(); const hash='${escapeHtml(reconnectUrl.split('#')[1] || '')}'; if(hash) { location.hash=hash; setTimeout(() => location.reload(), 500); } return false;">🔄 Click to reconnect</a>`;
+          }
+          return escapeHtml(msg.text).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:' + (isService || isOwn ? 'white' : 'var(--accent)') + '; text-decoration:underline;">$1</a>');
+        })());
     
     return `
-      <div style="display:flex; ${isOwn ? 'justify-content:flex-end;' : 'justify-content:flex-start;'} margin-bottom:8px;">
-        <div style="max-width:70%; padding:8px 12px; border-radius:12px; background:${isService ? 'var(--accent)' : (isOwn ? 'var(--accent)' : 'var(--panel-2)')}; color:${isService || isOwn ? 'white' : 'var(--text)'};">
+      <div class="telecom-message-wrapper" data-message-id="${msg.id}" data-chat-id="${msg.chatId || ''}" style="display:flex; ${isOwn ? 'justify-content:flex-end;' : 'justify-content:flex-start;'} margin-bottom:8px; position:relative;">
+        <div class="telecom-message" style="max-width:70%; padding:8px 12px; border-radius:12px; background:${isService ? 'var(--accent)' : (isOwn ? 'var(--accent)' : 'var(--panel-2)')}; color:${isService || isOwn ? 'white' : 'var(--text)'}; position:relative;">
           ${!isOwn && !isService ? `<div style="font-size:11px; font-weight:500; margin-bottom:4px; opacity:0.8;">${msg.senderName || 'Unknown'}</div>` : ''}
           <div style="font-size:14px; line-height:1.4; word-wrap:break-word;">
-            ${(() => {
-              // Check if this is a reconnect link message
-              const reconnectUrl = msg.reconnectUrl || (msg.text && msg.text.includes('#offer=') ? msg.text.match(/(https?:\/\/[^\s]+)/)?.[1] : null);
-              if (reconnectUrl && (msg.isReconnectLink || msg.text?.includes('Reconnect link') || msg.text?.includes('🔄'))) {
-                return `<a href="${escapeHtml(reconnectUrl)}" style="color:${isService || isOwn ? 'white' : 'var(--accent)'}; text-decoration:underline; cursor:pointer; word-break:break-all;" onclick="event.preventDefault(); const hash='${escapeHtml(reconnectUrl.split('#')[1] || '')}'; if(hash) { location.hash=hash; setTimeout(() => location.reload(), 500); } return false;">🔄 Click to reconnect</a>`;
-              }
-              return escapeHtml(msg.text).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:' + (isService || isOwn ? 'white' : 'var(--accent)') + '; text-decoration:underline;">$1</a>');
-            })()}
+            ${messageText}
           </div>
-          <div class="telecom-message-time" data-timestamp="${msg.timestamp}" data-msg-index="${index}" style="font-size:11px; opacity:0.7; margin-top:4px; text-align:right; cursor:pointer; user-select:none;">${formatMessageTime(msg.timestamp)}</div>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:4px; gap:8px;">
+            <div class="telecom-message-time" data-timestamp="${msg.timestamp}" data-msg-index="${index}" style="font-size:11px; opacity:0.7; cursor:pointer; user-select:none;">${formatMessageTime(msg.timestamp)}</div>
+            ${isOwn && !isService && !isDeleted ? `
+              <div class="telecom-message-actions" style="display:none; gap:4px; align-items:center;">
+                <button class="telecom-message-edit" data-message-id="${msg.id}" data-chat-id="${msg.chatId || ''}" style="background:none; border:none; font-size:12px; cursor:pointer; color:${isOwn ? 'white' : 'var(--text)'}; padding:2px 4px; opacity:0.7; border-radius:4px;" title="Edit message">✏️</button>
+                <button class="telecom-message-delete" data-message-id="${msg.id}" data-chat-id="${msg.chatId || ''}" style="background:none; border:none; font-size:12px; cursor:pointer; color:${isOwn ? 'white' : 'var(--text)'}; padding:2px 4px; opacity:0.7; border-radius:4px;" title="Delete message">🗑️</button>
+              </div>
+            ` : ''}
+          </div>
         </div>
       </div>
     `;
@@ -3024,8 +3836,475 @@ function renderMessages(win, messages, config) {
     });
   });
 
+  // Add hover handlers to show/hide edit/delete buttons for own messages
+  const messageWrappers = messagesArea.querySelectorAll('.telecom-message-wrapper');
+  messageWrappers.forEach(wrapper => {
+    const messageDiv = wrapper.querySelector('.telecom-message');
+    const actionsDiv = wrapper.querySelector('.telecom-message-actions');
+    
+    if (actionsDiv && messageDiv) {
+      wrapper.addEventListener('mouseenter', () => {
+        actionsDiv.style.display = 'flex';
+      });
+      wrapper.addEventListener('mouseleave', () => {
+        actionsDiv.style.display = 'none';
+      });
+    }
+  });
+
+  // Add click handlers for edit/delete buttons
+  const editButtons = messagesArea.querySelectorAll('.telecom-message-edit');
+  editButtons.forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const messageId = btn.dataset.messageId;
+      // 🚨 CRITICAL: Use chatId from message itself, not from selectedChatId
+      // Message has correct chatId stored in data-chat-id attribute
+      const chatId = btn.dataset.chatId || win.dataset.selectedChatId;
+      const winId = win.dataset.winId;
+      const storageKey = 'webos.telecom.v1'; // Default storage key
+      if (messageId && chatId && winId) {
+        await handleEditMessage(win, winId, chatId, messageId, config, storageKey);
+      } else {
+        console.warn('[Telecom] Missing data for edit:', { messageId, chatId, winId });
+      }
+    });
+  });
+
+  const deleteButtons = messagesArea.querySelectorAll('.telecom-message-delete');
+  deleteButtons.forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const messageId = btn.dataset.messageId;
+      // 🚨 CRITICAL: Use chatId from message itself, not from selectedChatId
+      // Message has correct chatId stored in data-chat-id attribute
+      const chatId = btn.dataset.chatId || win.dataset.selectedChatId;
+      const winId = win.dataset.winId;
+      const storageKey = 'webos.telecom.v1'; // Default storage key
+      if (messageId && chatId && winId) {
+        await handleDeleteMessage(win, winId, chatId, messageId, config, storageKey);
+      } else {
+        console.warn('[Telecom] Missing data for delete:', { messageId, chatId, winId });
+      }
+    });
+  });
+
   // Scroll to bottom
   messagesArea.scrollTop = messagesArea.scrollHeight;
+}
+
+/**
+ * Handle message deletion
+ */
+async function handleDeleteMessage(win, winId, chatId, messageId, config, storageKey) {
+  const messages = getChatMessages(chatId);
+  const messageIndex = messages.findIndex(m => m.id === messageId);
+  
+  if (messageIndex === -1) {
+    console.warn('[Telecom] Message not found for deletion:', messageId);
+    return;
+  }
+  
+  const message = messages[messageIndex];
+  const effectiveGuid = getEffectiveGuid(config);
+  
+  // Only allow deleting own messages
+  if (message.senderId !== effectiveGuid && message.senderId !== config.systemGuid) {
+    console.warn('[Telecom] Cannot delete message from another user');
+    if (window.Dialog && window.Dialog.alert) {
+      await window.Dialog.alert('You can only delete your own messages');
+    } else {
+      alert('You can only delete your own messages');
+    }
+    return;
+  }
+  
+  // Mark message as deleted
+  message.deleted = true;
+  message.deletedAt = new Date().toISOString();
+  
+  // Save to localStorage
+  const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
+  localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+  
+  // Send delete notification via WebRTC to other peer
+  const peerId = chatId.startsWith('contact-') ? chatId.replace('contact-', '') : null;
+  if (peerId) {
+    const dataChannel = window.TelecomChannelManager ? 
+      window.TelecomChannelManager.getChannelForSending(peerId) : 
+      window._telecomDataChannels?.get(peerId);
+    
+    if (dataChannel && dataChannel.readyState === 'open') {
+      try {
+        const contacts = getContacts();
+        const contact = contacts.find(c => c.guid === peerId);
+        const recipientPublicKey = contact?.publicKey || null;
+        
+        const deletePayload = {
+          type: 'message-delete',
+          messageId: messageId,
+          chatId: chatId,
+          timestamp: new Date().toISOString()
+        };
+        
+        let payloadJson = JSON.stringify(deletePayload);
+        
+        // Encrypt if recipient has public key
+        if (recipientPublicKey) {
+          try {
+            payloadJson = await encryptMessageForTelecom(payloadJson, recipientPublicKey);
+          } catch (e) {
+            console.warn('[Telecom] Error encrypting delete message, sending unencrypted:', e);
+          }
+        }
+        
+        const finalPayload = {
+          type: 'message-delete',
+          text: payloadJson,
+          encrypted: !!recipientPublicKey,
+          senderId: effectiveGuid || config.systemGuid,
+          timestamp: new Date().toISOString()
+        };
+        
+        dataChannel.send(JSON.stringify(finalPayload));
+        console.log('[Telecom] ✅ Delete notification sent via WebRTC');
+      } catch (e) {
+        console.error('[Telecom] Error sending delete notification:', e);
+      }
+    } else {
+      console.warn('[Telecom] Data channel not available for sending delete notification');
+    }
+  }
+  
+  // Refresh UI
+  renderMessages(win, messages, config);
+}
+
+/**
+ * Handle message editing
+ */
+async function handleEditMessage(win, winId, chatId, messageId, config, storageKey) {
+  // 🚨 CRITICAL: chatId should be correct - it comes from message.chatId stored in DOM
+  // chatId format: `contact-{peerGuid}` where peerGuid is the OTHER person's GUID
+  const messages = getChatMessages(chatId);
+  const messageIndex = messages.findIndex(m => m.id === messageId);
+  
+  console.log('[Telecom] 🔍 Searching for message to edit:', {
+    chatId,
+    messageId,
+    totalMessages: messages.length,
+    messageIds: messages.map(m => m.id).slice(0, 20)
+  });
+  
+  if (messageIndex === -1) {
+    console.warn('[Telecom] Message not found for editing:', {
+      messageId,
+      chatId,
+      totalMessages: messages.length,
+      availableIds: messages.map(m => m.id).slice(0, 20)
+    });
+    return;
+  }
+  
+  const message = messages[messageIndex];
+  const effectiveGuid = getEffectiveGuid(config);
+  
+  // Only allow editing own messages
+  if (message.senderId !== effectiveGuid && message.senderId !== config.systemGuid) {
+    console.warn('[Telecom] Cannot edit message from another user');
+    if (window.Dialog && window.Dialog.alert) {
+      await window.Dialog.alert('You can only edit your own messages');
+    } else {
+      alert('You can only edit your own messages');
+    }
+    return;
+  }
+  
+  // Don't allow editing deleted messages
+  if (message.deleted) {
+    console.warn('[Telecom] Cannot edit deleted message');
+    return;
+  }
+  
+  // Show edit dialog
+  const originalText = message.originalText || message.text;
+  const newText = await showEditMessageDialog(winId, originalText);
+  
+  if (!newText || newText.trim() === originalText.trim()) {
+    return; // User cancelled or didn't change text
+  }
+  
+  // Update message
+  message.text = newText.trim();
+  message.originalText = originalText; // Keep original for reference
+  message.edited = true;
+  message.editedAt = new Date().toISOString();
+  
+  // Save to localStorage
+  const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
+  localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+  
+  // Send edit notification via WebRTC to other peer
+  // 🚨 CRITICAL: chatId must be the same for both sender and recipient
+  // chatId format: `contact-{peerGuid}` where peerGuid is the OTHER person's GUID
+  // When recipient edits: chatId should be `contact-{senderGuid}` (peerGuid = sender)
+  // When sender edits: chatId should be `contact-{recipientGuid}` (peerGuid = recipient)
+  // 
+  // Extract peerId from chatId (should be the OTHER person's GUID)
+  const peerId = chatId.startsWith('contact-') ? chatId.replace('contact-', '') : null;
+  
+  // 🚨 CRITICAL: Verify chatId is correct
+  // If chatId uses current user's GUID, it's wrong - should use peer's GUID
+  const currentUserGuid = effectiveGuid || config.systemGuid;
+  const chatIdGuid = chatId.startsWith('contact-') ? chatId.replace('contact-', '') : null;
+  
+  // If chatId uses current user's GUID, fix it to use peer's GUID
+  let correctChatId = chatId;
+  if (chatIdGuid === currentUserGuid && peerId && peerId !== currentUserGuid) {
+    // chatId is wrong - it uses current user's GUID instead of peer's GUID
+    // Fix it: use peer's GUID
+    correctChatId = `contact-${peerId}`;
+    console.warn('[Telecom] ⚠️ Fixed incorrect chatId in edit notification:', {
+      originalChatId: chatId,
+      correctChatId,
+      currentUserGuid,
+      peerId
+    });
+  }
+  
+  if (peerId) {
+    const dataChannel = window.TelecomChannelManager ? 
+      window.TelecomChannelManager.getChannelForSending(peerId) : 
+      window._telecomDataChannels?.get(peerId);
+    
+    if (dataChannel && dataChannel.readyState === 'open') {
+      try {
+        const contacts = getContacts();
+        const contact = contacts.find(c => c.guid === peerId);
+        const recipientPublicKey = contact?.publicKey || null;
+        
+        const editPayload = {
+          type: 'message-edit',
+          messageId: messageId,
+          chatId: correctChatId, // Use corrected chatId
+          newText: newText.trim(),
+          timestamp: new Date().toISOString()
+        };
+        
+        let payloadJson = JSON.stringify(editPayload);
+        
+        // Encrypt if recipient has public key
+        if (recipientPublicKey) {
+          try {
+            payloadJson = await encryptMessageForTelecom(payloadJson, recipientPublicKey);
+          } catch (e) {
+            console.warn('[Telecom] Error encrypting edit message, sending unencrypted:', e);
+          }
+        }
+        
+        const finalPayload = {
+          type: 'message-edit',
+          text: payloadJson,
+          encrypted: !!recipientPublicKey,
+          senderId: effectiveGuid || config.systemGuid,
+          timestamp: new Date().toISOString()
+        };
+        
+        dataChannel.send(JSON.stringify(finalPayload));
+        console.log('[Telecom] ✅ Edit notification sent via WebRTC');
+      } catch (e) {
+        console.error('[Telecom] Error sending edit notification:', e);
+      }
+    } else {
+      console.warn('[Telecom] Data channel not available for sending edit notification');
+    }
+  }
+  
+  // Refresh UI
+  renderMessages(win, messages, config);
+}
+
+/**
+ * Show edit message dialog
+ */
+function showEditMessageDialog(winId, currentText) {
+  return new Promise((resolve) => {
+    const windowElement = WindowManager.findWindow(winId);
+    if (!windowElement) {
+      resolve(null);
+      return;
+    }
+    
+    const windowContent = windowElement.querySelector('.win-content');
+    if (!windowContent) {
+      resolve(null);
+      return;
+    }
+    
+    // Create backdrop
+    const backdrop = document.createElement('div');
+    backdrop.className = 'telecom-edit-message-backdrop';
+    backdrop.style.cssText = `
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      animation: fadeIn 0.2s ease;
+    `;
+    
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.className = 'telecom-edit-message-dialog';
+    dialog.style.cssText = `
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 500px;
+      max-width: 90%;
+      background: var(--panel);
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      z-index: 1001;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      animation: fadeIn 0.2s ease;
+    `;
+    
+    // Header
+    const header = document.createElement('div');
+    header.style.cssText = `
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--panel-2);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    `;
+    header.innerHTML = `
+      <h3 style="margin:0; font-size:18px; font-weight:500;">Edit Message</h3>
+      <button class="telecom-edit-message-close" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text); padding:4px 8px; border-radius:4px;">✕</button>
+    `;
+    
+    // Content
+    const content = document.createElement('div');
+    content.style.cssText = `
+      padding: 20px;
+    `;
+    
+    const textarea = document.createElement('textarea');
+    textarea.value = currentText;
+    textarea.style.cssText = `
+      width: 100%;
+      min-height: 100px;
+      padding: 12px;
+      background: var(--panel-2);
+      border: 1px solid var(--panel-2);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 14px;
+      font-family: inherit;
+      resize: vertical;
+      outline: none;
+      box-sizing: border-box;
+    `;
+    content.appendChild(textarea);
+    
+    // Buttons
+    const buttons = document.createElement('div');
+    buttons.style.cssText = `
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      margin-top: 16px;
+    `;
+    
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.cssText = `
+      padding: 10px 20px;
+      background: var(--panel-2);
+      color: var(--text);
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = 'Save';
+    saveBtn.style.cssText = `
+      padding: 10px 20px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    
+    const closeDialog = () => {
+      backdrop.remove();
+      dialog.remove();
+    };
+    
+    cancelBtn.addEventListener('click', () => {
+      resolve(null);
+      closeDialog();
+    });
+    
+    saveBtn.addEventListener('click', () => {
+      const newText = textarea.value.trim();
+      resolve(newText);
+      closeDialog();
+    });
+    
+    const closeBtn = dialog.querySelector('.telecom-edit-message-close');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        resolve(null);
+        closeDialog();
+      });
+    }
+    
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) {
+        resolve(null);
+        closeDialog();
+      }
+    });
+    
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        resolve(null);
+        closeDialog();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    
+    buttons.appendChild(cancelBtn);
+    buttons.appendChild(saveBtn);
+    content.appendChild(buttons);
+    
+    dialog.appendChild(header);
+    dialog.appendChild(content);
+    
+    windowContent.appendChild(backdrop);
+    windowContent.appendChild(dialog);
+    
+    if (windowContent.style.position !== 'relative' && windowContent.style.position !== 'absolute') {
+      windowContent.style.position = 'relative';
+    }
+    
+    // Focus textarea and select all
+    setTimeout(() => {
+      textarea.focus();
+      textarea.select();
+    }, 100);
+  });
 }
 
 /**
@@ -3373,11 +4652,31 @@ function showTelecomMenu(win, winId, config, storageKey) {
     }
   });
 
+  // Close menu when clicking anywhere in telecom app (except menu itself)
+  const closeMenuOnClick = (e) => {
+    // Don't close if clicking inside menu dialog
+    if (menuDialog.contains(e.target)) {
+      return;
+    }
+    // Don't close if clicking on menu toggle button
+    const menuToggle = win.querySelector('#telecom-menu-toggle');
+    if (menuToggle && menuToggle.contains(e.target)) {
+      return;
+    }
+    // Close menu
+    backdrop.remove();
+    menuDialog.remove();
+    windowContent.removeEventListener('click', closeMenuOnClick);
+  };
+  // Use capture phase to catch clicks before they bubble
+  windowContent.addEventListener('click', closeMenuOnClick, true);
+
   // Close on Escape key
   const handleEscape = (e) => {
     if (e.key === 'Escape') {
       backdrop.remove();
       menuDialog.remove();
+      windowContent.removeEventListener('click', closeMenuOnClick);
       document.removeEventListener('keydown', handleEscape);
     }
   };
@@ -3499,9 +4798,9 @@ function closeAllTelecomDialogs(winId) {
   const windowContent = windowElement.querySelector('.win-content');
   if (!windowContent) return;
   
-  // Remove all Telecom dialogs and backdrops (including answer dialog)
-  const dialogs = windowContent.querySelectorAll('.telecom-profile-dialog, .telecom-settings-dialog, .telecom-new-group-dialog, .telecom-new-channel-dialog, .telecom-contacts-dialog, .telecom-invite-received-dialog, .telecom-share-answer-dialog');
-  const backdrops = windowContent.querySelectorAll('.telecom-profile-backdrop, .telecom-settings-backdrop, .telecom-new-group-backdrop, .telecom-new-channel-backdrop, .telecom-contacts-backdrop, .telecom-invite-received-backdrop, .telecom-share-answer-backdrop');
+  // Remove all Telecom dialogs and backdrops (including answer dialog and menu)
+  const dialogs = windowContent.querySelectorAll('.telecom-profile-dialog, .telecom-settings-dialog, .telecom-new-group-dialog, .telecom-new-channel-dialog, .telecom-contacts-dialog, .telecom-invite-received-dialog, .telecom-share-answer-dialog, .telecom-menu-dialog');
+  const backdrops = windowContent.querySelectorAll('.telecom-profile-backdrop, .telecom-settings-backdrop, .telecom-new-group-backdrop, .telecom-new-channel-backdrop, .telecom-contacts-backdrop, .telecom-invite-received-backdrop, .telecom-share-answer-backdrop, .telecom-menu-backdrop');
   
   dialogs.forEach(dialog => dialog.remove());
   backdrops.forEach(backdrop => backdrop.remove());
@@ -5546,26 +6845,28 @@ function showContactsDialog(win, winId, config, storageKey) {
   sentSection.appendChild(sentInvitesContainer);
   
   // Pending invites section (only received pending invites)
+  // Only show this section if there are pending invites to avoid clutter
   const pendingSection = document.createElement('div');
-  pendingSection.style.cssText = 'margin-bottom: 24px;';
-  
-  const pendingTitle = document.createElement('h4');
-  pendingTitle.style.cssText = 'font-size: 14px; font-weight: 500; color: var(--text); margin: 0 0 12px 0;';
-  pendingTitle.textContent = I18n.t('telecom.invitesPending') || 'Pending Invites';
-  pendingSection.appendChild(pendingTitle);
-  
-  const pendingInvitesContainer = document.createElement('div');
-  pendingInvitesContainer.id = 'telecom-contacts-pending-invites';
-  pendingInvitesContainer.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
-  
-  if (receivedPendingInvites.length === 0) {
-    pendingInvitesContainer.innerHTML = `
-      <div style="padding:20px; text-align:center; color:var(--muted); font-size:13px;">
-        ${I18n.t('telecom.invitesNoPending') || 'No pending invites'}
-      </div>
-    `;
+  if (receivedPendingInvites.length > 0) {
+    pendingSection.style.cssText = 'margin-bottom: 24px;';
+    
+    const pendingTitle = document.createElement('h4');
+    pendingTitle.style.cssText = 'font-size: 14px; font-weight: 500; color: var(--text); margin: 0 0 12px 0;';
+    pendingTitle.textContent = I18n.t('telecom.invitesPending') || 'Pending Invites';
+    pendingSection.appendChild(pendingTitle);
+    
+    const pendingInvitesContainer = document.createElement('div');
+    pendingInvitesContainer.id = 'telecom-contacts-pending-invites';
+    pendingInvitesContainer.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+    pendingSection.appendChild(pendingInvitesContainer);
+  } else {
+    // Hide section if no pending invites
+    pendingSection.style.cssText = 'display: none;';
+    const pendingInvitesContainer = document.createElement('div');
+    pendingInvitesContainer.id = 'telecom-contacts-pending-invites';
+    pendingInvitesContainer.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+    pendingSection.appendChild(pendingInvitesContainer);
   }
-  pendingSection.appendChild(pendingInvitesContainer);
   
   // Accepted invites section (only received accepted invites)
   const acceptedSection = document.createElement('div');
@@ -5786,16 +7087,17 @@ function refreshContactsDialog(dialog, config, storageKey, winId) {
   }
   
   // Refresh Invites tab - Pending section (only received)
+  // Hide/show section based on whether there are pending invites
+  const pendingSection = dialog.querySelector('#telecom-contacts-pending-invites')?.parentElement;
   const pendingInvitesContainer = dialog.querySelector('#telecom-contacts-pending-invites');
-  if (pendingInvitesContainer) {
+  if (pendingInvitesContainer && pendingSection) {
     pendingInvitesContainer.innerHTML = '';
     if (receivedPendingInvites.length === 0) {
-      pendingInvitesContainer.innerHTML = `
-        <div style="padding:20px; text-align:center; color:var(--muted); font-size:13px;">
-          ${I18n.t('telecom.invitesNoPending') || 'No pending invites'}
-        </div>
-      `;
+      // Hide section if no pending invites
+      pendingSection.style.display = 'none';
     } else {
+      // Show section and render invites
+      pendingSection.style.display = 'block';
       renderPendingInvitesInInvitesTab(pendingInvitesContainer, receivedPendingInvites, config, storageKey, winId, 'received');
     }
   }
@@ -6397,6 +7699,9 @@ function showOneTapLinkDialog(linkUrl, tokenBytes, sdpBytes, winId) {
     <div style="margin-bottom:20px;">
       <p style="margin:0 0 12px 0; font-size:14px; color:var(--text); line-height:1.5;">
         Share this link with the recipient. They can open it to automatically connect via One-Tap.
+      </p>
+      <p style="margin:0 0 12px 0; font-size:13px; color:var(--accent); line-height:1.5; padding:8px; background:var(--panel-2); border-radius:6px; border-left:3px solid var(--accent);">
+        💡 <strong>Tip:</strong> You can also paste this link directly into the chat message field. The connection will be established automatically when you send the message.
       </p>
       <div style="font-size:12px; color:var(--muted); margin-top:8px;">
         Token size: ${tokenBytes} bytes | SDP: ${sdpBytes} bytes
@@ -8064,11 +9369,32 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
             });
           }, 200);
           
-          if (window.Dialog && window.Dialog.alert) {
-            await window.Dialog.alert('WebRTC answer processed successfully. Connection should be established.');
-          } else {
-            alert('WebRTC answer processed successfully. Connection should be established.');
+          // Get added contact to show in dialog
+          const contactGuid = inviteToProcess.toGuid;
+          const contacts = getContacts();
+          let addedContact = contacts.find(c => c.guid === contactGuid);
+          
+          // If contact not found, create contact info from invite data
+          if (!addedContact) {
+            addedContact = {
+              guid: contactGuid,
+              username: inviteToProcess.toUsername || null,
+              displayName: inviteToProcess.toDisplayName || inviteToProcess.toUsername || contactGuid.substring(0, 8) + '...',
+              firstName: inviteToProcess.toFirstName || null,
+              lastName: inviteToProcess.toLastName || null,
+              email: inviteToProcess.toEmail || null
+            };
           }
+          
+          // Show contact added dialog instead of alert
+          const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+          if (telecomWindows.length > 0) {
+            const winId = telecomWindows[0].dataset.winId;
+            if (winId) {
+              showContactAddedDialog(winId, addedContact, config, storageKey);
+            }
+          }
+          
           // Clear textarea
           jsonTextarea.value = '';
           fileNameDiv.textContent = '';
@@ -8218,11 +9544,19 @@ function showAcceptInviteDialog(win, winId, config, storageKey) {
             // Close progress dialog
             progressDialog.close();
             
-            // Show success message
-            if (window.Dialog && window.Dialog.alert) {
-              await window.Dialog.alert(I18n.t('telecom.contactsInviteAccepted'));
+            // Get added contact to show in dialog
+            const contacts = getContacts();
+            const addedContact = contacts.find(c => c.guid === invite.fromGuid);
+            if (addedContact && winId) {
+              // Show contact added dialog instead of alert
+              showContactAddedDialog(winId, addedContact, config, storageKey);
             } else {
-              alert(I18n.t('telecom.contactsInviteAccepted'));
+              // Fallback to alert if contact not found
+              if (window.Dialog && window.Dialog.alert) {
+                await window.Dialog.alert(I18n.t('telecom.contactsInviteAccepted'));
+              } else {
+                alert(I18n.t('telecom.contactsInviteAccepted'));
+              }
             }
             
             // Refresh contacts dialog if it's open
@@ -8803,7 +10137,72 @@ function deleteContact(contactGuid, config = null) {
   contacts.splice(contactIndex, 1);
   saveContacts(contacts);
   
-  // WebRTC disconnection removed - using localStorage-based messaging instead
+  // 🚨 CRITICAL: Close WebRTC connection when contact is deleted
+  // This ensures that connection status is updated on both sides
+  console.log('[Telecom] 🔌 Closing WebRTC connection for deleted contact:', contactGuid);
+  
+  // Close RTCPeerConnection
+  const pc = window._telecomPeerConnections?.get(contactGuid);
+  if (pc) {
+    try {
+      console.log('[Telecom] 🔌 Closing RTCPeerConnection for contact:', contactGuid);
+      pc.close();
+      window._telecomPeerConnections.delete(contactGuid);
+      console.log('[Telecom] ✅ RTCPeerConnection closed and removed');
+    } catch (e) {
+      console.error('[Telecom] Error closing RTCPeerConnection:', e);
+      // Remove from map even if close() failed
+      window._telecomPeerConnections.delete(contactGuid);
+    }
+  }
+  
+  // Close and remove data channels
+  const dataChannel = window._telecomDataChannels?.get(contactGuid);
+  if (dataChannel) {
+    try {
+      console.log('[Telecom] 🔌 Closing data channel for contact:', contactGuid);
+      if (dataChannel.readyState !== 'closed') {
+        dataChannel.close();
+      }
+      window._telecomDataChannels.delete(contactGuid);
+      console.log('[Telecom] ✅ Data channel closed and removed');
+    } catch (e) {
+      console.error('[Telecom] Error closing data channel:', e);
+      window._telecomDataChannels.delete(contactGuid);
+    }
+  }
+  
+  // Close and remove control channel
+  const controlChannel = window._telecomControlChannels?.get(contactGuid);
+  if (controlChannel) {
+    try {
+      console.log('[Telecom] 🔌 Closing control channel for contact:', contactGuid);
+      if (controlChannel.readyState !== 'closed') {
+        controlChannel.close();
+      }
+      window._telecomControlChannels.delete(contactGuid);
+      console.log('[Telecom] ✅ Control channel closed and removed');
+    } catch (e) {
+      console.error('[Telecom] Error closing control channel:', e);
+      window._telecomControlChannels.delete(contactGuid);
+    }
+  }
+  
+  // Also clean up ChannelManager if it exists
+  if (window.TelecomChannelManager) {
+    try {
+      window.TelecomChannelManager.removeChannelsForContact(contactGuid);
+      console.log('[Telecom] ✅ ChannelManager channels removed');
+    } catch (e) {
+      console.error('[Telecom] Error removing channels from ChannelManager:', e);
+    }
+  }
+  
+  // Update connection status to disconnected (red indicator)
+  if (typeof updateConnectionStatusForChat === 'function') {
+    updateConnectionStatusForChat(contactGuid, 'disconnected');
+    console.log('[Telecom] ✅ Connection status updated to disconnected');
+  }
   
   // Delete chat and messages for this contact
   const chatId = `contact-${contactGuid}`;
@@ -10245,11 +11644,19 @@ function showInviteReceivedDialog(winId, invite, config, storageKey) {
           // Close progress dialog
           progressDialog.close();
           
-          // Show success message
-          if (window.Dialog && window.Dialog.alert) {
-            await window.Dialog.alert(I18n.t('telecom.contactsInviteAccepted'));
+          // Get added contact to show in dialog
+          const contacts = getContacts();
+          const addedContact = contacts.find(c => c.guid === invite.fromGuid);
+          if (addedContact && winId) {
+            // Show contact added dialog instead of alert
+            showContactAddedDialog(winId, addedContact, config, storageKey);
           } else {
-            alert(I18n.t('telecom.contactsInviteAccepted'));
+            // Fallback to alert if contact not found
+            if (window.Dialog && window.Dialog.alert) {
+              await window.Dialog.alert(I18n.t('telecom.contactsInviteAccepted'));
+            } else {
+              alert(I18n.t('telecom.contactsInviteAccepted'));
+            }
           }
           
           // Refresh contacts dialog if it's open
@@ -10311,6 +11718,162 @@ function showInviteReceivedDialog(winId, invite, config, storageKey) {
       // Don't change invite status - user can handle it later from Contacts -> Pending requests
     }
   });
+}
+
+/**
+ * Show contact added dialog with contact information (similar to invite received dialog)
+ */
+function showContactAddedDialog(winId, contact, config, storageKey) {
+  const windowElement = WindowManager.findWindow(winId);
+  if (!windowElement) {
+    console.error('[Telecom] Window not found:', winId);
+    return;
+  }
+
+  const windowContent = windowElement.querySelector('.win-content');
+  if (!windowContent) {
+    console.error('[Telecom] Window content not found');
+    return;
+  }
+
+  // Create backdrop
+  const backdrop = document.createElement('div');
+  backdrop.className = 'telecom-contact-added-backdrop';
+  backdrop.style.cssText = `
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 1000;
+    animation: fadeIn 0.2s ease;
+  `;
+
+  // Create dialog
+  const dialog = document.createElement('div');
+  dialog.className = 'telecom-contact-added-dialog';
+  dialog.style.cssText = `
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 500px;
+    max-width: 90%;
+    background: var(--panel);
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    z-index: 1001;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: fadeIn 0.2s ease;
+  `;
+
+  // Dialog header
+  const header = document.createElement('div');
+  header.style.cssText = `
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--panel-2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  `;
+  header.innerHTML = `
+    <h3 style="margin:0; font-size:18px; font-weight:500;">✅ Contact Added</h3>
+    <button class="telecom-contact-added-close" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text); padding:4px 8px; border-radius:4px;">✕</button>
+  `;
+
+  // Dialog content
+  const content = document.createElement('div');
+  content.style.cssText = `
+    padding: 20px;
+  `;
+
+  // Build avatar HTML (contact doesn't have avatar in invite, use default)
+  const avatarHtml = '<div style="font-size:48px; margin-bottom:16px;">👤</div>';
+  
+  // Build user info HTML
+  const displayName = contact.displayName || contact.username || contact.guid;
+  const username = contact.username ? `@${contact.username}` : '';
+  let userInfoHtml = `
+    <p style="font-size:15px; color:var(--text); margin:0; font-weight:500;">
+      ${escapeHtml(displayName)}
+    </p>
+  `;
+  if (username && username !== `@${contact.guid}`) {
+    userInfoHtml += `<p style="font-size:13px; color:var(--muted); margin:4px 0 0 0;">${escapeHtml(username)}</p>`;
+  }
+  if (contact.firstName || contact.lastName) {
+    const fullName = [contact.firstName, contact.lastName].filter(Boolean).join(' ');
+    if (fullName && fullName !== displayName) {
+      userInfoHtml += `<p style="font-size:12px; color:var(--muted); margin:4px 0 0 0;">${escapeHtml(fullName)}</p>`;
+    }
+  }
+  if (contact.email) {
+    userInfoHtml += `<p style="font-size:12px; color:var(--muted); margin:4px 0 0 0;">${escapeHtml(contact.email)}</p>`;
+  }
+  
+  content.innerHTML = `
+    <div style="text-align:center; margin-bottom:24px;">
+      ${avatarHtml}
+      ${userInfoHtml}
+      <p style="font-size:14px; color:var(--muted); margin:12px 0 0 0;">
+        ${escapeHtml(displayName)} has been added to your contacts. You can now start chatting!
+      </p>
+    </div>
+    <div style="display:flex; gap:12px; justify-content:flex-end;">
+      <button id="telecom-contact-added-ok" 
+        style="padding:12px 24px; background:var(--accent); color:white; border:none; border-radius:6px; cursor:pointer; font-size:14px; font-weight:500;">
+        OK
+      </button>
+    </div>
+  `;
+
+  dialog.appendChild(header);
+  dialog.appendChild(content);
+
+  // Add to window content
+  windowContent.appendChild(backdrop);
+  windowContent.appendChild(dialog);
+  
+  // Ensure window content has relative positioning
+  if (windowContent.style.position !== 'relative' && windowContent.style.position !== 'absolute') {
+    windowContent.style.position = 'relative';
+  }
+
+  // Handle OK button
+  const okBtn = dialog.querySelector('#telecom-contact-added-ok');
+  if (okBtn) {
+    okBtn.addEventListener('click', () => {
+      backdrop.remove();
+      dialog.remove();
+    });
+  }
+
+  // Handle close button
+  const closeBtn = dialog.querySelector('.telecom-contact-added-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      backdrop.remove();
+      dialog.remove();
+    });
+  }
+
+  // Close on backdrop click
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) {
+      backdrop.remove();
+      dialog.remove();
+    }
+  });
+
+  // Close on Escape key
+  const handleEscape = (e) => {
+    if (e.key === 'Escape') {
+      backdrop.remove();
+      dialog.remove();
+      document.removeEventListener('keydown', handleEscape);
+    }
+  };
+  document.addEventListener('keydown', handleEscape);
 }
 
 /**
@@ -10393,6 +11956,51 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
       
       contacts.push(newContact);
       saveContacts(contacts);
+      
+      // Create or get chat for this contact
+      const chats = getChats();
+      const chatId = `contact-${invite.fromGuid}`;
+      let chat = chats.find(c => c.id === chatId);
+      if (!chat) {
+        chat = {
+          id: chatId,
+          name: newContact.displayName,
+          type: 'contact',
+          contactGuid: invite.fromGuid,
+          createdAt: new Date().toISOString()
+        };
+        chats.push(chat);
+        localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
+      }
+      
+      // Add service message to chat: contact added (as recipient)
+      const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
+      const messages = getChatMessages(chatId);
+      // Check if service message already exists
+      const existingServiceMessage = messages.find(m => 
+        m.type === 'service' && 
+        m.senderId === 'telecom' && 
+        m.text && m.text.includes('has been added to your contacts')
+      );
+      if (!existingServiceMessage) {
+        const serviceMessage = {
+          id: 'msg-' + Date.now() + '-service',
+          chatId: chatId,
+          senderId: 'telecom',
+          senderName: 'Telecom',
+          text: `✅ ${newContact.displayName} has been added to your contacts. You can now start chatting!`,
+          timestamp: new Date().toISOString(),
+          type: 'service'
+        };
+        messages.push(serviceMessage);
+        localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+        console.log('[Telecom] ✅ Service message added to chat:', chatId);
+      }
+      
+      // Show contact added dialog if winId is provided
+      if (winId) {
+        showContactAddedDialog(winId, newContact, config, storageKey);
+      }
     } else {
       console.log('[Telecom] Contact already exists for invite.fromGuid:', invite.fromGuid);
       // Update existing contact with public key if missing
@@ -11136,14 +12744,17 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
           if (pc.connectionState === 'connected') {
             console.log('[Telecom] ✅ WebRTC connection established with contact (recipient):', contactGuid);
             updateConnectionStatusForChat(contactGuid, 'connected');
-          } else if (pc.connectionState === 'failed') {
-            console.error('[Telecom] ❌ WebRTC connection failed with contact (recipient):', contactGuid);
-            console.error('[Telecom] This is usually due to NAT/firewall restrictions.');
-            console.error('[Telecom] 💡 If you see "No TURN (relay) candidates" above, you need to configure a TURN server.');
-            console.error('[Telecom] 💡 Go to Network app (Settings > Network) and add a working TURN server.');
-            updateConnectionStatusForChat(contactGuid, 'disconnected');
-          } else if (pc.connectionState === 'disconnected') {
-            console.warn('[Telecom] ⚠️ WebRTC connection disconnected with contact (recipient):', contactGuid);
+          } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
+            console.warn('[Telecom] ⚠️ WebRTC connection failed, disconnected, or closed with contact (recipient):', contactGuid, {
+              connectionState: pc.connectionState,
+              iceConnectionState: pc.iceConnectionState,
+              signalingState: pc.signalingState
+            });
+            if (pc.connectionState === 'failed') {
+              console.error('[Telecom] This is usually due to NAT/firewall restrictions.');
+              console.error('[Telecom] 💡 If you see "No TURN (relay) candidates" above, you need to configure a TURN server.');
+              console.error('[Telecom] 💡 Go to Network app (Settings > Network) and add a working TURN server.');
+            }
             updateConnectionStatusForChat(contactGuid, 'disconnected');
           } else if (pc.connectionState === 'connecting') {
             updateConnectionStatusForChat(contactGuid, 'connecting');
@@ -12545,6 +14156,11 @@ async function processWebRTCAnswer(invite, config, storageKey) {
           console.error('[Telecom] Error setting up auto-reconnect:', e);
         }
         
+        // Update UI to show connected status
+        if (typeof updateConnectionStatusForChat === 'function') {
+          updateConnectionStatusForChat(contactGuid, 'connected');
+        }
+        
         // Add contact automatically for sender when connection is established
         const contacts = getContacts();
         const existingContact = contacts.find(c => c.guid === contactGuid);
@@ -12688,20 +14304,24 @@ async function processWebRTCAnswer(invite, config, storageKey) {
         
         // Update connection status indicator in chat header
         updateConnectionStatusForChat(contactGuid, 'connected');
-      } else if (pc.connectionState === 'failed') {
-        console.error('[Telecom] ❌ WebRTC connection failed with contact:', contactGuid);
-        console.error('[Telecom] This is usually due to NAT/firewall restrictions.');
-        console.error('[Telecom] 💡 If you see "No TURN (relay) candidates" above, you need to configure a TURN server.');
-        console.error('[Telecom] 💡 Go to Network app (Settings > Network) and add a working TURN server.');
-        // Check ICE connection state for more details
-        pc.oniceconnectionstatechange = () => {
-          console.log('[Telecom] ICE connection state:', pc.iceConnectionState);
-          if (pc.iceConnectionState === 'failed') {
-            console.error('[Telecom] ICE connection failed. Consider using a dedicated TURN server for production.');
-          }
-        };
-      } else if (pc.connectionState === 'disconnected') {
-        console.warn('[Telecom] ⚠️ WebRTC connection disconnected with contact:', contactGuid);
+      } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
+        console.warn('[Telecom] ⚠️ WebRTC connection failed, disconnected, or closed with contact:', contactGuid, {
+          connectionState: pc.connectionState,
+          iceConnectionState: pc.iceConnectionState,
+          signalingState: pc.signalingState
+        });
+        if (pc.connectionState === 'failed') {
+          console.error('[Telecom] This is usually due to NAT/firewall restrictions.');
+          console.error('[Telecom] 💡 If you see "No TURN (relay) candidates" above, you need to configure a TURN server.');
+          console.error('[Telecom] 💡 Go to Network app (Settings > Network) and add a working TURN server.');
+          // Check ICE connection state for more details
+          pc.oniceconnectionstatechange = () => {
+            console.log('[Telecom] ICE connection state:', pc.iceConnectionState);
+            if (pc.iceConnectionState === 'failed') {
+              console.error('[Telecom] ICE connection failed. Consider using a dedicated TURN server for production.');
+            }
+          };
+        }
         updateConnectionStatusForChat(contactGuid, 'disconnected');
       } else if (pc.connectionState === 'connecting') {
         console.log('[Telecom] 🔄 WebRTC connection establishing with contact:', contactGuid);
@@ -13248,9 +14868,16 @@ async function processWebRTCAnswer(invite, config, storageKey) {
       });
       
       if (!outgoingMessagesChannel.onopen) {
-        outgoingMessagesChannel.onopen = () => {
+        outgoingMessagesChannel.onopen = async () => {
           console.log('[Telecom] Data channel opened with contact:', contactGuid);
           updateConnectionStatusForChat(contactGuid, 'connected');
+          
+          // Resend undelivered messages when channel opens
+          try {
+            await resendUndeliveredMessages(contactGuid, outgoingMessagesChannel);
+          } catch (e) {
+            console.error('[Telecom] Error resending undelivered messages:', e);
+          }
           
           // Save peer identity and create control channel for auto-reconnect
           try {
@@ -13843,7 +15470,8 @@ async function processWebRTCAnswer(invite, config, storageKey) {
             // Create chat
             const chats = getChats();
             const chatId = `contact-${contactGuid}`;
-            if (!chats.find(c => c.id === chatId)) {
+            const chatExists = chats.find(c => c.id === chatId);
+            if (!chatExists) {
               chats.push({
                 id: chatId,
                 name: contactInfo.displayName,
@@ -13852,6 +15480,22 @@ async function processWebRTCAnswer(invite, config, storageKey) {
                 createdAt: new Date().toISOString()
               });
               localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
+              
+              // Add service message to chat: contact added
+              const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
+              const messages = [];
+              const serviceMessage = {
+                id: 'msg-' + Date.now() + '-service',
+                chatId: chatId,
+                senderId: 'telecom',
+                senderName: 'Telecom',
+                text: `✅ ${contactInfo.displayName} has been added to your contacts. You can now start chatting!`,
+                timestamp: new Date().toISOString(),
+                type: 'service'
+              };
+              messages.push(serviceMessage);
+              localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+              console.log('[Telecom] ✅ Service message added to chat:', chatId);
             }
           } else {
             console.log('[Telecom] Contact already exists:', contactGuid);
@@ -14398,6 +16042,16 @@ async function sendMessage(win, winId, config, storageKey) {
     // Process one-tap link directly without changing location.hash (to avoid breaking existing connections)
     if (window.OneTapTelecom && typeof window.OneTapTelecom.handleIncomingOfferFromUrl === 'function' && typeof window.OneTapTelecom.handleIncomingAnswerFromUrl === 'function') {
       console.log('[Telecom] ✅ OneTapTelecom handlers are available');
+      
+      // Show loading indicator
+      const sendBtn = win.querySelector('#telecom-send');
+      const originalSendBtnText = sendBtn ? sendBtn.textContent : '';
+      if (sendBtn) {
+        sendBtn.disabled = true;
+        sendBtn.textContent = '⏳ Processing...';
+        sendBtn.style.cursor = 'wait';
+      }
+      
       try {
         console.log('[Telecom] 🔄 Processing one-tap link from message:', hash.substring(0, 50) + '...');
         
@@ -14438,6 +16092,13 @@ async function sendMessage(win, winId, config, storageKey) {
         if (result && result.handled) {
           console.log('[Telecom] ✅ One-tap connection processed from message successfully');
           
+          // Restore send button
+          if (sendBtn) {
+            sendBtn.disabled = false;
+            sendBtn.textContent = originalSendBtnText;
+            sendBtn.style.cursor = 'pointer';
+          }
+          
           // If answer link was created, show it to user
           if (result.shareUrl) {
             console.log('[Telecom] 📤 Answer link created, showing dialog...', result.shareUrl.substring(0, 100) + '...');
@@ -14451,10 +16112,22 @@ async function sendMessage(win, winId, config, storageKey) {
           return;
         } else {
           console.warn('[Telecom] ⚠️ One-tap link was not handled, sending as regular message');
+          // Restore send button
+          if (sendBtn) {
+            sendBtn.disabled = false;
+            sendBtn.textContent = originalSendBtnText;
+            sendBtn.style.cursor = 'pointer';
+          }
         }
       } catch (e) {
         console.error('[Telecom] ❌ Error processing one-tap link from message:', e);
         console.error('[Telecom] Error stack:', e.stack);
+        // Restore send button
+        if (sendBtn) {
+          sendBtn.disabled = false;
+          sendBtn.textContent = originalSendBtnText;
+          sendBtn.style.cursor = 'pointer';
+        }
         // Continue to send message as regular text
         console.log('[Telecom] 📤 Continuing to send message as regular text after error');
       }
@@ -14470,8 +16143,9 @@ async function sendMessage(win, winId, config, storageKey) {
   const effectiveGuid = getEffectiveGuid(config);
   
   // Create message object
+  // Use consistent ID format with random suffix to avoid collisions
   const newMessage = {
-    id: 'msg-' + Date.now(),
+    id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
     chatId: selectedChatId,
     senderId: effectiveGuid || config.systemGuid,
     senderName: config.firstName && config.lastName ? `${config.firstName} ${config.lastName}` : config.username,
@@ -14479,6 +16153,13 @@ async function sendMessage(win, winId, config, storageKey) {
     timestamp: new Date().toISOString(),
     type: 'user'
   };
+  
+  console.log('[Telecom] 📝 Created new message:', {
+    id: newMessage.id,
+    chatId: newMessage.chatId,
+    textLength: newMessage.text.length,
+    timestamp: newMessage.timestamp
+  });
 
   // Extract peerId from chatId (chatId format: 'contact-{guid}')
   const peerId = selectedChatId.startsWith('contact-') ? selectedChatId.replace('contact-', '') : selectedChatId;
@@ -14543,6 +16224,7 @@ async function sendMessage(win, winId, config, storageKey) {
       // Send message via WebRTC data channel
       const messagePayload = {
         type: 'message',
+        messageId: newMessage.id, // Include messageId so recipient uses the same ID
         text: encryptedText, // Send encrypted text
         encrypted: !!recipientPublicKey, // Flag indicating if message is encrypted
         senderId: effectiveGuid || config.systemGuid,
@@ -15283,6 +16965,11 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
       const dcMessages = pc.createDataChannel('messages', { ordered: true });
       global._telecomDataChannels.set(contactGuid, dcMessages);
       
+      // 🚨 CRITICAL: Use ChannelManager to store outgoing channel for proper channel management
+      if (window.TelecomChannelManager) {
+        window.TelecomChannelManager.storeOutgoingChannel(contactGuid, dcMessages, 'sender');
+      }
+      
       // 🚨 REFACTORED: Use unified handler setup function
       setupMessagesChannelHandler(dcMessages, contactGuid, 'sender', { overwrite: true });
       
@@ -15542,6 +17229,199 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
                   encrypted: messageData.encrypted || false
                 });
                 
+                // Handle message deletion
+                if (messageData.type === 'message-delete') {
+                  let deleteData = null;
+                  try {
+                    let decryptedData = messageData.text;
+                    if (messageData.encrypted) {
+                      try {
+                        const systemAccount = window.Auth ? window.Auth.getAccount() : null;
+                        if (systemAccount && systemAccount.privateKeyEncrypted) {
+                          const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+                          const foundWinId = telecomWindows.length > 0 ? telecomWindows[0].dataset.winId : null;
+                          const privateKey = await getDecryptedPrivateKey(foundWinId);
+                          if (privateKey) {
+                            decryptedData = await decryptMessageForTelecom(messageData.text, privateKey);
+                          } else {
+                            console.warn('[OneTapTelecom] Cannot decrypt delete message - password required');
+                            return;
+                          }
+                        } else {
+                          console.warn('[OneTapTelecom] Cannot decrypt delete message - no private key');
+                          return;
+                        }
+                      } catch (e) {
+                        console.error('[OneTapTelecom] Error decrypting delete message:', e);
+                        return;
+                      }
+                    }
+                    
+                    deleteData = JSON.parse(decryptedData);
+                    const chatId = deleteData.chatId || `contact-${contactGuid}`;
+                    const messageId = deleteData.messageId;
+                    
+                    if (!messageId) {
+                      console.warn('[OneTapTelecom] Delete message missing messageId');
+                      return;
+                    }
+                    
+                    const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
+                    const messages = getChatMessages(chatId);
+                    const messageIndex = messages.findIndex(m => m.id === messageId);
+                    
+                    if (messageIndex !== -1) {
+                      messages[messageIndex].deleted = true;
+                      messages[messageIndex].deletedAt = new Date().toISOString();
+                      localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+                      console.log('[OneTapTelecom] ✅ Message deleted:', messageId);
+                      
+                      // Refresh UI
+                      const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+                      telecomWindows.forEach(winEl => {
+                        const winId = winEl.dataset.winId;
+                        if (winId) {
+                          const win = WindowManager.findWindow(winId);
+                          if (win) {
+                            const selectedChatId = win.dataset.selectedChatId;
+                            const effectiveStorageKey = 'webos.telecom.v1';
+                            let effectiveConfig = null;
+                            try {
+                              const configData = localStorage.getItem(effectiveStorageKey);
+                              if (configData) effectiveConfig = JSON.parse(configData);
+                            } catch (e) {}
+                            
+                            if (selectedChatId === chatId) {
+                              const chats = getChats();
+                              const chat = chats.find(c => c.id === chatId);
+                              if (chat) {
+                                selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
+                              }
+                            }
+                          }
+                        }
+                      });
+                    }
+                  } catch (e) {
+                    console.error('[OneTapTelecom] Error processing delete message:', e);
+                  }
+                  return;
+                }
+                
+                // Handle message editing
+                if (messageData.type === 'message-edit') {
+                  let editData = null;
+                  try {
+                    let decryptedData = messageData.text;
+                    if (messageData.encrypted) {
+                      try {
+                        const systemAccount = window.Auth ? window.Auth.getAccount() : null;
+                        if (systemAccount && systemAccount.privateKeyEncrypted) {
+                          const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+                          const foundWinId = telecomWindows.length > 0 ? telecomWindows[0].dataset.winId : null;
+                          const privateKey = await getDecryptedPrivateKey(foundWinId);
+                          if (privateKey) {
+                            decryptedData = await decryptMessageForTelecom(messageData.text, privateKey);
+                          } else {
+                            console.warn('[OneTapTelecom] Cannot decrypt edit message - password required');
+                            return;
+                          }
+                        } else {
+                          console.warn('[OneTapTelecom] Cannot decrypt edit message - no private key');
+                          return;
+                        }
+                      } catch (e) {
+                        console.error('[OneTapTelecom] Error decrypting edit message:', e);
+                        return;
+                      }
+                    }
+                    
+                    editData = JSON.parse(decryptedData);
+                    const chatId = editData.chatId || `contact-${contactGuid}`;
+                    const messageId = editData.messageId;
+                    const newText = editData.newText;
+                    
+                    console.log('[OneTapTelecom] 📝 Processing edit message:', {
+                      chatId,
+                      messageId,
+                      newTextLength: newText?.length,
+                      contactGuid
+                    });
+                    
+                    if (!messageId || !newText) {
+                      console.warn('[OneTapTelecom] Edit message missing messageId or newText');
+                      return;
+                    }
+                    
+                    const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
+                    const messages = getChatMessages(chatId);
+                    console.log('[OneTapTelecom] 📋 Messages in chat:', {
+                      totalMessages: messages.length,
+                      messageIds: messages.map(m => m.id).slice(0, 10)
+                    });
+                    
+                    const messageIndex = messages.findIndex(m => m.id === messageId);
+                    console.log('[OneTapTelecom] 🔍 Message search result:', {
+                      messageId,
+                      found: messageIndex !== -1,
+                      index: messageIndex
+                    });
+                    
+                    if (messageIndex !== -1) {
+                      const message = messages[messageIndex];
+                      if (!message.originalText) {
+                        message.originalText = message.text;
+                      }
+                      message.text = newText;
+                      message.edited = true;
+                      message.editedAt = new Date().toISOString();
+                      localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+                      
+                      console.log('[OneTapTelecom] ✅ Message edited:', {
+                        messageId,
+                        newText: newText.substring(0, 50) + (newText.length > 50 ? '...' : ''),
+                        edited: message.edited
+                      });
+                      
+                      // Refresh UI - reload messages from localStorage to ensure we have latest data
+                      const updatedMessages = getChatMessages(chatId);
+                      
+                      const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+                      const chats = getChats();
+                      const chat = chats.find(c => c.id === chatId);
+                      
+                      telecomWindows.forEach(winEl => {
+                        const winId = winEl.dataset.winId;
+                        if (winId) {
+                          const win = WindowManager.findWindow(winId);
+                          if (win) {
+                            const selectedChatId = win.dataset.selectedChatId;
+                            const effectiveStorageKey = 'webos.telecom.v1';
+                            let effectiveConfig = null;
+                            try {
+                              const configData = localStorage.getItem(effectiveStorageKey);
+                              if (configData) effectiveConfig = JSON.parse(configData);
+                            } catch (e) {}
+                            
+                            // Always refresh chats list
+                            renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                            
+                            // If this chat is selected, refresh messages with updated data
+                            if (selectedChatId === chatId && chat) {
+                              // Use updated messages from localStorage
+                              renderMessages(win, updatedMessages, effectiveConfig);
+                              console.log('[OneTapTelecom] ✅ UI refreshed for selected chat');
+                            }
+                          }
+                        }
+                      });
+                    }
+                  } catch (e) {
+                    console.error('[OneTapTelecom] Error processing edit message:', e);
+                  }
+                  return;
+                }
+                
                 if (messageData.type === 'message' && messageData.text) {
                   const chatId = `contact-${contactGuid}`;
                   let decryptedText = messageData.text;
@@ -15568,8 +17448,18 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
                   
                   const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
                   const messages = getChatMessages(chatId);
+                  // Use messageId from payload if available, otherwise generate new one
+                  const messageId = messageData.messageId || ('msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9));
+                  
+                  // Check if message already exists (to avoid duplicates when resending)
+                  const existingMessageIndex = messages.findIndex(m => m.id === messageId);
+                  if (existingMessageIndex !== -1) {
+                    console.log('[OneTapTelecom] ℹ️ Message already exists, skipping duplicate:', messageId);
+                    return; // Message already received, skip
+                  }
+                  
                   messages.push({
-                    id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+                    id: messageId, // Use same ID as sender
                     chatId: chatId,
                     senderId: contactGuid,
                     senderName: messageData.senderName || contactGuid.substring(0, 8) + '...',
@@ -15670,6 +17560,11 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
         console.log('[OneTapTelecom] [RECIPIENT] Creating messages data channel...');
         const dcMessages = pc.createDataChannel('messages', { ordered: true });
         global._telecomDataChannels.set(contactGuid, dcMessages);
+        
+        // 🚨 CRITICAL: Use ChannelManager to store outgoing channel for proper channel management
+        if (window.TelecomChannelManager) {
+          window.TelecomChannelManager.storeOutgoingChannel(contactGuid, dcMessages, 'recipient');
+        }
         
         // 🚨 REFACTORED: Use unified handler setup function
         setupMessagesChannelHandler(dcMessages, contactGuid, 'recipient', { overwrite: true });
@@ -15780,8 +17675,22 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
         console.log('[OneTapTelecom] [RECIPIENT] Connection state changed:', pc.connectionState, 'for contact:', contactGuid);
         if (pc.connectionState === 'connected') {
           console.log('[OneTapTelecom] [RECIPIENT] 🎉 Connection established!');
-        } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-          console.warn('[OneTapTelecom] [RECIPIENT] ⚠️ Connection failed or disconnected');
+          if (typeof updateConnectionStatusForChat === 'function') {
+            updateConnectionStatusForChat(contactGuid, 'connected');
+          }
+        } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
+          console.warn('[OneTapTelecom] [RECIPIENT] ⚠️ Connection failed, disconnected, or closed:', {
+            connectionState: pc.connectionState,
+            iceConnectionState: pc.iceConnectionState,
+            signalingState: pc.signalingState
+          });
+          if (typeof updateConnectionStatusForChat === 'function') {
+            updateConnectionStatusForChat(contactGuid, 'disconnected');
+          }
+        } else if (pc.connectionState === 'connecting') {
+          if (typeof updateConnectionStatusForChat === 'function') {
+            updateConnectionStatusForChat(contactGuid, 'connecting');
+          }
         }
       };
 
@@ -15939,6 +17848,46 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
                   } else {
                     console.error('[OneTapTelecom] [RECIPIENT] ❌ Contact NOT found in storage after save!');
                   }
+                  
+                  // Create or get chat for this contact
+                  const chats = getChats();
+                  const chatId = `contact-${correctContactGuid}`;
+                  let chat = chats.find(c => c.id === chatId);
+                  if (!chat) {
+                    chat = {
+                      id: chatId,
+                      name: newContact.displayName,
+                      type: 'contact',
+                      contactGuid: correctContactGuid,
+                      createdAt: new Date().toISOString()
+                    };
+                    chats.push(chat);
+                    localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
+                  }
+                  
+                  // Add service message to chat: contact added (as recipient via OneTap)
+                  const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
+                  const messages = getChatMessages(chatId);
+                  // Check if service message already exists
+                  const existingServiceMessage = messages.find(m => 
+                    m.type === 'service' && 
+                    m.senderId === 'telecom' && 
+                    m.text && m.text.includes('has been added to your contacts')
+                  );
+                  if (!existingServiceMessage) {
+                    const serviceMessage = {
+                      id: 'msg-' + Date.now() + '-service',
+                      chatId: chatId,
+                      senderId: 'telecom',
+                      senderName: 'Telecom',
+                      text: `✅ ${newContact.displayName} has been added to your contacts. You can now start chatting!`,
+                      timestamp: new Date().toISOString(),
+                      type: 'service'
+                    };
+                    messages.push(serviceMessage);
+                    localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+                    console.log('[OneTapTelecom] [RECIPIENT] ✅ Service message added to chat:', chatId);
+                  }
                 } else {
                   console.log('[OneTapTelecom] [RECIPIENT] Contact already exists:', correctContactGuid);
                   // Update existing contact with data from invite if available and missing
@@ -16048,7 +17997,21 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
             
             // 🚨 CRITICAL: If channel is already open, set up handler IMMEDIATELY
             // Don't wait for onopen - if channel is already open, onopen won't fire
-            if (messagesChannel.readyState === 'open' && !messagesChannel.onmessage) {
+            if (messagesChannel.readyState === 'open') {
+              if (!messagesChannel.onmessage) {
+                console.error('[OneTapTelecom] [RECIPIENT] 🚨 CRITICAL: Channel is open but NO handler! Setting up handler NOW...');
+              } else {
+                console.log('[OneTapTelecom] [RECIPIENT] ✅ Channel is open and has handler, but setting up unified handler via setupMessagesChannelHandler');
+              }
+              // Use unified handler setup function instead of custom handler
+              setupMessagesChannelHandler(messagesChannel, contactGuid, 'recipient', { overwrite: true });
+            } else {
+              // Channel not yet open, set up handler via setupMessagesChannelHandler (will be called in onopen)
+              setupMessagesChannelHandler(messagesChannel, contactGuid, 'recipient', { overwrite: true });
+            }
+            
+            // Legacy handler code - will be removed after testing
+            if (false && messagesChannel.readyState === 'open' && !messagesChannel.onmessage) {
               console.error('[OneTapTelecom] [RECIPIENT] 🚨 CRITICAL: Channel is open but NO handler! Setting up handler NOW...');
               messagesChannel.onmessage = async (event) => {
                 try {
@@ -16102,8 +18065,18 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
                       }
                     }
                     
+                    // Use messageId from payload if available, otherwise generate new one
+                    const messageId = messageData.messageId || ('msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9));
+                    
+                    // Check if message already exists (to avoid duplicates when resending)
+                    const existingMessageIndex = messages.findIndex(m => m.id === messageId);
+                    if (existingMessageIndex !== -1) {
+                      console.log('[OneTapTelecom] ℹ️ Message already exists, skipping duplicate:', messageId);
+                      return; // Message already received, skip
+                    }
+                    
                     messages.push({
-                      id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+                      id: messageId, // Use same ID as sender
                       chatId: chatId,
                       senderId: contactGuid,
                       senderName: messageData.senderName || contactGuid.substring(0, 8) + '...',
@@ -16178,157 +18151,19 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
               }
             });
             
-            // Keep onclose and onerror handlers
+            // Note: onclose and onerror handlers are set up by setupMessagesChannelHandler
+            // But we keep them here for backward compatibility and status updates
+            const existingOnclose = messagesChannel.onclose;
             messagesChannel.onclose = () => {
               console.log('[OneTapTelecom] [RECIPIENT] Messages channel closed');
               updateConnectionStatusForChat(contactGuid, 'disconnected');
+              if (existingOnclose) existingOnclose();
             };
             
+            const existingOnerror = messagesChannel.onerror;
             messagesChannel.onerror = (err) => {
               console.error('[OneTapTelecom] [RECIPIENT] Messages channel error:', err);
-            };
-            
-            // Legacy code block - will be removed after testing
-            const originalOnopen = messagesChannel.onopen;
-            messagesChannel.onopen = () => {
-              console.log('[OneTapTelecom] [RECIPIENT] 🎉 Messages channel opened!');
-              console.log('[OneTapTelecom] [RECIPIENT] Handler status BEFORE check:', !!messagesChannel.onmessage ? 'SET' : 'MISSING');
-              
-              // 🚨🚨🚨 CRITICAL: If handler is missing, set it up NOW 🚨🚨🚨
-              // Channel opened but handler might not be set up yet (race condition)
-              if (!messagesChannel.onmessage) {
-                console.error('[OneTapTelecom] [RECIPIENT] 🚨 CRITICAL: Channel opened but NO handler! Setting up handler NOW in onopen callback...');
-                messagesChannel.onmessage = async (event) => {
-                  try {
-                    const messageData = JSON.parse(event.data);
-                    console.log('[OneTapTelecom] [RECIPIENT] 📥 Received message via channel (onopen handler setup):', {
-                      contactGuid: contactGuid,
-                      type: messageData.type,
-                      encrypted: messageData.encrypted || false
-                    });
-                    
-                    // Handle regular messages (same as existing handler)
-                    if (messageData.type === 'message' && messageData.text) {
-                      const chatId = `contact-${contactGuid}`;
-                      
-                      // Decrypt if needed (same logic as in existing handler)
-                      let decryptedText = messageData.text;
-                      if (messageData.encrypted) {
-                        try {
-                          const systemAccount = window.Auth ? window.Auth.getAccount() : null;
-                          if (systemAccount && systemAccount.privateKeyEncrypted) {
-                            const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
-                            const foundWinId = telecomWindows.length > 0 ? telecomWindows[0].dataset.winId : null;
-                            const privateKey = await getDecryptedPrivateKey(foundWinId);
-                            if (privateKey) {
-                              decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
-                            } else {
-                              decryptedText = '[Encrypted message - enter password to decrypt]';
-                            }
-                          } else {
-                            decryptedText = '[Encrypted message - decryption failed]';
-                          }
-                        } catch (e) {
-                          console.error('[OneTapTelecom] [RECIPIENT] Error decrypting:', e);
-                          decryptedText = '[Encrypted message - decryption failed]';
-                        }
-                      }
-                      
-                      // Save message (same as existing handler)
-                      const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
-                      const messages = getChatMessages(chatId);
-                      
-                      // Extract reconnect URL from decrypted text if it's a reconnect link
-                      let reconnectUrl = null;
-                      if (messageData.isReconnectLink && messageData.reconnectUrl) {
-                        reconnectUrl = messageData.reconnectUrl;
-                      } else if (decryptedText.includes('#offer=') || decryptedText.includes('#answer=')) {
-                        // Try to extract URL from decrypted text
-                        const urlMatch = decryptedText.match(/(https?:\/\/[^\s]+)/);
-                        if (urlMatch) {
-                          reconnectUrl = urlMatch[1];
-                        }
-                      }
-                      
-                      messages.push({
-                        id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
-                        chatId: chatId,
-                        senderId: contactGuid,
-                        senderName: messageData.senderName || contactGuid.substring(0, 8) + '...',
-                        text: decryptedText,
-                        timestamp: messageData.timestamp || new Date().toISOString(),
-                        type: 'user',
-                        viaWebRTC: true,
-                        wasEncrypted: messageData.encrypted || false,
-                        isReconnectLink: reconnectUrl ? true : (messageData.isReconnectLink || false),
-                        reconnectUrl: reconnectUrl || messageData.reconnectUrl || null
-                      });
-                      localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
-                      
-                      // Update chat (same as existing handler)
-                      const chats = getChats();
-                      const chat = chats.find(c => c.id === chatId);
-                      if (chat) {
-                        chat.lastMessage = {
-                          text: decryptedText.length > 50 ? decryptedText.substring(0, 50) + '...' : decryptedText,
-                          timestamp: new Date().toISOString()
-                        };
-                        localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
-                      }
-                      
-                      // Refresh UI (same as existing handler)
-                      if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
-                      window._telecomBlinkingChats.add(chatId);
-                      blinkChatItem(chatId);
-                      
-                      const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
-                      telecomWindows.forEach(winEl => {
-                        const winId = winEl.dataset.winId;
-                        if (winId) {
-                          const win = WindowManager.findWindow(winId);
-                          if (win) {
-                            const selectedChatId = win.dataset.selectedChatId;
-                            const effectiveStorageKey = 'webos.telecom.v1';
-                            let effectiveConfig = config;
-                            if (!effectiveConfig) {
-                              try {
-                                const configData = localStorage.getItem(effectiveStorageKey);
-                                if (configData) effectiveConfig = JSON.parse(configData);
-                              } catch (e) {}
-                            }
-                            
-                            if (selectedChatId === chatId) {
-                              const chat = chats.find(c => c.id === chatId);
-                              if (chat) {
-                                selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
-                              }
-                            } else {
-                              renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
-                              blinkChatItem(chatId);
-                            }
-                          }
-                        }
-                      });
-                    }
-                  } catch (e) {
-                    console.error('[OneTapTelecom] [RECIPIENT] Error parsing message:', e);
-                  }
-                };
-                console.log('[OneTapTelecom] [RECIPIENT] ✅ Handler set up in onopen callback');
-              }
-              
-              console.log('[OneTapTelecom] [RECIPIENT] Handler status AFTER check:', !!messagesChannel.onmessage ? 'SET' : 'MISSING');
-              updateConnectionStatusForChat(contactGuid, 'connected');
-              if (originalOnopen) originalOnopen();
-            };
-            
-            messagesChannel.onclose = () => {
-              console.log('[OneTapTelecom] [RECIPIENT] Messages channel closed');
-              updateConnectionStatusForChat(contactGuid, 'disconnected');
-            };
-            
-            messagesChannel.onerror = (err) => {
-              console.error('[OneTapTelecom] [RECIPIENT] Messages channel error:', err);
+              if (existingOnerror) existingOnerror(err);
             };
             
             // 🚨🚨🚨 CRITICAL: ALWAYS overwrite message handler - don't check if it exists 🚨🚨🚨
@@ -16678,6 +18513,12 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
               console.log('[OneTapTelecom] Creating messages data channel...');
               const dcMessages = pc.createDataChannel('messages', { ordered: true });
               global._telecomDataChannels.set(contactGuid, dcMessages);
+              
+              // 🚨 CRITICAL: Use ChannelManager to store outgoing channel for proper channel management
+              if (window.TelecomChannelManager) {
+                window.TelecomChannelManager.storeOutgoingChannel(contactGuid, dcMessages, 'sender');
+              }
+              
               dcMessages.onopen = () => console.log('[OneTapTelecom] messages channel created', contactGuid);
               dcMessages.onclose = () => console.log('[OneTapTelecom] messages channel closed', contactGuid);
             }
@@ -16819,7 +18660,7 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
             
             if (incomingChannel.label === 'messages') {
               // Store incoming channel - THIS REPLACES any outgoing channel that was created by sender
-              // CRITICAL: Incoming channel from recipient is the channel that will receive messages from recipient
+              // CRITICAL: On sender side, incoming channel from recipient is bidirectional - use it for both sending and receiving
               global._telecomDataChannels = global._telecomDataChannels || new Map();
               const existingChannel = global._telecomDataChannels.get(contactGuid);
               console.log('[OneTapTelecom] [SENDER] 📥 Incoming messages channel from recipient:', {
@@ -16828,6 +18669,14 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
                 newChannelReadyState: incomingChannel.readyState,
                 newChannelId: incomingChannel.id
               });
+              
+              // 🚨 CRITICAL: Use ChannelManager to properly update channel metadata
+              // On sender side, incoming channel replaces outgoing for BOTH sending and receiving
+              if (window.TelecomChannelManager) {
+                // storeIncomingChannel on sender side now automatically updates both incoming and outgoing
+                window.TelecomChannelManager.storeIncomingChannel(contactGuid, incomingChannel, 'sender');
+              }
+              
               global._telecomDataChannels.set(contactGuid, incomingChannel);
               console.log('[OneTapTelecom] [SENDER] ✅ Stored incoming messages channel (REPLACED outgoing channel if existed)');
               
@@ -16847,6 +18696,74 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
           };
           console.log('[OneTapTelecom] [SENDER] ✅ ondatachannel handler set up for sender');
           
+        // Add service message to chat: connection established (sender side)
+        // Use recipient data from answer metadata if available
+        if (recipientDataFromAnswer) {
+          const chats = getChats();
+          const chatId = `contact-${contactGuid}`;
+          let chat = chats.find(c => c.id === chatId);
+          if (!chat) {
+            // Create chat if it doesn't exist
+            const contacts = getContacts();
+            const contact = contacts.find(c => c.guid === contactGuid);
+            const displayName = recipientDataFromAnswer.displayName || recipientDataFromAnswer.username || contactGuid.substring(0, 8) + '...';
+            chat = {
+              id: chatId,
+              name: displayName,
+              type: 'contact',
+              contactGuid: contactGuid,
+              createdAt: new Date().toISOString()
+            };
+            chats.push(chat);
+            localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
+          }
+          
+          // Add service message to chat: connection established
+          const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
+          const messages = getChatMessages(chatId);
+          // Check if service message already exists
+          const existingServiceMessage = messages.find(m => 
+            m.type === 'service' && 
+            m.senderId === 'telecom' && 
+            m.text && (m.text.includes('Connection established') || m.text.includes('has been added'))
+          );
+          if (!existingServiceMessage) {
+            const recipientDisplayName = recipientDataFromAnswer.displayName || recipientDataFromAnswer.username || contactGuid.substring(0, 8) + '...';
+            const serviceMessage = {
+              id: 'msg-' + Date.now() + '-service',
+              chatId: chatId,
+              senderId: 'telecom',
+              senderName: 'Telecom',
+              text: `✅ Connection established with ${recipientDisplayName}. You can now start chatting!`,
+              timestamp: new Date().toISOString(),
+              type: 'service'
+            };
+            messages.push(serviceMessage);
+            localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+            console.log('[OneTapTelecom] [SENDER] ✅ Service message added to chat:', chatId);
+            
+            // Refresh UI if chat is selected
+            const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+            telecomWindows.forEach(winEl => {
+              const winId = winEl.dataset.winId;
+              if (winId) {
+                const win = WindowManager.findWindow(winId);
+                if (win && win.dataset.selectedChatId === chatId) {
+                  const effectiveStorageKey = 'webos.telecom.v1';
+                  let effectiveConfig = null;
+                  try {
+                    const configData = localStorage.getItem(effectiveStorageKey);
+                    if (configData) effectiveConfig = JSON.parse(configData);
+                  } catch (e) {}
+                  if (effectiveConfig) {
+                    renderMessages(win, messages, effectiveConfig);
+                  }
+                }
+              }
+            });
+          }
+        }
+        
         // 🚨 REFACTORED: Check if channels are already open and set up handlers using unified function
         // This handles the case where channels opened BEFORE handler was set up
         console.log('[OneTapTelecom] [SENDER] 🔍 Checking for already-open channels...');
@@ -17115,14 +19032,53 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
             if (typeof updateConnectionStatusForChat === 'function') {
               updateConnectionStatusForChat(contactGuid, 'connected');
             }
+            // Refresh chats list to update status indicator
+            const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+            telecomWindows.forEach(winEl => {
+              const winId = winEl.dataset.winId;
+              if (winId) {
+                const win = WindowManager.findWindow(winId);
+                if (win) {
+                  const effectiveStorageKey = 'webos.telecom.v1';
+                  let effectiveConfig = null;
+                  try {
+                    const configData = localStorage.getItem(effectiveStorageKey);
+                    if (configData) effectiveConfig = JSON.parse(configData);
+                  } catch (e) {}
+                  if (effectiveConfig) {
+                    renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                  }
+                }
+              }
+            });
           } else if (pc.connectionState === 'connecting') {
             // Update UI to show connecting status (yellow circle)
             if (typeof updateConnectionStatusForChat === 'function') {
               updateConnectionStatusForChat(contactGuid, 'connecting');
             }
-          } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-            console.error('[OneTapTelecom] ❌ Connection failed or disconnected');
+            // Refresh chats list to update status indicator
+            const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+            telecomWindows.forEach(winEl => {
+              const winId = winEl.dataset.winId;
+              if (winId) {
+                const win = WindowManager.findWindow(winId);
+                if (win) {
+                  const effectiveStorageKey = 'webos.telecom.v1';
+                  let effectiveConfig = null;
+                  try {
+                    const configData = localStorage.getItem(effectiveStorageKey);
+                    if (configData) effectiveConfig = JSON.parse(configData);
+                  } catch (e) {}
+                  if (effectiveConfig) {
+                    renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                  }
+                }
+              }
+            });
+          } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
+            console.error('[OneTapTelecom] ❌ Connection failed, disconnected, or closed');
             console.error('[OneTapTelecom] Diagnostics:', {
+              connectionState: pc.connectionState,
               signalingState: pc.signalingState,
               iceConnectionState: pc.iceConnectionState,
               iceGatheringState: pc.iceGatheringState,
@@ -17135,6 +19091,25 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
             if (typeof updateConnectionStatusForChat === 'function') {
               updateConnectionStatusForChat(contactGuid, 'disconnected');
             }
+            // Refresh chats list to update status indicator
+            const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+            telecomWindows.forEach(winEl => {
+              const winId = winEl.dataset.winId;
+              if (winId) {
+                const win = WindowManager.findWindow(winId);
+                if (win) {
+                  const effectiveStorageKey = 'webos.telecom.v1';
+                  let effectiveConfig = null;
+                  try {
+                    const configData = localStorage.getItem(effectiveStorageKey);
+                    if (configData) effectiveConfig = JSON.parse(configData);
+                  } catch (e) {}
+                  if (effectiveConfig) {
+                    renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                  }
+                }
+              }
+            });
           }
         };
         
