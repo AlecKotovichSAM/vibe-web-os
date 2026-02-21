@@ -1,7 +1,4 @@
-.idea/misc.xml
-.idea/modules.xml
-.idea/vcs.xml
-.idea/web-os.iml
+.idea/
 
 # Dependencies
 node_modules/

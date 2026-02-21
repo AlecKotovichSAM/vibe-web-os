@@ -709,6 +709,7 @@ window.I18n_EN = {
     connectionConnected: 'Connected',
     connectionConnecting: 'Connecting...',
     connectionDisconnected: 'Disconnected',
+    reconnect: 'Reconnect',
     webrtcChecking: 'Checking WebRTC status...',
     webrtcAvailable: 'WebRTC is available',
     webrtcUnavailable: 'WebRTC is not available',

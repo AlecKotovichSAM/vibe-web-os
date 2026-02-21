@@ -378,16 +378,23 @@
       isPolite = true,
       gzip = true,
       autoShare = true,
-      answerMeta = null // Optional: custom metadata for answer (overrides offer meta)
+      answerMeta = null, // Optional: custom metadata for answer (overrides offer meta)
+      hash = null // Optional: hash string to use instead of location.hash
     } = opts;
 
-    const hash = location.hash || '';
-    if (!hash.startsWith('#offer=')) {
+    // Use provided hash or fall back to location.hash
+    const hashToUse = hash || location.hash || '';
+    if (!hashToUse.startsWith('#offer=')) {
+      console.warn('[OneTap] handleIncomingOfferAndProduceAnswer: hash does not start with #offer=', {
+        hashProvided: !!hash,
+        hashValue: hashToUse.substring(0, 50) + '...',
+        locationHash: location.hash?.substring(0, 50) + '...'
+      });
       return { handled: false };
     }
 
     try {
-      const b64 = hash.slice('#offer='.length);
+      const b64 = hashToUse.slice('#offer='.length);
       const data = await unpack(b64, { gzip });
 
       if (!data || data.role !== 'offerer' || !data.sdp) {
@@ -455,18 +462,19 @@
    */
   OneTap.handleIncomingAnswer = async function (pc, opts = {}) {
     console.log('[OneTap] handleIncomingAnswer called');
-    const { gzip = true } = opts;
-    const hash = location.hash || '';
-    console.log('[OneTap] Hash:', hash.substring(0, 50) + '...');
+    const { gzip = true, hash = null } = opts;
+    // Use provided hash or fall back to location.hash
+    const hashToUse = hash || location.hash || '';
+    console.log('[OneTap] Hash:', hashToUse.substring(0, 50) + '...', '(provided:', !!hash, ')');
     
-    if (!hash.startsWith('#answer=')) {
+    if (!hashToUse.startsWith('#answer=')) {
       console.log('[OneTap] Hash does not start with #answer=');
       return { handled: false };
     }
 
     try {
       console.log('[OneTap] Unpacking answer token...');
-      const b64 = hash.slice('#answer='.length);
+      const b64 = hashToUse.slice('#answer='.length);
       const data = await unpack(b64, { gzip });
       console.log('[OneTap] Answer token unpacked');
 

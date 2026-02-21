@@ -85,7 +85,8 @@ async function runTests() {
     'terminal.browser.test.js',
     'core.state.browser.test.js',
     'core.auth.browser.test.js',
-    'telecom.browser.test.js'
+    'telecom.browser.test.js',
+    'onetap-signaling.browser.test.js'
   ];
   
   // Set up test runner

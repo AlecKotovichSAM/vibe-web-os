@@ -1,9 +1,68 @@
 # Agent Guidelines for Vibe Web OS
 
+## 🚨🚨🚨 MANDATORY: Read This Entire File Before Starting Work 🚨🚨🚨
+
+**CRITICAL RULE: You MUST read the ENTIRE `AGENTS.md` file before starting ANY task.**
+
+**Why:**
+- This file contains ALL critical rules and guidelines
+- Missing a rule can cause syntax errors, bugs, or incorrect implementation
+- Rules are organized by topic - you need to know ALL of them
+- Some rules reference other sections - you need the full context
+
+**Workflow:**
+1. **BEFORE starting any task:** Read `AGENTS.md` completely (all sections)
+2. **Pay special attention to:**
+   - Development Workflow (this section)
+   - Code Quality (syntax error prevention)
+   - WebRTC rules (if working with telecom.js)
+   - Bugfix Testing Policy (if fixing bugs)
+   - Any section relevant to your task
+3. **While working:** Refer back to relevant sections as needed
+4. **After completing:** Verify you followed all relevant rules
+
+**If you skip reading the instructions:**
+- You WILL make mistakes
+- You WILL create syntax errors
+- You WILL miss critical rules
+- The task will NOT be complete
+
+**This is NON-NEGOTIABLE. Read the entire file first.**
+
+---
+
 ## Development Workflow
 
+**🚨🚨🚨 CRITICAL: Preventing Syntax Errors - READ THIS FIRST 🚨🚨🚨**
+
+**MANDATORY before ANY code edit:**
+1. **Read surrounding code** - Understand structure (function boundaries, braces, parentheses)
+2. **Identify exact boundaries** - Know where function/block starts and ends
+3. **Use sufficient context** - Include at least 5-10 lines in `search_replace` old_string
+4. **After EVERY edit: Run `read_lints`** - Check for syntax errors immediately
+5. **Verify structure intact** - Read 10-20 lines before/after edit to ensure no breakage
+
+**Common syntax error causes:**
+- Duplicate code left behind
+- Missing/extra closing braces `}` or parentheses `)`
+- Broken arrow function syntax `() => {` without closing `}`
+- Incomplete try/catch blocks
+- Editing inside wrong block
+
+**If syntax error occurs:**
+- STOP immediately
+- Read error message (points to line number)
+- Count braces/parentheses to find mismatch
+- Fix syntax error FIRST
+- Verify with `read_lints`
+- Only then continue
+
+**See "Code Quality" section below for detailed rules.**
+
+---
+
 **Before completing any task:**
-1. Make code changes
+1. Make code changes (following syntax error prevention rules above)
 2. **MANDATORY: If fixing a bug, add a test for the bugfix** (see Bugfix Testing Policy below)
 3. **If creating a new test file (`*.browser.test.js`), add it to `tests/run-browser-tests.js`** in the `testFiles` array
 4. **Run `npm test` to verify all tests pass**
@@ -419,6 +478,125 @@ BSOD.startRandomSchedule(60, 300); // 1-5 minutes
 - **Settings:** Use localStorage with `webos.theme` key
 - **Account Data:** Use localStorage with `webos.account.v1` (managed by `core.auth.js`)
 
+**⚠️ CRITICAL: localStorage Isolation**
+- **localStorage is isolated per browser/domain/user** - each user has their own localStorage
+- **Cannot use localStorage for cross-user communication** - different users on different browsers cannot share data via localStorage
+- **localStorage is only for local user data** - contacts, messages, settings, etc. stored locally
+- **For peer-to-peer communication:** Use WebRTC data channels, control channels, or one-tap URL links (shared via external means like messaging apps)
+
+### WebRTC One-Tap Reconnect - CRITICAL WORKFLOW
+
+**🚨 MANDATORY: This is the ONLY way reconnect works. No exceptions, no alternatives.**
+
+**Workflow:**
+1. **When either sender OR recipient refreshes the page** → Connection breaks, red circle appears
+2. **Reconnect button** → Either sender OR recipient can click Reconnect to generate a new offer/answer link
+3. **Link sharing** → The link is sent via external means (copy/paste, messaging app, etc.)
+4. **Automatic restoration** → When the link is pasted into chat and sent, connection MUST automatically restore
+
+**Rules:**
+- ✅ Reconnect button generates offer/answer link (one-tap format)
+- ✅ Link is shown in popup dialog (user copies and sends via external means)
+- ✅ When link is pasted into chat message and sent, it's automatically detected and processed
+- ✅ Connection MUST restore automatically after processing link
+- ❌ NO other reconnect methods allowed
+- ❌ NO manual JSON exchange for reconnect
+- ❌ NO automatic reconnection without link exchange
+
+**Implementation:**
+- `handleReconnectClick` → Generates offer link → Shows in dialog
+- `sendMessage` → Detects `#offer=` or `#answer=` in message → Calls `handleIncomingOfferFromUrl` or `handleIncomingAnswerFromUrl`
+- Processing MUST restore connection completely (green circle, messages work)
+
+**This is NON-NEGOTIABLE. Implement exactly this way.**
+
+**🚨 CRITICAL: ICE Connection Failed - Common Causes**
+
+**Problem:** After processing answer, ICE connection fails with "ICE failed" error.
+
+**Common causes:**
+1. **TURN server not configured or not working** - Check Network app settings
+2. **NAT/firewall blocking peer-to-peer** - TURN server required
+3. **Offer/answer mismatch** - ICE candidates don't match
+4. **ICE gathering timeout** - Candidates not collected in time
+
+**Debugging:**
+- Check `pc.iceConnectionState` - should be `connected` or `completed`
+- Check `pc.connectionState` - should be `connected`
+- Check browser console for "TURN server appears to be broken" message
+- Verify TURN server credentials in Network app
+
+**Solution:**
+- Ensure TURN server is configured correctly
+- Check that offer and answer are from the same session
+- Verify ICE candidates are included in SDP
+
+### WebRTC Message Handling - CRITICAL RULES
+
+**🚨 CRITICAL: RTCPeerConnection signalingState initial value is "stable", NOT "new"**
+
+**IMPORTANT:** When you create a new `RTCPeerConnection` with `new RTCPeerConnection()`, its `signalingState` property starts as `"stable"`, NOT `"new"`.
+
+- ✅ **CORRECT:** `signalingState === "stable"` for a freshly created PC
+- ❌ **WRONG:** `signalingState === "new"` - this will NEVER be true for a new PC
+
+**States:**
+- `signalingState`: `"stable"` (initial), `"have-local-offer"`, `"have-remote-offer"`, `"have-local-pranswer"`, `"have-remote-pranswer"`, `"closed"`
+- `iceConnectionState`: `"new"` (initial), `"checking"`, `"connected"`, `"completed"`, `"failed"`, `"disconnected"`, `"closed"`
+- `connectionState`: `"new"` (initial), `"connecting"`, `"connected"`, `"disconnected"`, `"failed"`, `"closed"`
+
+**Common mistake:** Checking `pc.signalingState !== 'new'` and throwing an error - this will ALWAYS fail because new PCs start in `"stable"` state, not `"new"`.
+
+**🚨🚨🚨 CRITICAL: When processing WebRTC answer on sender side, ALWAYS overwrite `ondatachannel` AND `onmessage` handlers 🚨🚨🚨**
+
+**Problem:** When `ensurePeerForContact` creates a PC, it sets up `ondatachannel` handler for recipient side (to handle incoming channels from sender). But when sender processes answer, it needs a DIFFERENT handler to receive messages from recipient.
+
+**CRITICAL RULES:**
+1. **ALWAYS overwrite `pc.ondatachannel`** - don't check `if (!pc.ondatachannel)`, just overwrite it
+2. **ALWAYS overwrite `channel.onmessage`** - don't check `if (!channel.onmessage)`, just overwrite it
+3. **ALWAYS overwrite handlers on already-open channels** - channels might open before handler is set up
+4. **Previous handlers might be wrong** - they could be recipient-side handlers from `ensurePeerForContact`
+
+**Solution:**
+- When processing answer via `OneTapTelecom.handleIncomingAnswerFromUrl` on sender side:
+  1. **ALWAYS overwrite `pc.ondatachannel`** - don't check `if (!pc.ondatachannel)`, just overwrite it
+  2. Set up handler for incoming `messages` channel with `onmessage` that:
+     - Decrypts messages if encrypted
+     - Saves to localStorage
+     - Updates UI
+  3. **ALWAYS overwrite `onmessage` handler** - don't check `if (!channel.onmessage)`, just overwrite it
+  4. **Check if channels are already open** - if `readyState === 'open'`, overwrite handler IMMEDIATELY
+
+**Why:** 
+- `ensurePeerForContact` creates PC with recipient-side handler
+- Sender needs sender-side handler
+- They are DIFFERENT and MUST be overwritten
+- Channels might open before handler is set up
+- Previous handler might be wrong (recipient-side)
+
+**Example:**
+```javascript
+// ❌ WRONG - checks if handler exists
+if (!pc.ondatachannel) {
+  pc.ondatachannel = handler;
+}
+if (!channel.onmessage) {
+  channel.onmessage = handler;
+}
+
+// ✅ CORRECT - always overwrite
+pc.ondatachannel = handler;
+channel.onmessage = handler; // Even if handler already exists
+```
+
+**Also:** When processing incoming offer on recipient side, ALWAYS create fresh PC (close existing one first) because existing PC might be in `have-local-offer` state from `autoReconnect` or `createOfferLink`.
+- **Never assume localStorage can be used as a "mailbox" between users** - it's not accessible across different browsers/users
+
+**🚨 THIS IS THE MOST COMMON BUG - MESSAGES NOT DELIVERED TO SENDER AFTER RECONNECT 🚨**
+- If messages don't reach sender after reconnect, check that handlers are OVERWRITTEN, not conditionally set
+- Check that handlers are set up on already-open channels
+- Check that `onmessage` handler is set up correctly for incoming messages channel
+
 ### Code Quality
 
 - Keep functions small and single-purpose
@@ -427,6 +605,83 @@ BSOD.startRandomSchedule(60, 300); // 1-5 minutes
 - Comment non-obvious logic briefly
 - Console logging is present for debugging (clean up before production)
 - No external dependencies - pure vanilla JS
+
+**🚨🚨🚨 CRITICAL: Preventing Syntax Errors When Editing Code 🚨🚨🚨**
+
+**MANDATORY RULES to prevent syntax errors:**
+
+1. **ALWAYS read surrounding code before editing** - Understand the structure (function boundaries, braces, parentheses)
+2. **ALWAYS verify matching braces/parentheses** - Count opening and closing braces/parentheses in the edited section
+3. **ALWAYS check function boundaries** - Make sure you're editing inside the correct function/block
+4. **ALWAYS verify arrow function syntax** - `() => { }` must have matching braces
+5. **ALWAYS check async/await structure** - `async (event) => { }` must be complete
+6. **ALWAYS verify try/catch blocks** - Every `try { }` must have matching `catch { }` or `finally { }`
+7. **ALWAYS check for duplicate code** - When replacing code, make sure old code is completely removed
+8. **ALWAYS use `read_lints` tool after editing** - Run `read_lints` on the edited file to catch syntax errors
+9. **ALWAYS verify the edit didn't break structure** - Read 10-20 lines before and after your edit to ensure structure is intact
+10. **ALWAYS run syntax check after editing telecom.js** - Run `npm run syntax:telecom` to verify syntax is correct
+
+**Common mistakes that cause syntax errors:**
+- ❌ Leaving duplicate function definitions
+- ❌ Missing closing brace `}` or parenthesis `)`
+- ❌ Extra closing brace `}` or parenthesis `)`
+- ❌ Breaking arrow function syntax: `() => {` without closing `}`
+- ❌ Breaking async function: `async (event) => {` without closing `}`
+- ❌ Incomplete try/catch: `try {` without `catch` or `finally`
+- ❌ Editing inside wrong block (e.g., editing inside `if` when you meant to edit outside)
+
+**Workflow to prevent errors:**
+1. Read the code section you're about to edit (read 20-30 lines around it)
+2. Identify the exact boundaries (function start/end, block start/end)
+3. Make the edit using `search_replace` with sufficient context (at least 5-10 lines)
+4. **MANDATORY:** Run `read_lints` on the edited file immediately after
+5. **MANDATORY for telecom.js:** Run `npm run syntax:telecom` to verify syntax is correct
+6. If linter or syntax check shows errors, fix them before proceeding
+7. Verify the edit by reading the modified section again
+
+**Example of CORRECT editing:**
+```javascript
+// ✅ CORRECT - Read surrounding code first
+// Found: function handleAnswer() { ... existingMessagesChannel.onmessage = async (event) => { ... } }
+// Edit: Replace the entire handler, ensuring matching braces
+
+// ✅ CORRECT - Use sufficient context
+search_replace(
+  old_string: "existingMessagesChannel.onmessage = async (event) => {\n  try {\n    const data = ...\n  } catch (e) {\n    ...\n  }\n};",
+  new_string: "existingMessagesChannel.onmessage = async (event) => {\n  try {\n    const data = ...\n    // new code\n  } catch (e) {\n    ...\n  }\n};"
+);
+
+// ✅ CORRECT - Verify with linter
+read_lints(['js/apps/telecom.js']);
+```
+
+**Example of WRONG editing:**
+```javascript
+// ❌ WRONG - Not enough context, breaks structure
+search_replace(
+  old_string: "onmessage = async (event) => {",
+  new_string: "onmessage = async (event) => {\n  // new code"
+);
+// Problem: Doesn't show where function ends, might break structure
+
+// ❌ WRONG - Duplicate code left behind
+search_replace(
+  old_string: "existingMessagesChannel.onmessage = async (event) => {",
+  new_string: "existingMessagesChannel.onmessage = async (event) => {\n  console.log('new');\nexistingMessagesChannel.onmessage = async (event) => {"
+);
+// Problem: Creates duplicate handler definition
+```
+
+**If you create a syntax error:**
+1. **STOP immediately** - Don't make more edits
+2. Read the error message carefully - it usually points to the line
+3. Read the code around that line (20-30 lines)
+4. Count braces/parentheses to find the mismatch
+5. Fix the syntax error first
+6. Verify with `read_lints`
+7. Only then continue with other edits
+
+**This rule is NON-NEGOTIABLE. Syntax errors break the entire application.**
 
 ### Bugfix Testing Policy
 
