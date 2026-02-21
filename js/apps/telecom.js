@@ -12242,24 +12242,177 @@ async function processWebRTCAnswer(invite, config, storageKey) {
     };
     
     // Set up data channel handlers
+    // 🚨🚨🚨 CRITICAL: Check ALL channels in PC to find incoming channel from recipient 🚨🚨🚨
+    // The channel in _telecomDataChannels might be outgoing (created by sender) or incoming (created by recipient)
+    // We need to find the INCOMING channel (created by recipient) to receive messages
+    let incomingMessagesChannel = null;
+    let outgoingMessagesChannel = null;
+    
+    // Check all channels in PC to find incoming channel
+    // Incoming channels are received via ondatachannel event
+    // We need to check if there's an incoming channel that was already stored
     const dataChannel = window._telecomDataChannels?.get(contactGuid);
     if (dataChannel) {
-      // Check if this is an incoming channel (from recipient) - it already has a handler
-      // Incoming channels are created by recipient and received via ondatachannel
-      const isIncomingChannel = dataChannel.readyState === 'open' && !!dataChannel.onmessage;
+      // Try to determine if this is incoming or outgoing
+      // Incoming channels are typically received via ondatachannel AFTER answer is processed
+      // But they might be stored before processWebRTCAnswer is called
+      // Check if channel has handler from sendContactInvite (incoming channel handler)
+      const hasIncomingHandler = dataChannel.onmessage && 
+        dataChannel.onmessage.toString().includes('Incoming data channel event (sender)');
       
-      console.log('[Telecom] 📡 Setting up data channel handlers in processWebRTCAnswer:', {
+      if (hasIncomingHandler || (dataChannel.readyState === 'open' && dataChannel.onmessage)) {
+        // This is likely the incoming channel
+        incomingMessagesChannel = dataChannel;
+        console.log('[Telecom] 📡 Found incoming messages channel in processWebRTCAnswer:', {
+          contactGuid: contactGuid,
+          readyState: incomingMessagesChannel.readyState,
+          hasOnMessage: !!incomingMessagesChannel.onmessage
+        });
+      } else {
+        // This is likely the outgoing channel
+        outgoingMessagesChannel = dataChannel;
+        console.log('[Telecom] 📡 Found outgoing messages channel in processWebRTCAnswer:', {
+          contactGuid: contactGuid,
+          readyState: outgoingMessagesChannel.readyState,
+          hasOnMessage: !!outgoingMessagesChannel.onmessage
+        });
+      }
+    }
+    
+    // 🚨🚨🚨 CRITICAL: ALWAYS ensure handler is set for incoming channel 🚨🚨🚨
+    // Even if channel is already open, we MUST verify handler is set correctly
+    if (incomingMessagesChannel) {
+      console.log('[Telecom] 📡 Setting up handlers for incoming channel in processWebRTCAnswer:', {
         contactGuid: contactGuid,
-        hasDataChannel: !!dataChannel,
-        readyState: dataChannel.readyState,
-        hasExistingOnMessage: !!dataChannel.onmessage,
-        isIncomingChannel: isIncomingChannel
+        readyState: incomingMessagesChannel.readyState,
+        hasOnMessage: !!incomingMessagesChannel.onmessage
       });
       
-      // Only set up handlers for outgoing channel (created by sender)
-      // Incoming channel handler is already set up in ondatachannel
-      if (!isIncomingChannel) {
-        dataChannel.onopen = () => {
+      // 🚨🚨🚨 CRITICAL: If channel is already open but handler is missing, set it up immediately 🚨🚨🚨
+      // This handles race condition where channel opens before ondatachannel fires
+      if (incomingMessagesChannel.readyState === 'open' && !incomingMessagesChannel.onmessage) {
+        console.warn('[Telecom] ⚠️ CRITICAL: Incoming channel is open but has NO handler! Setting up handler NOW...');
+        // Set up the same handler as in sendContactInvite's ondatachannel
+        // This handler processes regular messages from recipient
+        incomingMessagesChannel.onmessage = async (event) => {
+          try {
+            console.log('[Telecom] 📥 Message received via incoming data channel (sender side, fallback handler):', {
+              contactGuid: contactGuid,
+              dataLength: event.data ? event.data.length : 0
+            });
+            
+            const messageData = JSON.parse(event.data);
+            
+            // Handle regular messages from recipient
+            if (messageData.type === 'message' && messageData.text) {
+              console.log('[Telecom] ✅ Processing regular message from incoming channel (sender side, fallback):', {
+                contactGuid: contactGuid,
+                messageLength: messageData.text.length,
+                encrypted: messageData.encrypted || false
+              });
+              
+              const chatId = `contact-${contactGuid}`;
+              let decryptedText = messageData.text;
+              
+              if (messageData.encrypted) {
+                try {
+                  const systemAccount = window.Auth ? window.Auth.getAccount() : null;
+                  if (systemAccount && systemAccount.privateKeyEncrypted) {
+                    const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+                    const foundWinId = telecomWindows.length > 0 ? telecomWindows[0].dataset.winId : null;
+                    const privateKey = await getDecryptedPrivateKey(foundWinId);
+                    if (privateKey) {
+                      decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
+                    } else {
+                      decryptedText = '[Encrypted message - enter password to decrypt]';
+                    }
+                  } else {
+                    decryptedText = '[Encrypted message - decryption failed]';
+                  }
+                } catch (e) {
+                  console.error('[Telecom] Error decrypting:', e);
+                  decryptedText = '[Encrypted message - decryption failed]';
+                }
+              }
+              
+              const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
+              const messages = getChatMessages(chatId);
+              messages.push({
+                id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+                chatId: chatId,
+                senderId: contactGuid,
+                senderName: messageData.senderName || contactGuid.substring(0, 8) + '...',
+                text: decryptedText,
+                timestamp: messageData.timestamp || new Date().toISOString(),
+                type: 'user',
+                viaWebRTC: true,
+                wasEncrypted: messageData.encrypted || false
+              });
+              localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+              
+              const chats = getChats();
+              const chat = chats.find(c => c.id === chatId);
+              if (chat) {
+                chat.lastMessage = {
+                  text: decryptedText.length > 50 ? decryptedText.substring(0, 50) + '...' : decryptedText,
+                  timestamp: new Date().toISOString()
+                };
+                localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
+              }
+              
+              if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
+              window._telecomBlinkingChats.add(chatId);
+              blinkChatItem(chatId);
+              
+              const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+              telecomWindows.forEach(winEl => {
+                const winId = winEl.dataset.winId;
+                if (winId) {
+                  const win = WindowManager.findWindow(winId);
+                  if (win) {
+                    const selectedChatId = win.dataset.selectedChatId;
+                    const effectiveStorageKey = 'webos.telecom.v1';
+                    let effectiveConfig = null;
+                    try {
+                      const configData = localStorage.getItem(effectiveStorageKey);
+                      if (configData) effectiveConfig = JSON.parse(configData);
+                    } catch (e) {}
+                    
+                    if (selectedChatId === chatId) {
+                      const chat = chats.find(c => c.id === chatId);
+                      if (chat) {
+                        selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
+                      }
+                    } else {
+                      renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                      blinkChatItem(chatId);
+                    }
+                  }
+                }
+              });
+            }
+          } catch (e) {
+            console.error('[Telecom] ❌ Error parsing message from incoming data channel (fallback):', e);
+          }
+        };
+        console.log('[Telecom] ✅ Fallback handler set up for incoming channel');
+      } else if (incomingMessagesChannel.readyState === 'open' && incomingMessagesChannel.onmessage) {
+        console.log('[Telecom] ✅ Incoming channel has handler set up correctly');
+      } else {
+        console.log('[Telecom] ⏳ Incoming channel not yet open, handler will be set up when channel opens');
+      }
+    }
+    
+    // Set up handlers for outgoing channel (if it exists and is different from incoming)
+    if (outgoingMessagesChannel && outgoingMessagesChannel !== incomingMessagesChannel) {
+      console.log('[Telecom] 📡 Setting up handlers for outgoing channel in processWebRTCAnswer:', {
+        contactGuid: contactGuid,
+        readyState: outgoingMessagesChannel.readyState,
+        hasOnMessage: !!outgoingMessagesChannel.onmessage
+      });
+      
+      if (!outgoingMessagesChannel.onopen) {
+        outgoingMessagesChannel.onopen = () => {
           console.log('[Telecom] Data channel opened with contact:', contactGuid);
           updateConnectionStatusForChat(contactGuid, 'connected');
           
@@ -12282,14 +12435,14 @@ async function processWebRTCAnswer(invite, config, storageKey) {
             console.error('[Telecom] Error setting up auto-reconnect (sender):', e);
           }
         };
-      } else {
-        console.log('[Telecom] ⚠️ Incoming channel already has handler, not overwriting');
       }
       
-      // Only set up message handler if it doesn't exist (for outgoing channel)
-      // Incoming channel handler is set up in ondatachannel and handles webrtc-answer
-      if (!dataChannel.onmessage) {
-        dataChannel.onmessage = async (event) => {
+      // 🚨🚨🚨 CRITICAL: Outgoing channel should NOT receive messages 🚨🚨🚨
+      // Messages come via incoming channel, which has handler set up in sendContactInvite's ondatachannel
+      // We only set up handler here for outgoing channel to handle webrtc-answer (trickle ICE)
+      // But regular messages should be handled by incoming channel handler
+      if (outgoingMessagesChannel && !outgoingMessagesChannel.onmessage) {
+        outgoingMessagesChannel.onmessage = async (event) => {
         try {
           console.log('[Telecom] 📥 Raw message received via WebRTC (sender side):', {
             contactGuid: contactGuid,
