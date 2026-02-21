@@ -1,8 +1,10 @@
 # Agent Guidelines for Vibe Web OS
 
-## 🚨🚨🚨 MANDATORY: Read This Entire File Before Starting Work 🚨🚨🚨
+## 🚨🚨🚨🚨🚨 ОБЯЗАТЕЛЬНО: ПРОЧИТАЙТЕ ВСЮ ИНСТРУКЦИЮ ПЕРЕД НАЧАЛОМ РАБОТЫ 🚨🚨🚨🚨🚨
 
-**CRITICAL RULE: You MUST read the ENTIRE `AGENTS.md` file before starting ANY task.**
+**🚨 КРИТИЧЕСКОЕ ПРАВИЛО: Вы ОБЯЗАНЫ прочитать ВСЮ инструкцию `AGENTS.md` ПЕРЕД началом ЛЮБОЙ задачи.**
+
+**🚨 MANDATORY RULE: You MUST read the ENTIRE `AGENTS.md` file before starting ANY task.**
 
 **Why:**
 - This file contains ALL critical rules and guidelines
@@ -32,6 +34,8 @@
 ---
 
 ## Development Workflow
+
+**🚨🚨🚨 ОБЯЗАТЕЛЬНО: Прочитайте ВСЮ инструкцию перед началом работы 🚨🚨🚨**
 
 **🚨🚨🚨 CRITICAL: Preventing Syntax Errors - READ THIS FIRST 🚨🚨🚨**
 
@@ -510,6 +514,51 @@ BSOD.startRandomSchedule(60, 300); // 1-5 minutes
 
 **This is NON-NEGOTIABLE. Implement exactly this way.**
 
+**🚨 CRITICAL: Creating Offer for Reconnect - MUST Close Failed PC First**
+
+**Problem:** When creating offer for reconnect via `OneTapTelecom.createOfferLink`, the existing PC might be in `failed`, `closed`, or `have-local-offer` state. Using such PC will cause ICE connection failures.
+
+**CRITICAL RULES:**
+1. **ALWAYS check existing PC state** before creating new offer
+2. **ALWAYS close PC** if it's in `failed`, `closed`, `have-local-offer`, `disconnected` state
+3. **ALWAYS verify PC is fresh** after getting from `ensurePeerForContact` - check `signalingState === 'stable'` and `iceGatheringState === 'new'`
+4. **ALWAYS force recreate PC** if it's not in fresh state (don't use stale PC)
+
+**Solution:**
+- In `OneTapTelecom.createOfferLink`:
+  1. Check if existing PC exists in Map
+  2. If PC exists and is in bad state (`connectionState === 'failed' || 'closed'`, `signalingState === 'have-local-offer'`, `iceConnectionState === 'failed' || 'disconnected'`), close it and remove from Map
+  3. Get PC via `ensurePeerForContact` (should create fresh one)
+  4. **Verify PC is fresh:** `signalingState === 'stable'` AND `iceGatheringState === 'new'`
+  5. If PC is not fresh, force close and recreate
+
+**Why:**
+- Failed PC cannot be reused - it will cause ICE connection failures
+- PC with `have-local-offer` state cannot create new offer
+- Stale PC with `iceGatheringState === 'complete'` was already used
+- Fresh PC MUST have `signalingState === 'stable'` and `iceGatheringState === 'new'`
+
+**Example:**
+```javascript
+// ✅ CORRECT - check and close failed PC before creating offer
+const existingPC = global._telecomPeerConnections.get(contactGuid);
+if (existingPC) {
+  if (existingPC.connectionState === 'failed' || 
+      existingPC.signalingState === 'have-local-offer' ||
+      existingPC.iceConnectionState === 'failed') {
+    existingPC.close();
+    global._telecomPeerConnections.delete(contactGuid);
+  }
+}
+let pc = ensurePeerForContact(contactGuid, config);
+// Verify PC is fresh
+if (pc.signalingState !== 'stable' || pc.iceGatheringState !== 'new') {
+  pc.close();
+  global._telecomPeerConnections.delete(contactGuid);
+  pc = ensurePeerForContact(contactGuid, config); // Force recreate
+}
+```
+
 **🚨 CRITICAL: ICE Connection Failed - Common Causes**
 
 **Problem:** After processing answer, ICE connection fails with "ICE failed" error.
@@ -599,6 +648,8 @@ channel.onmessage = handler; // Even if handler already exists
 
 ### Code Quality
 
+**🚨 ВАЖНО: Убедитесь, что вы прочитали ВСЮ инструкцию перед началом работы! 🚨**
+
 - Keep functions small and single-purpose
 - Avoid deep nesting
 - Use meaningful variable names
@@ -684,6 +735,8 @@ search_replace(
 **This rule is NON-NEGOTIABLE. Syntax errors break the entire application.**
 
 ### Bugfix Testing Policy
+
+**🚨 ВАЖНО: Убедитесь, что вы прочитали ВСЮ инструкцию перед началом работы! 🚨**
 
 **🚨 MANDATORY: Every bugfix MUST include a test. This is NON-NEGOTIABLE.**
 

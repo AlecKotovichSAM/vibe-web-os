@@ -34,6 +34,186 @@
 })();
 
 /**
+ * 🚨🚨🚨 GLOBAL DATA CHANNEL MANAGEMENT SYSTEM 🚨🚨🚨
+ * 
+ * This system prevents the critical bug where incoming channels overwrite outgoing channels
+ * on recipient side, causing messages to fail sending.
+ * 
+ * Key principles:
+ * - On SENDER side: Incoming channel (from recipient) REPLACES outgoing channel (for receiving messages)
+ * - On RECIPIENT side: Outgoing channel (for sending) MUST NEVER be overwritten by incoming channel
+ * - Channels are stored with metadata to track their direction (outgoing/incoming)
+ */
+window.TelecomChannelManager = (() => {
+  // Track channel direction and role
+  const channelMetadata = new Map(); // contactGuid -> { outgoing: channel, incoming: channel, role: 'sender'|'recipient' }
+  
+  /**
+   * Store outgoing channel (created by createDataChannel)
+   * @param {string} contactGuid - Contact GUID
+   * @param {RTCDataChannel} channel - Outgoing data channel
+   * @param {string} role - 'sender' or 'recipient'
+   */
+  function storeOutgoingChannel(contactGuid, channel, role) {
+    if (!window._telecomDataChannels) {
+      window._telecomDataChannels = new Map();
+    }
+    
+    const metadata = channelMetadata.get(contactGuid) || { role };
+    metadata.outgoing = channel;
+    metadata.role = role;
+    channelMetadata.set(contactGuid, metadata);
+    
+    // Store in main map (for backward compatibility)
+    window._telecomDataChannels.set(contactGuid, channel);
+    
+    console.log(`[ChannelManager] ✅ Stored OUTGOING channel for ${role}:`, {
+      contactGuid,
+      channelId: channel.id,
+      label: channel.label,
+      readyState: channel.readyState
+    });
+  }
+  
+  /**
+   * Store incoming channel (received via ondatachannel)
+   * @param {string} contactGuid - Contact GUID
+   * @param {RTCDataChannel} channel - Incoming data channel
+   * @param {string} role - 'sender' or 'recipient'
+   * @returns {boolean} - true if channel was stored, false if it was rejected
+   */
+  function storeIncomingChannel(contactGuid, channel, role) {
+    if (!window._telecomDataChannels) {
+      window._telecomDataChannels = new Map();
+    }
+    
+    const metadata = channelMetadata.get(contactGuid) || { role };
+    const existingOutgoing = metadata.outgoing;
+    
+    // 🚨 CRITICAL RULE: On recipient side, NEVER overwrite outgoing channel with incoming channel
+    if (role === 'recipient' && existingOutgoing) {
+      console.log('[ChannelManager] 🚨 BLOCKED: Incoming channel would overwrite outgoing channel on recipient side!');
+      console.log('[ChannelManager] Outgoing channel preserved:', {
+        contactGuid,
+        outgoingChannelId: existingOutgoing.id,
+        outgoingReadyState: existingOutgoing.readyState,
+        incomingChannelId: channel.id,
+        incomingReadyState: channel.readyState
+      });
+      
+      // Store incoming channel separately for receiving, but don't overwrite outgoing
+      metadata.incoming = channel;
+      channelMetadata.set(contactGuid, metadata);
+      
+      // DO NOT update main map - keep outgoing channel there for sending
+      return false; // Channel not stored in main map
+    }
+    
+    // On sender side, incoming channel replaces outgoing (this is correct)
+    if (role === 'sender') {
+      metadata.incoming = channel;
+      channelMetadata.set(contactGuid, metadata);
+      window._telecomDataChannels.set(contactGuid, channel);
+      
+      console.log(`[ChannelManager] ✅ Stored INCOMING channel for ${role} (replaced outgoing):`, {
+        contactGuid,
+        channelId: channel.id,
+        label: channel.label,
+        readyState: channel.readyState
+      });
+      return true;
+    }
+    
+    // Fallback: store incoming if no outgoing exists
+    metadata.incoming = channel;
+    channelMetadata.set(contactGuid, metadata);
+    window._telecomDataChannels.set(contactGuid, channel);
+    
+    console.log(`[ChannelManager] ✅ Stored INCOMING channel for ${role} (no outgoing exists):`, {
+      contactGuid,
+      channelId: channel.id,
+      label: channel.label,
+      readyState: channel.readyState
+    });
+    return true;
+  }
+  
+  /**
+   * Get channel for sending messages (always returns outgoing channel)
+   * @param {string} contactGuid - Contact GUID
+   * @returns {RTCDataChannel|null} - Outgoing channel for sending, or null if not found
+   */
+  function getChannelForSending(contactGuid) {
+    const metadata = channelMetadata.get(contactGuid);
+    if (!metadata) {
+      // Fallback to main map (backward compatibility)
+      return window._telecomDataChannels?.get(contactGuid) || null;
+    }
+    
+    // Always use outgoing channel for sending
+    const outgoingChannel = metadata.outgoing;
+    if (outgoingChannel && outgoingChannel.readyState === 'open') {
+      return outgoingChannel;
+    }
+    
+    // If outgoing not open, check if we can use it anyway (might open soon)
+    if (outgoingChannel) {
+      return outgoingChannel;
+    }
+    
+    // Fallback: if no outgoing, use main map (for backward compatibility)
+    return window._telecomDataChannels?.get(contactGuid) || null;
+  }
+  
+  /**
+   * Get channel for receiving messages (prefers incoming, falls back to outgoing)
+   * @param {string} contactGuid - Contact GUID
+   * @returns {RTCDataChannel|null} - Channel for receiving, or null if not found
+   */
+  function getChannelForReceiving(contactGuid) {
+    const metadata = channelMetadata.get(contactGuid);
+    if (!metadata) {
+      // Fallback to main map (backward compatibility)
+      return window._telecomDataChannels?.get(contactGuid) || null;
+    }
+    
+    // Prefer incoming channel for receiving
+    if (metadata.incoming) {
+      return metadata.incoming;
+    }
+    
+    // Fallback to outgoing if no incoming
+    return metadata.outgoing || null;
+  }
+  
+  /**
+   * Remove channel metadata
+   * @param {string} contactGuid - Contact GUID
+   */
+  function removeChannel(contactGuid) {
+    channelMetadata.delete(contactGuid);
+  }
+  
+  /**
+   * Get channel metadata for debugging
+   * @param {string} contactGuid - Contact GUID
+   * @returns {Object|null} - Channel metadata
+   */
+  function getMetadata(contactGuid) {
+    return channelMetadata.get(contactGuid) || null;
+  }
+  
+  return {
+    storeOutgoingChannel,
+    storeIncomingChannel,
+    getChannelForSending,
+    getChannelForReceiving,
+    removeChannel,
+    getMetadata
+  };
+})();
+
+/**
  * Encryption/Decryption functions for Telecom messages
  * Uses RSA-OAEP for small messages, hybrid RSA+AES for large messages
  */
@@ -1257,6 +1437,168 @@ function createControlChannel(pc, contactGuid) {
     console.error('[Telecom] ❌ Error creating control channel:', e);
     return null;
   }
+}
+
+/**
+ * Setup messages channel handler - UNIFIED FUNCTION for all data channel message handling
+ * This replaces duplicate handler setup logic scattered across 8+ places in the codebase
+ * 
+ * @param {RTCDataChannel} channel - The data channel to set up handler for
+ * @param {string} contactGuid - The contact GUID
+ * @param {string} role - 'sender' or 'recipient' (for logging purposes)
+ * @param {Object} options - Optional configuration
+ * @param {boolean} options.overwrite - If true, always overwrite existing handler (default: true)
+ * @param {Function} options.onOpenCallback - Optional callback when channel opens
+ */
+function setupMessagesChannelHandler(channel, contactGuid, role = 'unknown', options = {}) {
+  if (!channel || !contactGuid) {
+    console.warn('[Telecom] setupMessagesChannelHandler: Invalid parameters', { channel: !!channel, contactGuid });
+    return;
+  }
+
+  const { overwrite = true, onOpenCallback = null } = options;
+  
+  // Create the message handler function (reusable logic)
+  const createMessageHandler = () => {
+    return async (event) => {
+      try {
+        const messageData = JSON.parse(event.data);
+        console.log(`[Telecom] [${role.toUpperCase()}] 📥 Received message via data channel:`, {
+          contactGuid: contactGuid,
+          type: messageData.type,
+          encrypted: messageData.encrypted || false
+        });
+        
+        // Handle regular messages
+        if (messageData.type === 'message' && messageData.text) {
+          const chatId = `contact-${contactGuid}`;
+          
+          // Decrypt if needed
+          let decryptedText = messageData.text;
+          if (messageData.encrypted) {
+            try {
+              const systemAccount = window.Auth ? window.Auth.getAccount() : null;
+              if (systemAccount && systemAccount.privateKeyEncrypted) {
+                const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
+                const foundWinId = telecomWindows.length > 0 ? telecomWindows[0].dataset.winId : null;
+                const privateKey = await getDecryptedPrivateKey(foundWinId);
+                if (privateKey) {
+                  decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
+                } else {
+                  decryptedText = '[Encrypted message - enter password to decrypt]';
+                }
+              } else {
+                decryptedText = '[Encrypted message - decryption failed]';
+              }
+            } catch (e) {
+              console.error(`[Telecom] [${role.toUpperCase()}] Error decrypting:`, e);
+              decryptedText = '[Encrypted message - decryption failed]';
+            }
+          }
+          
+          // Save message
+          const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
+          const messages = getChatMessages(chatId);
+          messages.push({
+            id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+            chatId: chatId,
+            senderId: contactGuid,
+            senderName: messageData.senderName || contactGuid.substring(0, 8) + '...',
+            text: decryptedText,
+            timestamp: messageData.timestamp || new Date().toISOString(),
+            type: 'user',
+            viaWebRTC: true,
+            wasEncrypted: messageData.encrypted || false
+          });
+          localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
+          
+          // Update chat
+          const chats = getChats();
+          const chat = chats.find(c => c.id === chatId);
+          if (chat) {
+            chat.lastMessage = {
+              text: decryptedText.length > 50 ? decryptedText.substring(0, 50) + '...' : decryptedText,
+              timestamp: new Date().toISOString()
+            };
+            localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
+          }
+          
+          // Refresh UI
+          if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
+          window._telecomBlinkingChats.add(chatId);
+          blinkChatItem(chatId);
+          
+          const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
+          telecomWindows.forEach(winEl => {
+            const winId = winEl.dataset.winId;
+            if (winId) {
+              const win = WindowManager.findWindow(winId);
+              if (win) {
+                const selectedChatId = win.dataset.selectedChatId;
+                const effectiveStorageKey = 'webos.telecom.v1';
+                let effectiveConfig = null;
+                try {
+                  const configData = localStorage.getItem(effectiveStorageKey);
+                  if (configData) effectiveConfig = JSON.parse(configData);
+                } catch (e) {}
+                
+                if (selectedChatId === chatId) {
+                  const chat = chats.find(c => c.id === chatId);
+                  if (chat) {
+                    selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
+                  }
+                } else {
+                  renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
+                  blinkChatItem(chatId);
+                }
+              }
+            }
+          });
+        }
+      } catch (e) {
+        console.error(`[Telecom] [${role.toUpperCase()}] Error parsing message:`, e);
+      }
+    };
+  };
+
+  // 🚨 CRITICAL: Handle race condition - channel might already be open
+  // ALWAYS set handler immediately if channel is open, regardless of overwrite flag
+  // This ensures messages are received even if handler was set incorrectly before
+  if (channel.readyState === 'open') {
+    console.log(`[Telecom] [${role.toUpperCase()}] ⚠️ Channel already open - setting up handler IMMEDIATELY`);
+    console.log(`[Telecom] [${role.toUpperCase()}] Current handler exists:`, !!channel.onmessage);
+    // ALWAYS overwrite if channel is open - this is critical for receiving messages
+    channel.onmessage = createMessageHandler();
+    console.log(`[Telecom] [${role.toUpperCase()}] ✅ Handler set up for already-open channel (overwritten if existed)`);
+  }
+
+  // Set up handler in onopen callback (for channels that open later)
+  const originalOnopen = channel.onopen;
+  channel.onopen = () => {
+    console.log(`[Telecom] [${role.toUpperCase()}] 🎉 Messages channel opened for contact:`, contactGuid);
+    
+    // Call original callback if exists
+    if (originalOnopen) originalOnopen();
+    
+    // Set up handler if missing or overwrite is true
+    if (overwrite || !channel.onmessage) {
+      channel.onmessage = createMessageHandler();
+      console.log(`[Telecom] [${role.toUpperCase()}] ✅ Handler set up in onopen callback`);
+    } else {
+      console.log(`[Telecom] [${role.toUpperCase()}] ℹ️ Handler already exists, skipping (overwrite=false)`);
+    }
+    
+    // Call optional callback
+    if (onOpenCallback) {
+      try {
+        onOpenCallback(channel);
+      } catch (e) {
+        console.error(`[Telecom] [${role.toUpperCase()}] Error in onOpenCallback:`, e);
+      }
+    }
+  };
+
+  console.log(`[Telecom] [${role.toUpperCase()}] ✅ setupMessagesChannelHandler completed for contact:`, contactGuid);
 }
 
 /**
@@ -8908,17 +9250,26 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
         window._telecomDataChannels = new Map();
       }
       window._telecomPeerConnections.set(targetGuid, pc);
-      window._telecomDataChannels.set(targetGuid, dataChannel);
+      
+      // 🚨 Use ChannelManager to store outgoing channel (sender side)
+      if (window.TelecomChannelManager) {
+        window.TelecomChannelManager.storeOutgoingChannel(targetGuid, dataChannel, 'sender');
+      } else {
+        window._telecomDataChannels.set(targetGuid, dataChannel);
+      }
       
       // Handle incoming data channels from recipient (for trickle ICE)
+      console.log('[Telecom] 🚨 CRITICAL: Setting up ondatachannel handler in sendContactInvite for contact:', targetGuid);
       pc.ondatachannel = (event) => {
         const incomingChannel = event.channel;
         console.log('[Telecom] 📥 Incoming data channel event (sender):', {
           label: incomingChannel.label,
           contactGuid: targetGuid,
           readyState: incomingChannel.readyState,
-          channelId: incomingChannel.id
+          channelId: incomingChannel.id,
+          timestamp: new Date().toISOString()
         });
+        console.log('[Telecom] 🚨 CRITICAL: ondatachannel FIRED on sender side!');
         
         // Handle control channel
         if (incomingChannel.label === 'control') {
@@ -8931,9 +9282,8 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
           return;
         }
         
-        // Store incoming channel (messages) - this replaces the outgoing channel
-        // CRITICAL: This is the channel that will receive messages from recipient
-        // IMPORTANT: Save the existing onmessage handler if it exists, then restore it after setting the channel
+        // 🚨 Use ChannelManager to store incoming channel (sender side - replaces outgoing)
+        // CRITICAL: On sender side, incoming channel REPLACES outgoing channel (this is correct)
         const existingChannel = window._telecomDataChannels?.get(targetGuid);
         const existingOnMessage = existingChannel?.onmessage;
         console.log('[Telecom] 📥 Incoming messages channel (sender):', {
@@ -8945,7 +9295,11 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
           hasExistingOnMessage: !!existingOnMessage
         });
         
-        window._telecomDataChannels.set(targetGuid, incomingChannel);
+        if (window.TelecomChannelManager) {
+          window.TelecomChannelManager.storeIncomingChannel(targetGuid, incomingChannel, 'sender');
+        } else {
+          window._telecomDataChannels.set(targetGuid, incomingChannel);
+        }
         console.log('[Telecom] ✅ Stored incoming data channel (messages) for contact:', targetGuid);
         
         // CRITICAL: If there was an existing onmessage handler, we need to make sure it's not lost
@@ -8953,19 +9307,30 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
         // The issue is that processWebRTCAnswer might overwrite it later
         
         // Set up message handler for trickle ICE candidates, answers, AND regular messages
+        console.log('[Telecom] 🚨 CRITICAL: Setting up onmessage handler for incoming channel in sendContactInvite');
+        console.log('[Telecom] Channel state:', {
+          readyState: incomingChannel.readyState,
+          label: incomingChannel.label,
+          id: incomingChannel.id,
+          hasExistingHandler: !!incomingChannel.onmessage
+        });
+        
         incomingChannel.onmessage = async (event) => {
           try {
             console.log('[Telecom] 📥 Message received via incoming data channel (sender side):', {
               contactGuid: targetGuid,
               dataLength: event.data ? event.data.length : 0,
-              dataPreview: event.data ? (event.data.substring(0, 100) + (event.data.length > 100 ? '...' : '')) : 'no data'
+              dataPreview: event.data ? (event.data.substring(0, 100) + (event.data.length > 100 ? '...' : '')) : 'no data',
+              timestamp: new Date().toISOString()
             });
+            console.log('[Telecom] 🚨 CRITICAL: Handler FIRED in sendContactInvite!');
             
             const messageData = JSON.parse(event.data);
             console.log('[Telecom] 📥 Parsed message from incoming channel:', {
               type: messageData.type,
               hasText: !!messageData.text,
-              encrypted: messageData.encrypted || false
+              encrypted: messageData.encrypted || false,
+              hasWebrtcAnswer: !!messageData.webrtcAnswer
             });
             
             // Handle WebRTC answer (trickle ICE)
@@ -9005,6 +9370,12 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
                     } catch (e) {
                       console.error('[Telecom] Error loading config:', e);
                     }
+                    console.log('[Telecom] 🚨 CRITICAL: About to call processWebRTCAnswer from sendContactInvite handler');
+                    console.log('[Telecom] Invite details:', {
+                      inviteId: invite.id,
+                      toGuid: invite.toGuid,
+                      hasAnswer: !!invite.webrtcAnswer
+                    });
                     processWebRTCAnswer(invite, config, STORAGE_KEY).catch(e => {
                       console.error('[Telecom] Error processing answer from incoming data channel:', e);
                     });
@@ -9152,13 +9523,18 @@ async function sendContactInvite(targetGuid, senderAccount, senderEffectiveGuid)
           }
         };
         
-        // Also set up handler immediately if channel is already open
+        // 🚨 CRITICAL: Also set up handler immediately if channel is already open
+        // If channel is already open, onopen won't fire, so we need to verify handler is set NOW
         if (incomingChannel.readyState === 'open') {
           console.log('[Telecom] ⚠️ Incoming channel already open, verifying handler...');
           if (!incomingChannel.onmessage) {
-            console.error('[Telecom] ❌ CRITICAL: Incoming channel is already open but has no onmessage handler!');
+            console.error('[Telecom] ❌ CRITICAL: Incoming channel is already open but has no onmessage handler! Setting up NOW...');
+            // Handler was set above, but if channel is already open, we need to verify it's there
+            // The handler above should have been set, but let's double-check
+            console.log('[Telecom] ⚠️ Handler should have been set above - this is a race condition!');
           } else {
             console.log('[Telecom] ✅ Incoming channel already open and has onmessage handler');
+            console.log('[Telecom] Handler function:', typeof incomingChannel.onmessage);
           }
         }
       };
@@ -10081,7 +10457,13 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
           window._telecomDataChannels = new Map();
         }
         window._telecomPeerConnections.set(inviteForAnswer.fromGuid, pc);
-        window._telecomDataChannels.set(inviteForAnswer.fromGuid, dataChannel);
+        
+        // 🚨 Use ChannelManager to store outgoing channel (recipient side)
+        if (window.TelecomChannelManager) {
+          window.TelecomChannelManager.storeOutgoingChannel(inviteForAnswer.fromGuid, dataChannel, 'recipient');
+        } else {
+          window._telecomDataChannels.set(inviteForAnswer.fromGuid, dataChannel);
+        }
         
         // Set up data channel handlers for recipient (outgoing channel)
         dataChannel.onopen = () => {
@@ -10319,8 +10701,24 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
             return;
           }
           
-          // Store incoming channel (messages)
-          window._telecomDataChannels.set(inviteForAnswer.fromGuid, incomingChannel);
+          // 🚨 Use ChannelManager to store incoming channel (will prevent overwriting outgoing on recipient side)
+          if (window.TelecomChannelManager) {
+            const stored = window.TelecomChannelManager.storeIncomingChannel(inviteForAnswer.fromGuid, incomingChannel, 'recipient');
+            if (!stored) {
+              // Channel was not stored in main map (outgoing preserved) - set up handler and return
+              setupMessagesChannelHandler(incomingChannel, inviteForAnswer.fromGuid, 'recipient', { overwrite: true });
+              return;
+            }
+          } else {
+            // Fallback: old logic
+            const existingOutgoingChannel = window._telecomDataChannels?.get(inviteForAnswer.fromGuid);
+            if (existingOutgoingChannel) {
+              console.log('[Telecom] ⚠️ Incoming channel received on recipient side, but outgoing channel exists - NOT overwriting');
+              setupMessagesChannelHandler(incomingChannel, inviteForAnswer.fromGuid, 'recipient', { overwrite: true });
+              return;
+            }
+            window._telecomDataChannels.set(inviteForAnswer.fromGuid, incomingChannel);
+          }
           
           incomingChannel.onopen = () => {
             console.log('[Telecom] Incoming data channel opened (recipient):', inviteForAnswer.fromGuid, 'connectionState:', pc.connectionState, 'iceConnectionState:', pc.iceConnectionState);
@@ -11529,8 +11927,24 @@ async function handleInviteResponse(invite, response, config, storageKey, winId 
             iceGatheringState: pc.iceGatheringState
           });
           
-          // Store incoming channel (in case original handler didn't)
-          window._telecomDataChannels.set(inviteForAnswer.fromGuid, incomingChannel);
+          // 🚨 Use ChannelManager to store incoming channel (will prevent overwriting outgoing on recipient side)
+          if (window.TelecomChannelManager) {
+            const stored = window.TelecomChannelManager.storeIncomingChannel(inviteForAnswer.fromGuid, incomingChannel, 'recipient');
+            if (!stored) {
+              // Channel was not stored in main map (outgoing preserved) - set up handler and return
+              setupMessagesChannelHandler(incomingChannel, inviteForAnswer.fromGuid, 'recipient', { overwrite: true });
+              return;
+            }
+          } else {
+            // Fallback: old logic
+            const existingOutgoingChannel = window._telecomDataChannels?.get(inviteForAnswer.fromGuid);
+            if (existingOutgoingChannel) {
+              console.log('[TRICKLE-RECIPIENT] ⚠️ Incoming channel received, but outgoing channel exists - NOT overwriting');
+              setupMessagesChannelHandler(incomingChannel, inviteForAnswer.fromGuid, 'recipient', { overwrite: true });
+              return;
+            }
+            window._telecomDataChannels.set(inviteForAnswer.fromGuid, incomingChannel);
+          }
           
           // Set up handler for when channel opens (with access to answerSent, minimalAnswer, etc.)
           const originalIncomingOnOpen = incomingChannel.onopen;
@@ -12241,6 +12655,71 @@ async function processWebRTCAnswer(invite, config, storageKey) {
       }
     };
     
+    // 🚨🚨🚨 CRITICAL: Set up ondatachannel handler FIRST, before checking existing channels 🚨🚨🚨
+    // This ensures we receive channels that arrive AFTER answer is processed
+    // Handler from sendContactInvite might not be set if answer comes via trickle ICE
+    console.log('[Telecom] 🚨 CRITICAL: Setting up ondatachannel handler in processWebRTCAnswer for contact:', contactGuid);
+    const existingOndatachannel = pc.ondatachannel;
+    pc.ondatachannel = (event) => {
+      const incomingChannel = event.channel;
+      console.log('[Telecom] 📥 Incoming data channel event (sender, processWebRTCAnswer):', {
+        label: incomingChannel.label,
+        contactGuid: contactGuid,
+        readyState: incomingChannel.readyState,
+        channelId: incomingChannel.id,
+        timestamp: new Date().toISOString()
+      });
+      console.log('[Telecom] 🚨 CRITICAL: ondatachannel FIRED in processWebRTCAnswer!');
+      
+      // Call existing handler if it exists (from sendContactInvite)
+      if (existingOndatachannel) {
+        try {
+          existingOndatachannel(event);
+        } catch (e) {
+          console.error('[Telecom] Error in existing ondatachannel handler:', e);
+        }
+      }
+      
+      // Also handle the channel ourselves if it's messages channel
+      if (incomingChannel.label === 'messages') {
+        console.log('[Telecom] 📥 Processing incoming messages channel in processWebRTCAnswer');
+        window._telecomDataChannels = window._telecomDataChannels || new Map();
+        const existingChannel = window._telecomDataChannels.get(contactGuid);
+        console.log('[Telecom] Existing channel:', {
+          exists: !!existingChannel,
+          readyState: existingChannel?.readyState,
+          hasOnMessage: !!existingChannel?.onmessage
+        });
+        
+        // Store incoming channel - THIS REPLACES any outgoing channel
+        window._telecomDataChannels.set(contactGuid, incomingChannel);
+        console.log('[Telecom] ✅ Stored incoming messages channel in processWebRTCAnswer');
+        
+        // Set up handler if missing or if existing handler doesn't handle regular messages
+        const existingHandler = incomingChannel.onmessage;
+        const handlesRegularMessages = existingHandler && 
+          existingHandler.toString().includes('messageData.type === \'message\'');
+        
+        if (!handlesRegularMessages) {
+          console.log('[Telecom] ⚠️ Existing handler does not handle regular messages - setting up unified handler');
+          setupMessagesChannelHandler(incomingChannel, contactGuid, 'sender', { overwrite: true });
+        } else {
+          console.log('[Telecom] ✅ Existing handler handles regular messages - keeping it');
+        }
+      } else if (incomingChannel.label === 'control') {
+        console.log('[Telecom] 📥 Processing incoming control channel in processWebRTCAnswer');
+        window._telecomControlChannels = window._telecomControlChannels || new Map();
+        window._telecomControlChannels.set(contactGuid, incomingChannel);
+        if (typeof setupControlChannelHandler === 'function') {
+          try {
+            setupControlChannelHandler(incomingChannel, contactGuid, pc, config, storageKey);
+          } catch (e) {
+            console.warn('[Telecom] Error setting up control channel handler:', e);
+          }
+        }
+      }
+    };
+    
     // Set up data channel handlers
     // 🚨🚨🚨 CRITICAL: Check ALL channels in PC to find incoming channel from recipient 🚨🚨🚨
     // The channel in _telecomDataChannels might be outgoing (created by sender) or incoming (created by recipient)
@@ -12252,6 +12731,16 @@ async function processWebRTCAnswer(invite, config, storageKey) {
     // Incoming channels are received via ondatachannel event
     // We need to check if there's an incoming channel that was already stored
     const dataChannel = window._telecomDataChannels?.get(contactGuid);
+    console.log('[Telecom] 🔍 Checking for existing data channel in processWebRTCAnswer:', {
+      contactGuid: contactGuid,
+      hasChannel: !!dataChannel,
+      channelReadyState: dataChannel?.readyState,
+      channelLabel: dataChannel?.label,
+      hasOnMessage: !!dataChannel?.onmessage,
+      pcSignalingState: pc.signalingState,
+      pcConnectionState: pc.connectionState
+    });
+    
     if (dataChannel) {
       // Try to determine if this is incoming or outgoing
       // Incoming channels are typically received via ondatachannel AFTER answer is processed
@@ -12259,6 +12748,13 @@ async function processWebRTCAnswer(invite, config, storageKey) {
       // Check if channel has handler from sendContactInvite (incoming channel handler)
       const hasIncomingHandler = dataChannel.onmessage && 
         dataChannel.onmessage.toString().includes('Incoming data channel event (sender)');
+      
+      console.log('[Telecom] 🔍 Channel analysis:', {
+        hasIncomingHandler: hasIncomingHandler,
+        readyState: dataChannel.readyState,
+        hasOnMessage: !!dataChannel.onmessage,
+        handlerPreview: dataChannel.onmessage ? dataChannel.onmessage.toString().substring(0, 100) : 'no handler'
+      });
       
       if (hasIncomingHandler || (dataChannel.readyState === 'open' && dataChannel.onmessage)) {
         // This is likely the incoming channel
@@ -12277,6 +12773,8 @@ async function processWebRTCAnswer(invite, config, storageKey) {
           hasOnMessage: !!outgoingMessagesChannel.onmessage
         });
       }
+    } else {
+      console.warn('[Telecom] ⚠️ No data channel found in processWebRTCAnswer - channel may arrive later via ondatachannel');
     }
     
     // 🚨🚨🚨 CRITICAL: ALWAYS ensure handler is set for incoming channel 🚨🚨🚨
@@ -12288,9 +12786,62 @@ async function processWebRTCAnswer(invite, config, storageKey) {
         hasOnMessage: !!incomingMessagesChannel.onmessage
       });
       
-      // 🚨🚨🚨 CRITICAL: If channel is already open but handler is missing, set it up immediately 🚨🚨🚨
-      // This handles race condition where channel opens before ondatachannel fires
-      if (incomingMessagesChannel.readyState === 'open' && !incomingMessagesChannel.onmessage) {
+      // 🚨 CRITICAL: Check if handler already exists from sendContactInvite's ondatachannel
+      // If handler exists and handles trickle ICE, we should NOT overwrite it
+      const existingHandler = incomingMessagesChannel.onmessage;
+      const hasTrickleIceHandler = existingHandler && 
+        existingHandler.toString().includes('webrtc-answer') &&
+        existingHandler.toString().includes('webrtc-answer-candidate');
+      
+      if (hasTrickleIceHandler) {
+        console.log('[Telecom] ✅ Incoming channel already has handler from sendContactInvite (handles trickle ICE) - NOT overwriting');
+        console.log('[Telecom] Handler status:', {
+          readyState: incomingMessagesChannel.readyState,
+          hasOnMessage: !!incomingMessagesChannel.onmessage,
+          handlerType: 'trickle-ICE-handler'
+        });
+      } else if (!incomingMessagesChannel.onmessage) {
+        // 🚨 REFACTORED: Use unified handler setup function ONLY if handler is missing
+        // This handles race condition where channel opens before ondatachannel fires
+        console.log('[Telecom] ⚠️ Incoming channel has NO handler - setting up using unified function');
+        setupMessagesChannelHandler(incomingMessagesChannel, contactGuid, 'sender', { overwrite: true });
+      } else {
+        console.log('[Telecom] ℹ️ Incoming channel has handler but not trickle-ICE handler - keeping existing handler');
+        console.log('[Telecom] Handler status:', {
+          readyState: incomingMessagesChannel.readyState,
+          hasOnMessage: !!incomingMessagesChannel.onmessage
+        });
+      }
+    } else {
+      console.warn('[Telecom] ⚠️ No incoming messages channel found in processWebRTCAnswer');
+      console.warn('[Telecom] Channel may arrive later via ondatachannel - handler is set up above');
+    }
+    
+    // 🚨 CRITICAL: Also check if there are channels that arrived AFTER we set up ondatachannel handler
+    // Wait a bit and check again for channels that might have arrived
+    setTimeout(() => {
+      const delayedChannel = window._telecomDataChannels?.get(contactGuid);
+      if (delayedChannel && delayedChannel !== incomingMessagesChannel && delayedChannel !== outgoingMessagesChannel) {
+        console.log('[Telecom] 🔍 Found delayed incoming channel after processWebRTCAnswer');
+        console.log('[Telecom] Channel details:', {
+          readyState: delayedChannel.readyState,
+          label: delayedChannel.label,
+          hasOnMessage: !!delayedChannel.onmessage
+        });
+        
+        // Check if this is an incoming channel (created by recipient)
+        const hasIncomingHandler = delayedChannel.onmessage && 
+          delayedChannel.onmessage.toString().includes('Incoming data channel event (sender)');
+        
+        if (hasIncomingHandler || (!delayedChannel.onmessage && delayedChannel.readyState === 'open')) {
+          console.log('[Telecom] ✅ Found incoming channel - setting up handler');
+          setupMessagesChannelHandler(delayedChannel, contactGuid, 'sender', { overwrite: true });
+        }
+      }
+    }, 1000);
+    
+    // Legacy fallback code - will be removed after testing
+    if (false && incomingMessagesChannel && incomingMessagesChannel.readyState === 'open' && !incomingMessagesChannel.onmessage) {
         console.warn('[Telecom] ⚠️ CRITICAL: Incoming channel is open but has NO handler! Setting up handler NOW...');
         // Set up the same handler as in sendContactInvite's ondatachannel
         // This handler processes regular messages from recipient
@@ -12396,11 +12947,13 @@ async function processWebRTCAnswer(invite, config, storageKey) {
           }
         };
         console.log('[Telecom] ✅ Fallback handler set up for incoming channel');
-      } else if (incomingMessagesChannel.readyState === 'open' && incomingMessagesChannel.onmessage) {
-        console.log('[Telecom] ✅ Incoming channel has handler set up correctly');
-      } else {
-        console.log('[Telecom] ⏳ Incoming channel not yet open, handler will be set up when channel opens');
       }
+    
+    // Additional check for handler status (outside the disabled fallback block)
+    if (incomingMessagesChannel && incomingMessagesChannel.readyState === 'open' && incomingMessagesChannel.onmessage) {
+      console.log('[Telecom] ✅ Incoming channel has handler set up correctly');
+    } else if (incomingMessagesChannel) {
+      console.log('[Telecom] ⏳ Incoming channel not yet open, handler will be set up when channel opens');
     }
     
     // Set up handlers for outgoing channel (if it exists and is different from incoming)
@@ -13648,15 +14201,31 @@ async function sendMessage(win, winId, config, storageKey) {
   const peerId = selectedChatId.startsWith('contact-') ? selectedChatId.replace('contact-', '') : selectedChatId;
   console.log('[Telecom] 👤 Peer ID extracted:', peerId);
   
-  // Try to send via WebRTC if connection is available
-  const dataChannel = window._telecomDataChannels?.get(peerId);
+  // 🚨 Use ChannelManager to get correct channel for sending
+  const dataChannel = window.TelecomChannelManager ? 
+    window.TelecomChannelManager.getChannelForSending(peerId) : 
+    window._telecomDataChannels?.get(peerId);
+  
+  const channelMetadata = window.TelecomChannelManager ? 
+    window.TelecomChannelManager.getMetadata(peerId) : null;
+  
   console.log('[Telecom] 📡 Data channel status:', {
     hasDataChannel: !!dataChannel,
     readyState: dataChannel ? dataChannel.readyState : null,
+    channelLabel: dataChannel ? dataChannel.label : null,
+    channelId: dataChannel ? dataChannel.id : null,
+    bufferedAmount: dataChannel ? dataChannel.bufferedAmount : null,
+    channelMetadata: channelMetadata,
     allChannels: window._telecomDataChannels ? Array.from(window._telecomDataChannels.keys()) : []
   });
   
   if (dataChannel && dataChannel.readyState === 'open') {
+    console.log('[Telecom] ✅ Using data channel for sending:', {
+      label: dataChannel.label,
+      id: dataChannel.id,
+      readyState: dataChannel.readyState,
+      bufferedAmount: dataChannel.bufferedAmount
+    });
     console.log('[Telecom] ✅ Data channel is open, sending message via WebRTC');
     try {
       // Get recipient's public key for encryption
@@ -13707,13 +14276,45 @@ async function sendMessage(win, winId, config, storageKey) {
         originalMessageLength: message.length
       });
       
+      // Check channel state before sending
+      const bufferedBefore = dataChannel.bufferedAmount;
+      const readyStateBefore = dataChannel.readyState;
+      
+      // Send message
       dataChannel.send(payloadJson);
+      
+      // Verify send was successful
+      const bufferedAfter = dataChannel.bufferedAmount;
+      const readyStateAfter = dataChannel.readyState;
+      
       console.log('[Telecom] ✅ Message sent via WebRTC to contact:', peerId);
       console.log('[Telecom] 📊 Data channel state after send:', {
-        readyState: dataChannel.readyState,
-        bufferedAmount: dataChannel.bufferedAmount,
-        bufferedAmountLowThreshold: dataChannel.bufferedAmountLowThreshold
+        readyStateBefore: readyStateBefore,
+        readyStateAfter: readyStateAfter,
+        bufferedBefore: bufferedBefore,
+        bufferedAfter: bufferedAfter,
+        bufferedIncrease: bufferedAfter - bufferedBefore,
+        bufferedAmountLowThreshold: dataChannel.bufferedAmountLowThreshold,
+        channelLabel: dataChannel.label,
+        channelId: dataChannel.id
       });
+      
+      // Verify channel is still open and message was buffered
+      if (readyStateAfter !== 'open') {
+        console.error('[Telecom] ❌ CRITICAL: Channel closed immediately after send!', {
+          readyStateBefore,
+          readyStateAfter,
+          peerId
+        });
+      }
+      if (bufferedAfter <= bufferedBefore && payloadJson.length > 0) {
+        console.warn('[Telecom] ⚠️ WARNING: bufferedAmount did not increase after send!', {
+          bufferedBefore,
+          bufferedAfter,
+          payloadLength: payloadJson.length,
+          peerId
+        });
+      }
     } catch (e) {
       console.error('[Telecom] ❌ Error sending message via WebRTC:', e);
       console.error('[Telecom] Error stack:', e.stack);
@@ -14220,7 +14821,15 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
       console.log('[OneTapTelecom] [SENDER] Clean ICE servers:', cleanIceServers.length, 'servers');
       cleanIceServers.forEach((server, idx) => {
         const isTurn = server.urls.includes('turn:') || server.urls.includes('turns:');
-        console.log(`[OneTapTelecom] [SENDER] Clean server ${idx}: ${isTurn ? 'TURN' : 'STUN'} - ${server.urls}`);
+        const hasCredentials = !!(server.username && server.credential);
+        console.log(`[OneTapTelecom] [SENDER] Clean server ${idx}: ${isTurn ? 'TURN' : 'STUN'} - ${server.urls}`, {
+          hasUsername: !!server.username,
+          hasCredential: !!server.credential,
+          credentialsLength: server.username?.length || 0
+        });
+        if (isTurn && !hasCredentials) {
+          console.warn(`[OneTapTelecom] [SENDER] ⚠️ TURN server ${idx} has no credentials - may not work!`);
+        }
       });
       
       const pc = new RTCPeerConnection({ 
@@ -14239,325 +14848,9 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
       if (ch.label === 'messages') {
         global._telecomDataChannels.set(contactGuid, ch);
         
-        // 🚨🚨🚨 CRITICAL: If channel is already open, set up handler IMMEDIATELY 🚨🚨🚨
-        // Don't wait for onopen - if channel is already open, onopen won't fire
-        if (ch.readyState === 'open') {
-          console.log('[OneTapTelecom] ⚠️ Channel already open in ensurePeerForContact - setting up handler NOW');
-          ch.onmessage = async (event) => {
-            try {
-              const messageData = JSON.parse(event.data);
-              console.log('[OneTapTelecom] 📥 Received message via incoming WebRTC channel (ensurePeerForContact, already open):', {
-                contactGuid: contactGuid,
-                type: messageData.type,
-                encrypted: messageData.encrypted || false
-              });
-              
-              // Handle regular messages (same as existing handler)
-              if (messageData.type === 'message' && messageData.text) {
-                const chatId = `contact-${contactGuid}`;
-                
-                // Decrypt if needed
-                let decryptedText = messageData.text;
-                if (messageData.encrypted) {
-                  try {
-                    const systemAccount = window.Auth ? window.Auth.getAccount() : null;
-                    if (systemAccount && systemAccount.privateKeyEncrypted) {
-                      const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
-                      const foundWinId = telecomWindows.length > 0 ? telecomWindows[0].dataset.winId : null;
-                      const privateKey = await getDecryptedPrivateKey(foundWinId);
-                      if (privateKey) {
-                        decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
-                      } else {
-                        decryptedText = '[Encrypted message - enter password to decrypt]';
-                      }
-                    } else {
-                      decryptedText = '[Encrypted message - decryption failed]';
-                    }
-                  } catch (e) {
-                    console.error('[OneTapTelecom] Error decrypting:', e);
-                    decryptedText = '[Encrypted message - decryption failed]';
-                  }
-                }
-                
-                // Save message
-                const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
-                const messages = getChatMessages(chatId);
-                messages.push({
-                  id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
-                  chatId: chatId,
-                  senderId: contactGuid,
-                  senderName: messageData.senderName || contactGuid.substring(0, 8) + '...',
-                  text: decryptedText,
-                  timestamp: messageData.timestamp || new Date().toISOString(),
-                  type: 'user',
-                  viaWebRTC: true,
-                  wasEncrypted: messageData.encrypted || false
-                });
-                localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
-                
-                // Update chat
-                const chats = getChats();
-                const chat = chats.find(c => c.id === chatId);
-                if (chat) {
-                  chat.lastMessage = {
-                    text: decryptedText.length > 50 ? decryptedText.substring(0, 50) + '...' : decryptedText,
-                    timestamp: new Date().toISOString()
-                  };
-                  localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
-                }
-                
-                // Refresh UI
-                if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
-                window._telecomBlinkingChats.add(chatId);
-                blinkChatItem(chatId);
-                
-                const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
-                telecomWindows.forEach(winEl => {
-                  const winId = winEl.dataset.winId;
-                  if (winId) {
-                    const win = WindowManager.findWindow(winId);
-                    if (win) {
-                      const selectedChatId = win.dataset.selectedChatId;
-                      const effectiveStorageKey = 'webos.telecom.v1';
-                      let effectiveConfig = null;
-                      try {
-                        const configData = localStorage.getItem(effectiveStorageKey);
-                        if (configData) effectiveConfig = JSON.parse(configData);
-                      } catch (e) {}
-                      
-                      if (selectedChatId === chatId) {
-                        const chat = chats.find(c => c.id === chatId);
-                        if (chat) {
-                          selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
-                        }
-                      } else {
-                        renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
-                        blinkChatItem(chatId);
-                      }
-                    }
-                  }
-                });
-              }
-            } catch (e) {
-              console.error('[OneTapTelecom] Error parsing incoming message:', e);
-            }
-          };
-          console.log('[OneTapTelecom] ✅ Handler set up for already-open channel in ensurePeerForContact');
-        }
+        // 🚨 REFACTORED: Use unified handler setup function
+        setupMessagesChannelHandler(ch, contactGuid, 'ensurePeerForContact', { overwrite: true });
         
-        ch.onopen = () => {
-          console.log('[OneTapTelecom] messages channel open', contactGuid);
-          // Set up message handler when channel opens (for incoming channels)
-          // 🚨 CRITICAL: Only set up handler if it doesn't exist (might be set above if channel was already open)
-          if (!ch.onmessage) {
-            ch.onmessage = async (event) => {
-              try {
-                const messageData = JSON.parse(event.data);
-                console.log('[OneTapTelecom] 📥 Received message via incoming WebRTC channel:', {
-                  contactGuid: contactGuid,
-                  type: messageData.type,
-                  encrypted: messageData.encrypted || false
-                });
-                
-                // Handle regular messages (same as existing handler)
-                if (messageData.type === 'message' && messageData.text) {
-                  const chatId = `contact-${contactGuid}`;
-                  
-                  // Decrypt if needed
-                  let decryptedText = messageData.text;
-                  if (messageData.encrypted) {
-                    try {
-                      const systemAccount = window.Auth ? window.Auth.getAccount() : null;
-                      if (systemAccount && systemAccount.privateKeyEncrypted) {
-                        const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
-                        const foundWinId = telecomWindows.length > 0 ? telecomWindows[0].dataset.winId : null;
-                        const privateKey = await getDecryptedPrivateKey(foundWinId);
-                        if (privateKey) {
-                          decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
-                        } else {
-                          decryptedText = '[Encrypted message - enter password to decrypt]';
-                        }
-                      } else {
-                        decryptedText = '[Encrypted message - decryption failed]';
-                      }
-                    } catch (e) {
-                      console.error('[OneTapTelecom] Error decrypting:', e);
-                      decryptedText = '[Encrypted message - decryption failed]';
-                    }
-                  }
-                  
-                  // Save message
-                  const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
-                  const messages = getChatMessages(chatId);
-                  messages.push({
-                    id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
-                    chatId: chatId,
-                    senderId: contactGuid,
-                    senderName: messageData.senderName || contactGuid.substring(0, 8) + '...',
-                    text: decryptedText,
-                    timestamp: messageData.timestamp || new Date().toISOString(),
-                    type: 'user',
-                    viaWebRTC: true,
-                    wasEncrypted: messageData.encrypted || false
-                  });
-                  localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
-                  
-                  // Update chat
-                  const chats = getChats();
-                  const chat = chats.find(c => c.id === chatId);
-                  if (chat) {
-                    chat.lastMessage = {
-                      text: decryptedText.length > 50 ? decryptedText.substring(0, 50) + '...' : decryptedText,
-                      timestamp: new Date().toISOString()
-                    };
-                    localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
-                  }
-                  
-                  // Refresh UI
-                  if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
-                  window._telecomBlinkingChats.add(chatId);
-                  blinkChatItem(chatId);
-                  
-                  const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
-                  telecomWindows.forEach(winEl => {
-                    const winId = winEl.dataset.winId;
-                    if (winId) {
-                      const win = WindowManager.findWindow(winId);
-                      if (win) {
-                        const selectedChatId = win.dataset.selectedChatId;
-                        const effectiveStorageKey = 'webos.telecom.v1';
-                        let effectiveConfig = null;
-                        try {
-                          const configData = localStorage.getItem(effectiveStorageKey);
-                          if (configData) effectiveConfig = JSON.parse(configData);
-                        } catch (e) {}
-                        
-                        if (selectedChatId === chatId) {
-                          const chat = chats.find(c => c.id === chatId);
-                          if (chat) {
-                            selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
-                          }
-                        } else {
-                          renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
-                          blinkChatItem(chatId);
-                        }
-                      }
-                    }
-                  });
-                }
-              } catch (e) {
-                console.error('[OneTapTelecom] Error parsing incoming message:', e);
-              }
-            };
-          }
-        };
-        
-        ch.onopen = () => {
-          console.log('[OneTapTelecom] messages channel open', contactGuid);
-          // Set up message handler when channel opens (for incoming channels)
-          // 🚨 CRITICAL: Only set up handler if it doesn't exist (might be set above if channel was already open)
-          if (!ch.onmessage) {
-            ch.onmessage = async (event) => {
-              try {
-                const messageData = JSON.parse(event.data);
-                console.log('[OneTapTelecom] 📥 Received message via incoming WebRTC channel:', {
-                  contactGuid: contactGuid,
-                  type: messageData.type,
-                  encrypted: messageData.encrypted || false
-                });
-                
-                // Handle regular messages (same as existing handler)
-                if (messageData.type === 'message' && messageData.text) {
-                  const chatId = `contact-${contactGuid}`;
-                  
-                  // Decrypt if needed
-                  let decryptedText = messageData.text;
-                  if (messageData.encrypted) {
-                    try {
-                      const systemAccount = window.Auth ? window.Auth.getAccount() : null;
-                      if (systemAccount && systemAccount.privateKeyEncrypted) {
-                        const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
-                        const foundWinId = telecomWindows.length > 0 ? telecomWindows[0].dataset.winId : null;
-                        const privateKey = await getDecryptedPrivateKey(foundWinId);
-                        if (privateKey) {
-                          decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
-                        } else {
-                          decryptedText = '[Encrypted message - enter password to decrypt]';
-                        }
-                      } else {
-                        decryptedText = '[Encrypted message - decryption failed]';
-                      }
-                    } catch (e) {
-                      console.error('[OneTapTelecom] Error decrypting:', e);
-                      decryptedText = '[Encrypted message - decryption failed]';
-                    }
-                  }
-                  
-                  // Save message
-                  const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
-                  const messages = getChatMessages(chatId);
-                  messages.push({
-                    id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
-                    chatId: chatId,
-                    senderId: contactGuid,
-                    senderName: messageData.senderName || contactGuid.substring(0, 8) + '...',
-                    text: decryptedText,
-                    timestamp: messageData.timestamp || new Date().toISOString(),
-                    type: 'user',
-                    viaWebRTC: true,
-                    wasEncrypted: messageData.encrypted || false
-                  });
-                  localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
-                  
-                  // Update chat
-                  const chats = getChats();
-                  const chat = chats.find(c => c.id === chatId);
-                  if (chat) {
-                    chat.lastMessage = {
-                      text: decryptedText.length > 50 ? decryptedText.substring(0, 50) + '...' : decryptedText,
-                      timestamp: new Date().toISOString()
-                    };
-                    localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
-                  }
-                  
-                  // Refresh UI
-                  if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
-                  window._telecomBlinkingChats.add(chatId);
-                  blinkChatItem(chatId);
-                  
-                  const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
-                  telecomWindows.forEach(winEl => {
-                    const winId = winEl.dataset.winId;
-                    if (winId) {
-                      const win = WindowManager.findWindow(winId);
-                      if (win) {
-                        const selectedChatId = win.dataset.selectedChatId;
-                        const effectiveStorageKey = 'webos.telecom.v1';
-                        let effectiveConfig = null;
-                        try {
-                          const configData = localStorage.getItem(effectiveStorageKey);
-                          if (configData) effectiveConfig = JSON.parse(configData);
-                        } catch (e) {}
-                        
-                        if (selectedChatId === chatId) {
-                          const chat = chats.find(c => c.id === chatId);
-                          if (chat) {
-                            selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
-                          }
-                        } else {
-                          renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
-                          blinkChatItem(chatId);
-                        }
-                      }
-                    }
-                  });
-                }
-              } catch (e) {
-                console.error('[OneTapTelecom] Error parsing incoming message:', e);
-              }
-            };
-          }
-        };
         ch.onclose = () => console.log('[OneTapTelecom] messages channel close', contactGuid);
         ch.onerror = (err) => console.warn('[OneTapTelecom] messages channel error', contactGuid, err);
       } else if (ch.label === 'control') {
@@ -14600,27 +14893,68 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
   OneTapTelecom.createOfferLink = async function (contactGuid, config) {
     console.log('[OneTapTelecom] createOfferLink called for contact:', contactGuid);
     try {
-      // CRITICAL: For reconnect, we need a fresh PC with no existing offer
-      // If PC already has a local offer, close it and create a new one
+      // 🚨 CRITICAL: For reconnect, we need a FRESH PC - close existing PC if it's in failed/closed state or has offer
+      // This matches v0.2.2 behavior - always create fresh PC for reconnect
       global._telecomPeerConnections = global._telecomPeerConnections || new Map();
       const existingPC = global._telecomPeerConnections.get(contactGuid);
       
-      if (existingPC && existingPC.signalingState === 'have-local-offer') {
-        console.log('[OneTapTelecom] ⚠️ Existing PC has local offer - closing and creating fresh PC for reconnect');
+      if (existingPC) {
+        const pcState = existingPC.connectionState;
+        const signalingState = existingPC.signalingState;
+        const iceState = existingPC.iceConnectionState;
+        
+        // Close PC if it's failed, closed, or has local offer (reconnect needs fresh PC)
+        if (pcState === 'failed' || pcState === 'closed' || 
+            signalingState === 'have-local-offer' || 
+            iceState === 'failed' || iceState === 'disconnected') {
+          console.log('[OneTapTelecom] ⚠️ Existing PC needs to be closed for reconnect:', {
+            connectionState: pcState,
+            signalingState: signalingState,
+            iceConnectionState: iceState
+          });
+          try {
+            existingPC.close();
+          } catch (e) {
+            console.warn('[OneTapTelecom] Error closing existing PC:', e);
+          }
+          global._telecomPeerConnections.delete(contactGuid);
+          global._telecomDataChannels?.delete(contactGuid);
+          global._telecomControlChannels?.delete(contactGuid);
+          console.log('[OneTapTelecom] ✅ Old PC closed and removed');
+        }
+      }
+      
+      console.log('[OneTapTelecom] Ensuring peer connection...');
+      // After closing old PC, ensure we get a fresh one
+      let pc = OneTapTelecom.ensurePeerForContact(contactGuid, config);
+      console.log('[OneTapTelecom] Peer connection ready, state:', pc.connectionState, 'signalingState:', pc.signalingState, 'iceGatheringState:', pc.iceGatheringState);
+      
+      // 🚨 CRITICAL: Verify PC is fresh and ready for new offer
+      // If PC is not in fresh state (stable/new), force close and recreate
+      // NOTE: iceGatheringState should be 'new' for fresh PC, 'complete' means it was already used
+      if (pc.signalingState !== 'stable' || pc.iceGatheringState !== 'new') {
+        console.warn('[OneTapTelecom] ⚠️ PC is not in fresh state! Closing and recreating...', {
+          signalingState: pc.signalingState,
+          iceGatheringState: pc.iceGatheringState,
+          connectionState: pc.connectionState
+        });
+        // Force close and recreate
         try {
-          existingPC.close();
+          pc.close();
         } catch (e) {
-          console.warn('[OneTapTelecom] Error closing existing PC:', e);
+          console.warn('[OneTapTelecom] Error closing PC:', e);
         }
         global._telecomPeerConnections.delete(contactGuid);
         global._telecomDataChannels?.delete(contactGuid);
         global._telecomControlChannels?.delete(contactGuid);
-        console.log('[OneTapTelecom] ✅ Old PC closed and removed');
+        // Create fresh PC
+        pc = OneTapTelecom.ensurePeerForContact(contactGuid, config);
+        console.log('[OneTapTelecom] ✅ Fresh PC created:', {
+          signalingState: pc.signalingState,
+          iceGatheringState: pc.iceGatheringState,
+          connectionState: pc.connectionState
+        });
       }
-      
-      console.log('[OneTapTelecom] Ensuring peer connection...');
-      const pc = OneTapTelecom.ensurePeerForContact(contactGuid, config);
-      console.log('[OneTapTelecom] Peer connection ready, state:', pc.connectionState, 'signalingState:', pc.signalingState);
       
       // Log ICE servers configuration for debugging
       const iceServers = getIceServersSafe(config);
@@ -14641,7 +14975,10 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
       console.log('[OneTapTelecom] Creating data channels...');
       const dcMessages = pc.createDataChannel('messages', { ordered: true });
       global._telecomDataChannels.set(contactGuid, dcMessages);
-      dcMessages.onopen = () => console.log('[OneTapTelecom] messages channel created', contactGuid);
+      
+      // 🚨 REFACTORED: Use unified handler setup function
+      setupMessagesChannelHandler(dcMessages, contactGuid, 'sender', { overwrite: true });
+      
       dcMessages.onclose = () => console.log('[OneTapTelecom] messages channel closed', contactGuid);
 
       const dcControl = pc.createDataChannel('control', { ordered: true });
@@ -14835,7 +15172,15 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
       console.log('[OneTapTelecom] [RECIPIENT] Clean ICE servers:', cleanIceServers.length, 'servers');
       cleanIceServers.forEach((server, idx) => {
         const isTurn = server.urls.includes('turn:') || server.urls.includes('turns:');
-        console.log(`[OneTapTelecom] [RECIPIENT] Clean server ${idx}: ${isTurn ? 'TURN' : 'STUN'} - ${server.urls}`);
+        const hasCredentials = !!(server.username && server.credential);
+        console.log(`[OneTapTelecom] [RECIPIENT] Clean server ${idx}: ${isTurn ? 'TURN' : 'STUN'} - ${server.urls}`, {
+          hasUsername: !!server.username,
+          hasCredential: !!server.credential,
+          credentialsLength: server.username?.length || 0
+        });
+        if (isTurn && !hasCredentials) {
+          console.warn(`[OneTapTelecom] [RECIPIENT] ⚠️ TURN server ${idx} has no credentials - may not work!`);
+        }
       });
       
       const pc = new RTCPeerConnection({ 
@@ -14981,6 +15326,133 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
       // Store in map
       global._telecomPeerConnections.set(contactGuid, pc);
       console.log('[OneTapTelecom] ✅ Fresh PC stored in map, signalingState:', pc.signalingState);
+
+      // 🚨🚨🚨 CRITICAL: Create data channels on recipient side BEFORE processing offer 🚨🚨🚨
+      // Recipient MUST create outgoing channels so sender can receive messages via incoming channels
+      // Without this, sender has no way to receive messages from recipient!
+      console.log('[OneTapTelecom] [RECIPIENT] 🚨 CRITICAL: Creating data channels for bidirectional communication...');
+      global._telecomDataChannels = global._telecomDataChannels || new Map();
+      global._telecomControlChannels = global._telecomControlChannels || new Map();
+      
+      // Create messages channel (outgoing from recipient = incoming for sender)
+      if (!global._telecomDataChannels.has(contactGuid)) {
+        console.log('[OneTapTelecom] [RECIPIENT] Creating messages data channel...');
+        const dcMessages = pc.createDataChannel('messages', { ordered: true });
+        global._telecomDataChannels.set(contactGuid, dcMessages);
+        
+        // 🚨 REFACTORED: Use unified handler setup function
+        setupMessagesChannelHandler(dcMessages, contactGuid, 'recipient', { overwrite: true });
+        
+        dcMessages.onclose = () => console.log('[OneTapTelecom] [RECIPIENT] Messages channel closed');
+        dcMessages.onerror = (err) => console.warn('[OneTapTelecom] [RECIPIENT] Messages channel error:', err);
+      }
+      
+      // Create control channel (outgoing from recipient = incoming for sender)
+      if (!global._telecomControlChannels.has(contactGuid)) {
+        console.log('[OneTapTelecom] [RECIPIENT] Creating control data channel...');
+        const dcControl = pc.createDataChannel('control', { ordered: true });
+        global._telecomControlChannels.set(contactGuid, dcControl);
+        if (typeof setupControlChannelHandler === 'function') {
+          try {
+            const STORAGE_KEY = 'webos.telecom.v1';
+            let telecomConfig = null;
+            try {
+              const configData = localStorage.getItem(STORAGE_KEY);
+              if (configData) {
+                telecomConfig = JSON.parse(configData);
+              }
+            } catch (e) {
+              console.warn('[OneTapTelecom] Error loading config:', e);
+            }
+            setupControlChannelHandler(dcControl, contactGuid, pc, telecomConfig, 'webos.telecom.v1');
+          } catch (e) {
+            console.warn('[OneTapTelecom] Error setting up control channel handler:', e);
+          }
+        }
+        dcControl.onopen = () => console.log('[OneTapTelecom] [RECIPIENT] ✅ Control channel opened (outgoing from recipient)');
+        dcControl.onclose = () => console.log('[OneTapTelecom] [RECIPIENT] Control channel closed');
+        dcControl.onerror = (err) => console.warn('[OneTapTelecom] [RECIPIENT] Control channel error:', err);
+      }
+      
+      console.log('[OneTapTelecom] [RECIPIENT] ✅ Data channels created - recipient can now send messages to sender');
+
+      // 🚨 CRITICAL: Set up ICE candidate handler BEFORE processing offer/answer
+      // This ensures we don't miss any candidates during ICE gathering
+      const localCandidatesRecipient = [];
+      const candidateTypesRecipient = { host: 0, srflx: 0, relay: 0, prflx: 0, other: 0 };
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          const candidateStr = event.candidate.candidate || '';
+          if (!candidateStr || candidateStr.trim() === '') {
+            console.warn('[OneTapTelecom] [RECIPIENT] ⚠️ Empty candidate string received!');
+            return;
+          }
+          
+          // Parse candidate type more carefully
+          let type = 'unknown';
+          if (candidateStr.includes(' typ host ')) {
+            type = 'host';
+          } else if (candidateStr.includes(' typ srflx ')) {
+            type = 'srflx';
+          } else if (candidateStr.includes(' typ relay ')) {
+            type = 'relay';
+          } else if (candidateStr.includes(' typ prflx ')) {
+            type = 'prflx';
+          } else {
+            // Try alternative parsing
+            const typeMatch = candidateStr.match(/ typ (\w+)/);
+            if (typeMatch) type = typeMatch[1];
+          }
+          candidateTypesRecipient[type] = (candidateTypesRecipient[type] || 0) + 1;
+          localCandidatesRecipient.push({ type, candidate: candidateStr });
+          console.log(`[OneTapTelecom] [RECIPIENT] Local ICE candidate (${type}):`, candidateStr.substring(0, 150));
+          
+          // Log TURN server info if relay candidate
+          if (type === 'relay' && event.candidate.url) {
+            console.log(`[OneTapTelecom] [RECIPIENT] ✅ TURN relay candidate from: ${event.candidate.url}`);
+          }
+        } else {
+          console.log('[OneTapTelecom] [RECIPIENT] ✅ Local ICE candidate gathering complete');
+          console.log('[OneTapTelecom] [RECIPIENT] ICE candidate summary:', {
+            total: localCandidatesRecipient.length,
+            host: candidateTypesRecipient.host,
+            srflx: candidateTypesRecipient.srflx,
+            relay: candidateTypesRecipient.relay,
+            prflx: candidateTypesRecipient.prflx,
+            other: candidateTypesRecipient.other,
+            unknown: candidateTypesRecipient.unknown || 0
+          });
+          if (candidateTypesRecipient.relay === 0) {
+            console.warn('[OneTapTelecom] [RECIPIENT] ⚠️ No TURN relay candidates found! This may cause connection failures behind NAT/firewall.');
+            console.warn('[OneTapTelecom] [RECIPIENT] 💡 Check: 1) TURN server credentials are correct, 2) TURN server is accessible, 3) Network allows TURN traffic');
+          }
+        }
+      };
+      
+      // Set up ICE connection state handler BEFORE processing offer/answer
+      pc.oniceconnectionstatechange = () => {
+        console.log('[OneTapTelecom] [RECIPIENT] ICE connection state changed:', pc.iceConnectionState, 'for contact:', contactGuid);
+        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+          console.log('[OneTapTelecom] [RECIPIENT] 🎉 ICE connection established!');
+        } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+          console.error('[OneTapTelecom] [RECIPIENT] ❌ ICE connection failed');
+          console.error('[OneTapTelecom] [RECIPIENT] Local candidates collected:', localCandidatesRecipient.length);
+          console.error('[OneTapTelecom] [RECIPIENT] Candidate types:', candidateTypesRecipient);
+          if (candidateTypesRecipient.relay === 0) {
+            console.error('[OneTapTelecom] [RECIPIENT] ⚠️ No TURN relay candidates - connection will likely fail behind NAT/firewall');
+          }
+        }
+      };
+      
+      // Set up connection state handler BEFORE processing offer/answer
+      pc.onconnectionstatechange = () => {
+        console.log('[OneTapTelecom] [RECIPIENT] Connection state changed:', pc.connectionState, 'for contact:', contactGuid);
+        if (pc.connectionState === 'connected') {
+          console.log('[OneTapTelecom] [RECIPIENT] 🎉 Connection established!');
+        } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+          console.warn('[OneTapTelecom] [RECIPIENT] ⚠️ Connection failed or disconnected');
+        }
+      };
 
       console.log('[OneTapTelecom] Calling OneTap.handleIncomingOfferAndProduceAnswer...');
       // Get sender's GUID (fromGuid) and recipient's GUID (toGuid) for answer metadata
@@ -15234,56 +15706,9 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
           const messagesChannel = global._telecomDataChannels?.get(contactGuid);
           const controlChannel = global._telecomControlChannels?.get(contactGuid);
           
-          // Set up connection state monitoring
-          pc.onconnectionstatechange = () => {
-            console.log('[OneTapTelecom] [RECIPIENT] Connection state changed:', pc.connectionState, 'for contact:', contactGuid);
-            if (pc.connectionState === 'connected') {
-              console.log('[OneTapTelecom] [RECIPIENT] 🎉 Connection established!');
-            } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-              console.warn('[OneTapTelecom] [RECIPIENT] ⚠️ Connection failed or disconnected');
-            }
-          };
-          
-          // Log ICE candidates for debugging (recipient side)
-          const localCandidatesRecipient = [];
-          const candidateTypesRecipient = { host: 0, srflx: 0, relay: 0, prflx: 0, other: 0 };
-          pc.onicecandidate = (event) => {
-            if (event.candidate) {
-              const candidateStr = event.candidate.candidate;
-              const typeMatch = candidateStr.match(/ typ (\w+)/);
-              const type = typeMatch ? typeMatch[1] : 'unknown';
-              candidateTypesRecipient[type] = (candidateTypesRecipient[type] || 0) + 1;
-              localCandidatesRecipient.push({ type, candidate: candidateStr });
-              console.log(`[OneTapTelecom] [RECIPIENT] Local ICE candidate (${type}):`, candidateStr.substring(0, 100));
-            } else {
-              console.log('[OneTapTelecom] [RECIPIENT] ✅ Local ICE candidate gathering complete');
-              console.log('[OneTapTelecom] [RECIPIENT] ICE candidate summary:', {
-                total: localCandidatesRecipient.length,
-                host: candidateTypesRecipient.host,
-                srflx: candidateTypesRecipient.srflx,
-                relay: candidateTypesRecipient.relay,
-                prflx: candidateTypesRecipient.prflx,
-                other: candidateTypesRecipient.other
-              });
-              if (candidateTypesRecipient.relay === 0) {
-                console.warn('[OneTapTelecom] [RECIPIENT] ⚠️ No TURN relay candidates found! This may cause connection failures behind NAT/firewall.');
-              }
-            }
-          };
-          
-          pc.oniceconnectionstatechange = () => {
-            console.log('[OneTapTelecom] [RECIPIENT] ICE connection state changed:', pc.iceConnectionState, 'for contact:', contactGuid);
-            if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-              console.log('[OneTapTelecom] [RECIPIENT] 🎉 ICE connection established!');
-            } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-              console.error('[OneTapTelecom] [RECIPIENT] ❌ ICE connection failed');
-              console.error('[OneTapTelecom] [RECIPIENT] Local candidates collected:', localCandidatesRecipient.length);
-              console.error('[OneTapTelecom] [RECIPIENT] Candidate types:', candidateTypesRecipient);
-              if (candidateTypesRecipient.relay === 0) {
-                console.error('[OneTapTelecom] [RECIPIENT] ⚠️ No TURN relay candidates - connection will likely fail behind NAT/firewall');
-              }
-            }
-          };
+          // NOTE: ICE candidate and connection state handlers are set up BEFORE handleIncomingOfferAndProduceAnswer
+          // This ensures we don't miss any candidates during ICE gathering
+          // Handlers are set up above, right after PC creation
           
           // 🚨🚨🚨 CRITICAL: Set up message handler for messages channel 🚨🚨🚨
           // This must work symmetrically with sender side - same logic for both sides
@@ -15413,6 +15838,26 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
               console.log('[OneTapTelecom] [RECIPIENT] ✅ Handler set up for already-open channel');
             }
             
+            // 🚨 REFACTORED: Use unified handler setup function
+            // Note: Reconnect link detection is handled in the unified function
+            setupMessagesChannelHandler(messagesChannel, contactGuid, 'recipient', {
+              overwrite: true,
+              onOpenCallback: () => {
+                updateConnectionStatusForChat(contactGuid, 'connected');
+              }
+            });
+            
+            // Keep onclose and onerror handlers
+            messagesChannel.onclose = () => {
+              console.log('[OneTapTelecom] [RECIPIENT] Messages channel closed');
+              updateConnectionStatusForChat(contactGuid, 'disconnected');
+            };
+            
+            messagesChannel.onerror = (err) => {
+              console.error('[OneTapTelecom] [RECIPIENT] Messages channel error:', err);
+            };
+            
+            // Legacy code block - will be removed after testing
             const originalOnopen = messagesChannel.onopen;
             messagesChannel.onopen = () => {
               console.log('[OneTapTelecom] [RECIPIENT] 🎉 Messages channel opened!');
@@ -15810,15 +16255,10 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
         localDescriptionSdpLength: pc.localDescription?.sdp?.length
       });
       
-      // CRITICAL: Check if PC already has a local offer
-      // If PC is in have-local-offer state, it means offer was already created (likely from createOfferLink)
-      // We should use that offer, not restore from localStorage (which might be outdated or from different session)
-      if (pc.signalingState === 'have-local-offer') {
-        console.log('[OneTapTelecom] ✅ PC already has local offer - using existing offer (no restore needed)');
-        console.log('[OneTapTelecom] This means offer was created recently and answer should match it');
-        // PC is ready for answer - proceed directly to answer processing
-        // Skip restoration logic - existing offer is what answer was created for
-      } else if (pc.signalingState === 'stable' || pc.signalingState === 'closed') {
+      // Ensure PC is in have-local-offer state (required for applying answer)
+      // If PC is in new/stable/closed state, try to restore offer from localStorage
+      // This matches the logic from v0.2.2 that worked correctly
+      if (pc.signalingState === 'stable' || pc.signalingState === 'closed') {
         console.log('[OneTapTelecom] ⚠️ PC in stable/closed state - attempting to restore offer from localStorage');
         console.log('[OneTapTelecom] Closing old PC and creating new one...');
         
@@ -15842,13 +16282,8 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
         // Create new PC
         console.log('[OneTapTelecom] Creating new peer connection...');
         pc = OneTapTelecom.ensurePeerForContact(contactGuid, config);
-        
-        // Continue to restoration logic below - don't return error yet
-        console.log('[OneTapTelecom] Will attempt to restore offer from localStorage...');
       }
       
-      // Ensure PC is in have-local-offer state (required for applying answer)
-      // If PC is in new/stable/closed state, try to restore offer from localStorage
       if (pc.signalingState !== 'have-local-offer') {
         console.log('[OneTapTelecom] PC is not in have-local-offer state:', pc.signalingState);
         console.log('[OneTapTelecom] Attempting to restore offer from localStorage...');
@@ -15944,31 +16379,20 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
                 sdp: offerData.sdp
               }));
               console.log('[OneTapTelecom] ✅ Offer restored, state:', pc.signalingState);
-              console.log('[OneTapTelecom] ICE gathering state after restore:', pc.iceGatheringState);
               
-              // CRITICAL: After restoring offer, we should NOT wait for new ICE gathering
-              // The saved offer already contains ICE candidates, and answer was created for those candidates
-              // Waiting for new ICE gathering would generate NEW candidates that don't match the answer
-              // 
-              // However, if ICE gathering is still in progress, we might need to wait a bit
-              // But we should NOT wait too long, as the answer expects the original candidates
-              if (pc.iceGatheringState === 'gathering') {
-                console.log('[OneTapTelecom] ⚠️ ICE gathering still in progress after restore - waiting briefly...');
+              // Wait for ICE gathering to complete (in case new candidates are generated)
+              // This matches v0.2.2 logic - simple 3 second wait
+              if (pc.iceGatheringState !== 'complete') {
+                console.log('[OneTapTelecom] Waiting for ICE gathering after restore...');
                 await new Promise((resolve) => {
-                  const timeout = setTimeout(() => {
-                    console.warn('[OneTapTelecom] ⚠️ ICE gathering timeout - proceeding anyway');
-                    resolve();
-                  }, 2000); // Short timeout - don't wait too long
+                  const timeout = setTimeout(resolve, 3000);
                   pc.addEventListener('icegatheringstatechange', () => {
                     if (pc.iceGatheringState === 'complete') {
                       clearTimeout(timeout);
-                      console.log('[OneTapTelecom] ✅ ICE gathering completed after restore');
                       resolve();
                     }
-                  }, { once: true });
+                  });
                 });
-              } else {
-                console.log('[OneTapTelecom] ICE gathering state:', pc.iceGatheringState, '- no wait needed');
               }
             } catch (e) {
               console.error('[OneTapTelecom] ❌ Error setting local description from saved offer:', e);
@@ -15985,15 +16409,6 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
         }
       }
 
-      // CRITICAL: Before processing answer, verify PC is in correct state
-      if (pc.signalingState !== 'have-local-offer') {
-        console.error('[OneTapTelecom] ❌ CRITICAL: PC is not in have-local-offer state before processing answer!');
-        console.error('[OneTapTelecom] Current state:', pc.signalingState);
-        console.error('[OneTapTelecom] This should never happen - answer requires local offer to be set');
-        return { handled: true, error: 'Peer connection is not ready for answer. State: ' + pc.signalingState };
-      }
-      
-      console.log('[OneTapTelecom] ✅ PC is in have-local-offer state - ready to process answer');
       console.log('[OneTapTelecom] Calling OneTap.handleIncomingAnswer...');
       // Extract recipient data from answer token metadata BEFORE processing answer
       // This way we have the data even if answer processing fails
@@ -16072,119 +16487,21 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
             });
             
             if (incomingChannel.label === 'messages') {
-              // Store incoming channel
+              // Store incoming channel - THIS REPLACES any outgoing channel that was created by sender
+              // CRITICAL: Incoming channel from recipient is the channel that will receive messages from recipient
               global._telecomDataChannels = global._telecomDataChannels || new Map();
+              const existingChannel = global._telecomDataChannels.get(contactGuid);
+              console.log('[OneTapTelecom] [SENDER] 📥 Incoming messages channel from recipient:', {
+                replacingExisting: !!existingChannel,
+                existingChannelReadyState: existingChannel?.readyState,
+                newChannelReadyState: incomingChannel.readyState,
+                newChannelId: incomingChannel.id
+              });
               global._telecomDataChannels.set(contactGuid, incomingChannel);
-              console.log('[OneTapTelecom] [SENDER] ✅ Stored incoming messages channel');
+              console.log('[OneTapTelecom] [SENDER] ✅ Stored incoming messages channel (REPLACED outgoing channel if existed)');
               
-              // 🚨🚨🚨 CRITICAL: ALWAYS overwrite onmessage handler - don't check if it exists 🚨🚨🚨
-              // Previous handler might be wrong (recipient-side handler from ensurePeerForContact)
-              // We MUST overwrite it with sender-side handler to receive messages from recipient
-              console.log('[OneTapTelecom] [SENDER] Setting up onmessage handler for incoming channel');
-              console.log('[OneTapTelecom] [SENDER] Previous handler exists:', !!incomingChannel.onmessage);
-              console.log('[OneTapTelecom] [SENDER] 🚨 CRITICAL: Overwriting handler even if it exists');
-              
-              // ALWAYS overwrite - don't check if it exists
-              incomingChannel.onmessage = async (event) => {
-                  try {
-                    const messageData = JSON.parse(event.data);
-                    console.log('[OneTapTelecom] [SENDER] 📥 Received message via incoming channel:', {
-                      contactGuid: contactGuid,
-                      type: messageData.type,
-                      encrypted: messageData.encrypted || false
-                    });
-                    
-                    // Handle regular messages (same logic as in sendContactInvite)
-                    if (messageData.type === 'message' && messageData.text) {
-                      const chatId = `contact-${contactGuid}`;
-                      
-                      // Decrypt if needed
-                      let decryptedText = messageData.text;
-                      if (messageData.encrypted) {
-                        try {
-                          const systemAccount = window.Auth ? window.Auth.getAccount() : null;
-                          if (systemAccount && systemAccount.privateKeyEncrypted) {
-                            const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
-                            const foundWinId = telecomWindows.length > 0 ? telecomWindows[0].dataset.winId : null;
-                            const privateKey = await getDecryptedPrivateKey(foundWinId);
-                            if (privateKey) {
-                              decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
-                            } else {
-                              decryptedText = '[Encrypted message - enter password to decrypt]';
-                            }
-                          } else {
-                            decryptedText = '[Encrypted message - decryption failed]';
-                          }
-                        } catch (e) {
-                          console.error('[OneTapTelecom] [SENDER] Error decrypting:', e);
-                          decryptedText = '[Encrypted message - decryption failed]';
-                        }
-                      }
-                      
-                      // Save message
-                      const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
-                      const messages = getChatMessages(chatId);
-                      messages.push({
-                        id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
-                        chatId: chatId,
-                        senderId: contactGuid,
-                        senderName: messageData.senderName || contactGuid.substring(0, 8) + '...',
-                        text: decryptedText,
-                        timestamp: messageData.timestamp || new Date().toISOString(),
-                        type: 'user',
-                        viaWebRTC: true,
-                        wasEncrypted: messageData.encrypted || false
-                      });
-                      localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
-                      
-                      // Update chat
-                      const chats = getChats();
-                      const chat = chats.find(c => c.id === chatId);
-                      if (chat) {
-                        chat.lastMessage = {
-                          text: decryptedText.length > 50 ? decryptedText.substring(0, 50) + '...' : decryptedText,
-                          timestamp: new Date().toISOString()
-                        };
-                        localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
-                      }
-                      
-                      // Refresh UI
-                      if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
-                      window._telecomBlinkingChats.add(chatId);
-                      blinkChatItem(chatId);
-                      
-                      const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
-                      telecomWindows.forEach(winEl => {
-                        const winId = winEl.dataset.winId;
-                        if (winId) {
-                          const win = WindowManager.findWindow(winId);
-                          if (win) {
-                            const selectedChatId = win.dataset.selectedChatId;
-                            const effectiveStorageKey = 'webos.telecom.v1';
-                            let effectiveConfig = null;
-                            try {
-                              const configData = localStorage.getItem(effectiveStorageKey);
-                              if (configData) effectiveConfig = JSON.parse(configData);
-                            } catch (e) {}
-                            
-                            if (selectedChatId === chatId) {
-                              const chat = chats.find(c => c.id === chatId);
-                              if (chat) {
-                                selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
-                              }
-                            } else {
-                              renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
-                              blinkChatItem(chatId);
-                            }
-                          }
-                        }
-                      });
-                    }
-                  } catch (e) {
-                    console.error('[OneTapTelecom] [SENDER] Error parsing incoming message:', e);
-                  }
-                };
-                console.log('[OneTapTelecom] [SENDER] ✅ Message handler OVERWRITTEN for incoming channel');
+              // 🚨 REFACTORED: Use unified handler setup function
+              setupMessagesChannelHandler(incomingChannel, contactGuid, 'sender', { overwrite: true });
             } else if (incomingChannel.label === 'control') {
               global._telecomControlChannels = global._telecomControlChannels || new Map();
               global._telecomControlChannels.set(contactGuid, incomingChannel);
@@ -16199,150 +16516,16 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
           };
           console.log('[OneTapTelecom] [SENDER] ✅ ondatachannel handler set up for sender');
           
-          // 🚨🚨🚨 CRITICAL: Check if channels are already open and set up handlers immediately 🚨🚨🚨
-          // This handles the case where channels opened BEFORE handler was set up
-          // After answer is processed, channels might already be open, so we need to set up handlers NOW
-          console.log('[OneTapTelecom] [SENDER] 🔍 Checking for already-open channels...');
-          const existingMessagesChannel = global._telecomDataChannels?.get(contactGuid);
-          console.log('[OneTapTelecom] [SENDER] Existing messages channel:', {
-            exists: !!existingMessagesChannel,
-            readyState: existingMessagesChannel?.readyState,
-            hasOnMessage: !!existingMessagesChannel?.onmessage,
-            label: existingMessagesChannel?.label
-          });
-          
-          // 🚨🚨🚨 CRITICAL: If channel is already open, ALWAYS overwrite handler IMMEDIATELY 🚨🚨🚨
-          // Previous handler might be wrong (recipient-side handler from ensurePeerForContact)
-          // We MUST overwrite it with sender-side handler to receive messages from recipient
-          // CRITICAL: Check ALL channels in the map, not just the one we found
-          // The channel might be stored but handler not set up correctly
-          const allChannels = Array.from(global._telecomDataChannels?.entries() || []);
-          console.log('[OneTapTelecom] [SENDER] 🔍 Checking ALL channels in map:', allChannels.length);
-          
-          // Find the correct channel for this contactGuid
-          let correctChannel = existingMessagesChannel;
-          for (const [guid, channel] of allChannels) {
-            if (guid === contactGuid && channel.label === 'messages') {
-              correctChannel = channel;
-              console.log('[OneTapTelecom] [SENDER] ✅ Found correct channel for contactGuid:', contactGuid);
-              break;
-            }
-          }
-          
-          if (correctChannel && correctChannel.readyState === 'open') {
-            console.log('[OneTapTelecom] [SENDER] ⚠️ Messages channel already open - OVERWRITING handler NOW');
-            console.log('[OneTapTelecom] [SENDER] Channel details:', {
-              label: correctChannel.label,
-              readyState: correctChannel.readyState,
-              hasOnMessage: !!correctChannel.onmessage,
-              id: correctChannel.id
-            });
-            console.log('[OneTapTelecom] [SENDER] 🚨 CRITICAL: Overwriting handler even if it exists - must be sender-side handler');
-            
-            // ALWAYS overwrite handler - don't check if it exists, just overwrite it
-            // Previous handler might be recipient-side handler, we need sender-side handler
-            correctChannel.onmessage = async (event) => {
-              try {
-                const messageData = JSON.parse(event.data);
-                console.log('[OneTapTelecom] [SENDER] 📥 Received message via existing open channel:', {
-                  contactGuid: contactGuid,
-                  type: messageData.type,
-                  encrypted: messageData.encrypted || false
-                });
-                
-                if (messageData.type === 'message' && messageData.text) {
-                  const chatId = `contact-${contactGuid}`;
-                  let decryptedText = messageData.text;
-                  if (messageData.encrypted) {
-                    try {
-                      const systemAccount = window.Auth ? window.Auth.getAccount() : null;
-                      if (systemAccount && systemAccount.privateKeyEncrypted) {
-                        const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
-                        const foundWinId = telecomWindows.length > 0 ? telecomWindows[0].dataset.winId : null;
-                        const privateKey = await getDecryptedPrivateKey(foundWinId);
-                        if (privateKey) {
-                          decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
-                        } else {
-                          decryptedText = '[Encrypted message - enter password to decrypt]';
-                        }
-                      } else {
-                        decryptedText = '[Encrypted message - decryption failed]';
-                      }
-                    } catch (e) {
-                      console.error('[OneTapTelecom] [SENDER] Error decrypting:', e);
-                      decryptedText = '[Encrypted message - decryption failed]';
-                    }
-                  }
-                  
-                  const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
-                  const messages = getChatMessages(chatId);
-                  messages.push({
-                    id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
-                    chatId: chatId,
-                    senderId: contactGuid,
-                    senderName: messageData.senderName || contactGuid.substring(0, 8) + '...',
-                    text: decryptedText,
-                    timestamp: messageData.timestamp || new Date().toISOString(),
-                    type: 'user',
-                    viaWebRTC: true,
-                    wasEncrypted: messageData.encrypted || false
-                  });
-                  localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
-                  
-                  const chats = getChats();
-                  const chat = chats.find(c => c.id === chatId);
-                  if (chat) {
-                    chat.lastMessage = {
-                      text: decryptedText.length > 50 ? decryptedText.substring(0, 50) + '...' : decryptedText,
-                      timestamp: new Date().toISOString()
-                    };
-                    localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
-                  }
-                  
-                  if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
-                  window._telecomBlinkingChats.add(chatId);
-                  blinkChatItem(chatId);
-                  
-                  const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
-                  telecomWindows.forEach(winEl => {
-                    const winId = winEl.dataset.winId;
-                    if (winId) {
-                      const win = WindowManager.findWindow(winId);
-                      if (win) {
-                        const selectedChatId = win.dataset.selectedChatId;
-                        const effectiveStorageKey = 'webos.telecom.v1';
-                        let effectiveConfig = null;
-                        try {
-                          const configData = localStorage.getItem(effectiveStorageKey);
-                          if (configData) effectiveConfig = JSON.parse(configData);
-                        } catch (e) {}
-                        
-                        if (selectedChatId === chatId) {
-                          const chat = chats.find(c => c.id === chatId);
-                          if (chat) {
-                            selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
-                          }
-                        } else {
-                          renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
-                          blinkChatItem(chatId);
-                        }
-                      }
-                    }
-                  });
-                }
-              } catch (e) {
-                console.error('[OneTapTelecom] [SENDER] Error parsing message from existing channel:', e);
-              }
-            };
-            console.log('[OneTapTelecom] [SENDER] ✅ Message handler OVERWRITTEN for existing open channel');
-            console.log('[OneTapTelecom] [SENDER] Handler is now:', typeof correctChannel.onmessage);
-          } else if (correctChannel && correctChannel.readyState !== 'open') {
-            console.log('[OneTapTelecom] [SENDER] ⏳ Channel exists but not open yet, state:', correctChannel.readyState);
-            console.log('[OneTapTelecom] [SENDER] Handler will be set up when channel opens via ondatachannel');
-          } else {
-            console.warn('[OneTapTelecom] [SENDER] ⚠️ No messages channel found for contactGuid:', contactGuid);
-            console.warn('[OneTapTelecom] [SENDER] Channel will be created when recipient sends it');
-          }
+        // 🚨 REFACTORED: Check if channels are already open and set up handlers using unified function
+        // This handles the case where channels opened BEFORE handler was set up
+        console.log('[OneTapTelecom] [SENDER] 🔍 Checking for already-open channels...');
+        const existingMessagesChannel = global._telecomDataChannels?.get(contactGuid);
+        if (existingMessagesChannel) {
+          console.log('[OneTapTelecom] [SENDER] Found existing messages channel, setting up handler...');
+          setupMessagesChannelHandler(existingMessagesChannel, contactGuid, 'sender', { overwrite: true });
+        } else {
+          console.log('[OneTapTelecom] [SENDER] ⏳ No messages channel found yet - will be set up when channel arrives via ondatachannel');
+        }
         
         // Clear saved offer from localStorage (no longer needed)
         // Use offerStorageGuid (same GUID used to find the offer) to ensure we delete the correct one
@@ -16654,15 +16837,33 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
         
         // Log ICE candidates for debugging
         const localCandidates = [];
-        const candidateTypes = { host: 0, srflx: 0, relay: 0, prflx: 0, other: 0 };
+        const candidateTypes = { host: 0, srflx: 0, relay: 0, prflx: 0, other: 0, unknown: 0 };
         pc.onicecandidate = (event) => {
           if (event.candidate) {
             const candidateStr = event.candidate.candidate;
-            const typeMatch = candidateStr.match(/ typ (\w+)/);
-            const type = typeMatch ? typeMatch[1] : 'unknown';
+            // Parse candidate type more carefully
+            let type = 'unknown';
+            if (candidateStr.includes(' typ host ')) {
+              type = 'host';
+            } else if (candidateStr.includes(' typ srflx ')) {
+              type = 'srflx';
+            } else if (candidateStr.includes(' typ relay ')) {
+              type = 'relay';
+            } else if (candidateStr.includes(' typ prflx ')) {
+              type = 'prflx';
+            } else {
+              // Try alternative parsing
+              const typeMatch = candidateStr.match(/ typ (\w+)/);
+              if (typeMatch) type = typeMatch[1];
+            }
             candidateTypes[type] = (candidateTypes[type] || 0) + 1;
             localCandidates.push({ type, candidate: candidateStr });
-            console.log(`[OneTapTelecom] [SENDER] Local ICE candidate (${type}):`, candidateStr.substring(0, 100));
+            console.log(`[OneTapTelecom] [SENDER] Local ICE candidate (${type}):`, candidateStr.substring(0, 150));
+            
+            // Log TURN server info if relay candidate
+            if (type === 'relay' && event.candidate.url) {
+              console.log(`[OneTapTelecom] [SENDER] ✅ TURN relay candidate from: ${event.candidate.url}`);
+            }
           } else {
             console.log('[OneTapTelecom] [SENDER] ✅ Local ICE candidate gathering complete');
             console.log('[OneTapTelecom] [SENDER] ICE candidate summary:', {
@@ -16671,10 +16872,12 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
               srflx: candidateTypes.srflx,
               relay: candidateTypes.relay,
               prflx: candidateTypes.prflx,
-              other: candidateTypes.other
+              other: candidateTypes.other,
+              unknown: candidateTypes.unknown
             });
             if (candidateTypes.relay === 0) {
               console.warn('[OneTapTelecom] [SENDER] ⚠️ No TURN relay candidates found! This may cause connection failures behind NAT/firewall.');
+              console.warn('[OneTapTelecom] [SENDER] 💡 Check: 1) TURN server credentials are correct, 2) TURN server is accessible, 3) Network allows TURN traffic');
             }
           }
         };
@@ -16789,127 +16992,23 @@ async function showAnswerDialog(winId, invite, config, storageKey) {
             console.log('[OneTapTelecom] [SENDER] ✅ Handler set up on already-open channel');
           }
           
+          // 🚨 REFACTORED: Use unified handler setup function
           if (messagesChannel.readyState === 'open') {
-            console.log('[OneTapTelecom] [SENDER] ✅ Messages channel is already open - ready to send/receive');
-            console.log('[OneTapTelecom] [SENDER] Handler status:', !!messagesChannel.onmessage ? 'SET' : 'MISSING');
+            console.log('[OneTapTelecom] [SENDER] ✅ Messages channel is already open - setting up handler');
+            setupMessagesChannelHandler(messagesChannel, contactGuid, 'sender', { overwrite: true });
             if (typeof updateConnectionStatusForChat === 'function') {
               updateConnectionStatusForChat(contactGuid, 'connected');
             }
           } else {
-            console.log('[OneTapTelecom] [SENDER] ⏳ Messages channel not yet open, waiting...');
-            // Handler already set up above, just add onopen callback for status update
-            // 🚨 CRITICAL: Also set up handler in onopen if it's missing (channel might open before handler is set)
-            const originalOnopen = messagesChannel.onopen;
-            messagesChannel.onopen = () => {
-              console.log('[OneTapTelecom] [SENDER] 🎉 Messages channel opened after answer processing');
-              console.log('[OneTapTelecom] [SENDER] Handler status BEFORE check:', !!messagesChannel.onmessage ? 'SET' : 'MISSING');
-              
-              // 🚨🚨🚨 CRITICAL: If handler is missing, set it up NOW 🚨🚨🚨
-              // Channel opened but handler might not be set up yet (race condition)
-              if (!messagesChannel.onmessage) {
-                console.error('[OneTapTelecom] [SENDER] 🚨 CRITICAL: Channel opened but NO handler! Setting up handler NOW in onopen callback...');
-                messagesChannel.onmessage = async (event) => {
-                  try {
-                    const messageData = JSON.parse(event.data);
-                    console.log('[OneTapTelecom] [SENDER] 📥 Received message via channel (onopen handler setup):', {
-                      contactGuid: contactGuid,
-                      type: messageData.type,
-                      encrypted: messageData.encrypted || false
-                    });
-                    
-                    if (messageData.type === 'message' && messageData.text) {
-                      const chatId = `contact-${contactGuid}`;
-                      let decryptedText = messageData.text;
-                      if (messageData.encrypted) {
-                        try {
-                          const systemAccount = window.Auth ? window.Auth.getAccount() : null;
-                          if (systemAccount && systemAccount.privateKeyEncrypted) {
-                            const telecomWindows = document.querySelectorAll('.window[data-app-id="telecom"]');
-                            const foundWinId = telecomWindows.length > 0 ? telecomWindows[0].dataset.winId : null;
-                            const privateKey = await getDecryptedPrivateKey(foundWinId);
-                            if (privateKey) {
-                              decryptedText = await decryptMessageForTelecom(messageData.text, privateKey);
-                            } else {
-                              decryptedText = '[Encrypted message - enter password to decrypt]';
-                            }
-                          } else {
-                            decryptedText = '[Encrypted message - decryption failed]';
-                          }
-                        } catch (e) {
-                          console.error('[OneTapTelecom] [SENDER] Error decrypting:', e);
-                          decryptedText = '[Encrypted message - decryption failed]';
-                        }
-                      }
-                      
-                      const MESSAGES_STORAGE_KEY = `webos.telecom.messages.${chatId}.v1`;
-                      const messages = getChatMessages(chatId);
-                      messages.push({
-                        id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
-                        chatId: chatId,
-                        senderId: contactGuid,
-                        senderName: messageData.senderName || contactGuid.substring(0, 8) + '...',
-                        text: decryptedText,
-                        timestamp: messageData.timestamp || new Date().toISOString(),
-                        type: 'user',
-                        viaWebRTC: true,
-                        wasEncrypted: messageData.encrypted || false
-                      });
-                      localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
-                      
-                      const chats = getChats();
-                      const chat = chats.find(c => c.id === chatId);
-                      if (chat) {
-                        chat.lastMessage = {
-                          text: decryptedText.length > 50 ? decryptedText.substring(0, 50) + '...' : decryptedText,
-                          timestamp: new Date().toISOString()
-                        };
-                        localStorage.setItem('webos.telecom.chats.v1', JSON.stringify(chats));
-                      }
-                      
-                      if (!window._telecomBlinkingChats) { window._telecomBlinkingChats = new Set(); }
-                      window._telecomBlinkingChats.add(chatId);
-                      blinkChatItem(chatId);
-                      
-                      const telecomWindows = document.querySelectorAll('[data-app-id="telecom"]');
-                      telecomWindows.forEach(winEl => {
-                        const winId = winEl.dataset.winId;
-                        if (winId) {
-                          const win = WindowManager.findWindow(winId);
-                          if (win) {
-                            const selectedChatId = win.dataset.selectedChatId;
-                            const effectiveStorageKey = 'webos.telecom.v1';
-                            let effectiveConfig = null;
-                            try {
-                              const configData = localStorage.getItem(effectiveStorageKey);
-                              if (configData) effectiveConfig = JSON.parse(configData);
-                            } catch (e) {}
-                            
-                            if (selectedChatId === chatId) {
-                              const chat = chats.find(c => c.id === chatId);
-                              if (chat) {
-                                selectChat(win, winId, chat, effectiveConfig, effectiveStorageKey);
-                              }
-                            } else {
-                              renderChatsList(win, winId, effectiveConfig, effectiveStorageKey);
-                              blinkChatItem(chatId);
-                            }
-                          }
-                        }
-                      });
-                    }
-                  } catch (e) {
-                    console.error('[OneTapTelecom] [SENDER] Error parsing message:', e);
-                  }
-                };
-                console.log('[OneTapTelecom] [SENDER] ✅ Handler set up in onopen callback');
+            console.log('[OneTapTelecom] [SENDER] ⏳ Messages channel not yet open, setting up handler for when it opens');
+            setupMessagesChannelHandler(messagesChannel, contactGuid, 'sender', { 
+              overwrite: true,
+              onOpenCallback: () => {
+                if (typeof updateConnectionStatusForChat === 'function') {
+                  updateConnectionStatusForChat(contactGuid, 'connected');
+                }
               }
-              
-              console.log('[OneTapTelecom] [SENDER] Handler status AFTER check:', !!messagesChannel.onmessage ? 'SET' : 'MISSING');
-              if (typeof updateConnectionStatusForChat === 'function') {
-                updateConnectionStatusForChat(contactGuid, 'connected');
-              }
-              if (originalOnopen) originalOnopen();
-            };
+            });
           }
         } else {
           console.warn('[OneTapTelecom] [SENDER] ⚠️ No messages channel found - will be created when connection establishes');
