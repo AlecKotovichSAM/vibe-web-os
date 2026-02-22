@@ -27,6 +27,8 @@ Telecom is the world's most secure messaging application, built on revolutionary
 
 🌐 **Live Demo:** [https://aleckotovichsam.github.io/vibe-web-os/](https://aleckotovichsam.github.io/vibe-web-os/)
 
+![Vibe Web OS Screenshot](assets/webos-screenshot.png)
+
 ## ✨ Features
 
 ### Desktop Environment
