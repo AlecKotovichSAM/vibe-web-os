@@ -15,3 +15,6 @@ coverage/
 # OS
 .DS_Store
 Thumbs.db
+
+# Cursor workspace storage temporary files
+**/c__Users_*
