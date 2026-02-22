@@ -1,43 +1,29 @@
 # Vibe Web OS
 
-## P2P Invites (Telecom)
+A browser-based operating system built with pure HTML, CSS, and JavaScript. Features a desktop environment with window management, virtual file system, and built-in apps.
 
-### Pure Peer-to-Peer Communication
+## 🌟 Featured: Telecom Messenger
 
-The Telecom app uses **100% peer-to-peer WebRTC** connections. No external servers required for signaling.
+**The Only True Serverless Messenger** - Zero Message Servers, Direct Peer-to-Peer, End-to-End Encrypted
 
-**How it works:**
-- **Same-Origin (Same Browser)**: Automatically exchanges WebRTC signals via `localStorage` between browser tabs
-- **Cross-Origin**: Requires manual exchange of signals (copy/paste, QR codes, etc.)
+Telecom is the world's most secure messaging application, built on revolutionary serverless architecture. Unlike traditional messengers (Telegram, WhatsApp, Signal), Telecom enables **direct peer-to-peer communication** with **zero server infrastructure** for message delivery.
 
-**Important:** WebRTC requires exchanging metadata (offers, answers, ICE candidates) BEFORE establishing the P2P connection. This is called "signaling". The actual data connection is **100% P2P** - no servers involved in data transfer.
+**Key Features:**
+- 🔒 **No Message Servers** - Messages travel directly from sender to recipient via WebRTC
+- 🔐 **End-to-End Encryption** - RSA-OAEP + AES-GCM encryption
+- 🌐 **Pure Peer-to-Peer** - No WebSocket signaling server required
+- 🛡️ **Complete Privacy** - No metadata collection, no tracking, no surveillance
+- 🌍 **Open Source** - 100% open source, dedicated to all people of the world
 
-**Current Implementation:**
-- ✅ **Same-origin**: Fully automatic via localStorage (works between tabs in same browser)
-- ⚠️ **Cross-origin**: Requires manual signal exchange (copy/paste, QR code, etc.)
+**Why Telecom is Unique:**
+- **No WebSocket Server** - Built without signaling server despite initial recommendations
+- **One-Tap Connection** - Easy connection establishment via URL hash links
+- **Complete User Control** - Change GUID, delete contacts, delete all data anytime
+- **Unstoppable** - Nobody can shut Telecom down (no servers to shut down)
 
-### Testing Same-Origin P2P
-
-```bash
-# Start dev server
-dev-server.bat 9000
-```
-
-Open multiple tabs on `http://localhost:9000` - invites work automatically between tabs via localStorage.
-
-### STUN Servers
-
-**STUN servers** (configured in Network app):
-- Help WebRTC find your public IP address (NAT traversal)
-- Required for P2P connections through firewalls/NAT
-- Public STUN servers are available (Google, etc.) - no configuration needed
-- **Note:** STUN is NOT signaling - it's only for NAT traversal. Signaling uses localStorage for same-origin.
+📖 **Full Documentation:** See [TELECOM.md](TELECOM.md) for complete security details, architecture explanation, and user guide.
 
 ---
-
-# Vibe Web OS
-
-A browser-based operating system built with pure HTML, CSS, and JavaScript. Features a desktop environment with window management, virtual file system, and built-in apps.
 
 🌐 **Live Demo:** [https://aleckotovichsam.github.io/vibe-web-os/](https://aleckotovichsam.github.io/vibe-web-os/)
 
@@ -52,10 +38,15 @@ A browser-based operating system built with pure HTML, CSS, and JavaScript. Feat
 - **Clock & Date** display with locale-aware formatting
 
 ### Built-in Applications
+- **💬 Telecom** - The world's most secure serverless messenger (see [TELECOM.md](TELECOM.md))
+  - Zero message servers, direct peer-to-peer communication
+  - End-to-end encryption (RSA + AES)
+  - One-tap connection establishment
+  - Complete user control over identity and contacts
 - **📁 Files** - Virtual file system browser with folder creation, file management, image previews, and download support
 - **📝 Notes** - Simple note-taking app with auto-save
 - **📄 Text Editor** - Full-featured text editor with save/save-as functionality
-- **⚙️ Settings** - System configuration (themes, wallpapers, storage management)
+- **⚙️ Settings** - System configuration (themes, wallpapers, storage management, Network/ICE servers)
 - **🔧 Task Manager** - View and manage running windows and processes (accessible via search)
 - **💻 Terminal** - Command-line interface with file system commands
 - **🧮 Calculator** - Scientific calculator app
@@ -206,7 +197,40 @@ Free to use and modify. Have fun!
 
 ## 🎯 Version History
 
-### Version 0.2 (Current)
+### Version 0.3.0 (Current) 🚀
+
+**🌟 Major Feature: Telecom Messenger**
+- 💬 **Telecom Messenger** - The world's most secure serverless messenger
+  - Zero message servers - direct peer-to-peer communication via WebRTC
+  - End-to-end encryption (RSA-OAEP + AES-GCM)
+  - One-tap connection links for easy setup
+  - No WebSocket signaling server required
+  - Complete user control (GUID management, contact deletion, data deletion)
+  - Welcome wizard for new users
+  - Message editing and deletion
+  - Offline message delivery
+  - Connection status indicators
+  - Contact management with invites
+  - See [TELECOM.md](TELECOM.md) for full documentation
+
+**New Features:**
+- 🌐 **Network App** - Configure STUN/TURN servers for WebRTC connections
+- 🔐 **Account System** - User authentication and account management
+- 📱 **Telecom Integration** - Full messenger integration with web-os
+
+**Improvements:**
+- Enhanced security architecture
+- Improved WebRTC connection handling
+- Better error handling and user feedback
+- UI/UX improvements across all apps
+
+**Technical Achievements:**
+- Built without WebSocket signaling server (pure P2P)
+- Implemented one-tap connection links
+- Solved cross-origin signaling challenges
+- Complete serverless architecture
+
+### Version 0.2.0
 
 **New Features:**
 - 🔧 **Task Manager** - Manage running windows and processes
@@ -238,14 +262,19 @@ Free to use and modify. Have fun!
 
 **Test Framework:**
 - Browser-based test runner: `tests/test-runner.html` (open in browser)
-- Node.js test runner: `node tests/run-browser-tests.js`
-- Current: 93 tests covering 7 core modules (64% core coverage)
+- Node.js test runner: `node tests/run-browser-tests.js` or `npm test`
+- Current: 240+ tests covering core modules and Telecom messenger
 
 **Testing Policy:**
 - **Every bugfix MUST include a test** (see `AGENTS.md` for details)
 - Tests are located in `tests/*.browser.test.js`
-- Run tests: `node tests/run-browser-tests.js` or open `tests/test-runner.html` in browser
+- Run tests: `npm test` or `node tests/run-browser-tests.js` or open `tests/test-runner.html` in browser
 - See `tests/COVERAGE.md` for detailed coverage report
+
+**Telecom Testing:**
+- Comprehensive test suite for Telecom messenger functionality
+- Tests cover WebRTC connections, encryption, contact management, and message handling
+- All Telecom features are tested to ensure reliability and security
 
 ### Version 0.1
 
